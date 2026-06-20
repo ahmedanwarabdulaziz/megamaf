@@ -1,0 +1,30 @@
+import { z } from "zod"
+
+const projectStatus = z.enum(["active", "completed", "on_hold", "cancelled"])
+
+export const addProjectSchema = z.object({
+  name: z.string().min(2, "اسم المشروع يجب أن يكون حرفين على الأقل"),
+  code: z.string().optional(),
+  description: z.string().optional(),
+  status: projectStatus.default("active"),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  budget: z.coerce.number().optional(),
+  is_company_branch: z.boolean().optional().default(false),
+})
+
+export const editProjectSchema = z.object({
+  id: z.string().uuid("معرف المشروع غير صالح"),
+  name: z.string().min(2, "اسم المشروع يجب أن يكون حرفين على الأقل"),
+  code: z.string().optional(),
+  description: z.string().optional(),
+  status: projectStatus.default("active"),
+  start_date: z.string().optional(),
+  end_date: z.string().optional(),
+  budget: z.coerce.number().optional(),
+  is_company_branch: z.boolean().optional().default(false),
+})
+
+export type ProjectStatus = z.infer<typeof projectStatus>
+export type AddProjectInput = z.infer<typeof addProjectSchema>
+export type EditProjectInput = z.infer<typeof editProjectSchema>
