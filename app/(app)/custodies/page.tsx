@@ -67,6 +67,7 @@ export default async function CustodiesPage({
     .from("employee_custodies")
     .select("*, employees(id, name, job_title)")
     .order("date", { ascending: false })
+    .order("created_at", { ascending: false })
   if (!seeAllCustodies && myEmployeeId) {
     custodiesQuery = custodiesQuery.eq("employee_id", myEmployeeId) as any
   }
