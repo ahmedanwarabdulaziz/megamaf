@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { editCustody } from "@/app/(app)/custodies/actions"
-import { Upload, X, FileText, ImageIcon, Paperclip } from "lucide-react"
+import { Upload, X, FileText, ImageIcon, Paperclip, Loader2 } from "lucide-react"
 
 function SubmitButton() {
   const { pending } = useFormStatus()
@@ -15,6 +15,100 @@ function SubmitButton() {
     <Button type="submit" disabled={pending}>
       {pending ? "جاري الحفظ..." : "حفظ التغييرات"}
     </Button>
+  )
+}
+
+function EditFileDropzone({
+  fileInputRef,
+  setNewFile,
+  setRemoveFile,
+  hasExistingFile,
+  newFile,
+  isExistingImage,
+  isNewFileImage,
+  selectedCustody,
+  clearNewFile
+}: any) {
+  const { pending } = useFormStatus()
+
+  return (
+    <div className="flex flex-col gap-2 relative mt-2">
+      <label className="text-sm font-medium">المستند / الصورة</label>
+
+      {/* Always-mounted hidden file input */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        name="file"
+        className="sr-only"
+        accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+        onChange={e => { setNewFile(e.target.files?.[0] || null); setRemoveFile(false) }}
+        disabled={pending}
+      />
+
+      <div className="relative">
+        {/* Existing file row */}
+        {hasExistingFile && !newFile && (
+          <div className={`flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/30 transition-opacity ${pending ? "opacity-40" : ""}`}>
+            {isExistingImage
+              ? <ImageIcon className="h-5 w-5 text-muted-foreground shrink-0" />
+              : <FileText className="h-5 w-5 text-muted-foreground shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm truncate text-muted-foreground">ملف مرفق حالياً</p>
+              <p className="text-xs text-muted-foreground">{selectedCustody?.file_path?.split("/").pop()}</p>
+            </div>
+            {!pending && (
+              <button type="button" onClick={() => setRemoveFile(true)}
+                className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* New file preview */}
+        {newFile && (
+          <div className={`flex items-center gap-3 p-3 rounded-lg border border-primary/30 bg-primary/5 transition-opacity ${pending ? "opacity-40" : ""}`}>
+            {isNewFileImage
+              ? <ImageIcon className="h-5 w-5 text-primary shrink-0" />
+              : <FileText className="h-5 w-5 text-primary shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{newFile.name}</p>
+              <p className="text-xs text-muted-foreground">{(newFile.size / 1024).toFixed(0)} KB — سيحل محل الملف القديم</p>
+            </div>
+            {!pending && (
+              <button type="button" onClick={clearNewFile}
+                className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Upload / replace trigger button */}
+        {!newFile && (
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => fileInputRef.current?.click()}
+            className={`flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border w-full transition-colors text-sm text-muted-foreground ${pending ? "opacity-50 cursor-not-allowed" : "hover:border-primary/50 cursor-pointer"}`}
+          >
+            {hasExistingFile ? <Paperclip className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
+            {hasExistingFile ? "استبدال الملف الحالي" : "رفع ملف أو صورة"}
+          </button>
+        )}
+
+        {/* Overlay while uploading */}
+        {pending && newFile && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px] rounded-lg">
+            <div className="bg-background border shadow-sm rounded-full px-4 py-2 flex items-center gap-2">
+              <Loader2 className="h-4 w-4 text-primary animate-spin" />
+              <span className="text-sm font-medium text-primary">جاري الرفع...</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -186,65 +280,17 @@ export function EditCustodyModal({
         </div>
 
         {/* File — input always mounted, UI shown conditionally on top */}
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium">المستند / الصورة</label>
-
-          {/* Always-mounted hidden file input — never unmount this */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            name="file"
-            className="sr-only"
-            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-            onChange={e => { setNewFile(e.target.files?.[0] || null); setRemoveFile(false) }}
-          />
-
-          {/* Existing file row */}
-          {hasExistingFile && !newFile && (
-            <div className="flex items-center gap-3 p-3 rounded-lg border border-border bg-muted/30">
-              {isExistingImage
-                ? <ImageIcon className="h-5 w-5 text-muted-foreground shrink-0" />
-                : <FileText className="h-5 w-5 text-muted-foreground shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm truncate text-muted-foreground">ملف مرفق حالياً</p>
-                <p className="text-xs text-muted-foreground">{selectedCustody?.file_path?.split("/").pop()}</p>
-              </div>
-              <button type="button" onClick={() => setRemoveFile(true)}
-                className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-
-          {/* New file preview */}
-          {newFile && (
-            <div className="flex items-center gap-3 p-3 rounded-lg border border-primary/30 bg-primary/5">
-              {isNewFileImage
-                ? <ImageIcon className="h-5 w-5 text-primary shrink-0" />
-                : <FileText className="h-5 w-5 text-primary shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{newFile.name}</p>
-                <p className="text-xs text-muted-foreground">{(newFile.size / 1024).toFixed(0)} KB — سيحل محل الملف القديم</p>
-              </div>
-              <button type="button" onClick={clearNewFile}
-                className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          )}
-
-          {/* Upload / replace trigger button */}
-          {!newFile && (
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-border hover:border-primary/50 transition-colors text-sm text-muted-foreground w-full"
-            >
-              {hasExistingFile ? <Paperclip className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
-              {hasExistingFile ? "استبدال الملف الحالي" : "رفع ملف أو صورة"}
-            </button>
-          )}
-        </div>
+        <EditFileDropzone
+          fileInputRef={fileInputRef}
+          setNewFile={setNewFile}
+          setRemoveFile={setRemoveFile}
+          hasExistingFile={hasExistingFile}
+          newFile={newFile}
+          isExistingImage={isExistingImage}
+          isNewFileImage={isNewFileImage}
+          selectedCustody={selectedCustody}
+          clearNewFile={clearNewFile}
+        />
 
         {state?.error && (
           <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{state.error}</p>

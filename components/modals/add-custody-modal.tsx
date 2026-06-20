@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { addCustody } from "@/app/(app)/custodies/actions"
-import { Upload, X, FileText, ImageIcon } from "lucide-react"
+import { Upload, X, FileText, ImageIcon, Loader2 } from "lucide-react"
 
 function SubmitButton() {
   const { pending } = useFormStatus()
@@ -15,6 +15,68 @@ function SubmitButton() {
     <Button type="submit" disabled={pending}>
       {pending ? "جاري الحفظ..." : "إضافة العهدة"}
     </Button>
+  )
+}
+
+function FileDropzone({ selectedFile, setSelectedFile, fileInputRef, clearFile }: any) {
+  const { pending } = useFormStatus()
+  const isImage = selectedFile && selectedFile.type.startsWith("image/")
+
+  return (
+    <div className="flex flex-col gap-2 relative mt-2">
+      <label className="text-sm font-medium">المستند / الصورة</label>
+
+      {/* Hidden file input — always mounted */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        name="file"
+        className="sr-only"
+        accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
+        onChange={e => setSelectedFile(e.target.files?.[0] || null)}
+        disabled={pending}
+      />
+
+      <div className="relative">
+        {selectedFile ? (
+          /* Preview */
+          <div className={`flex items-center gap-3 p-3 rounded-lg border border-primary/30 bg-primary/5 transition-opacity ${pending ? "opacity-40" : ""}`}>
+            {isImage ? <ImageIcon className="h-5 w-5 text-primary shrink-0" /> : <FileText className="h-5 w-5 text-primary shrink-0" />}
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium truncate">{selectedFile.name}</p>
+              <p className="text-xs text-muted-foreground">{(selectedFile.size / 1024).toFixed(0)} KB</p>
+            </div>
+            {!pending && (
+              <button type="button" onClick={clearFile} className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
+                <X className="h-4 w-4" />
+              </button>
+            )}
+          </div>
+        ) : (
+          /* Drop zone */
+          <button
+            type="button"
+            disabled={pending}
+            onClick={() => fileInputRef.current?.click()}
+            className={`flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-dashed border-border w-full transition-colors ${pending ? "opacity-50 cursor-not-allowed" : "hover:border-primary/50 cursor-pointer"}`}
+          >
+            <Upload className="h-6 w-6 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">اضغط لرفع ملف أو صورة</span>
+            <span className="text-xs text-muted-foreground">JPG, PNG, PDF — حتى 10MB</span>
+          </button>
+        )}
+
+        {/* Overlay while uploading */}
+        {pending && selectedFile && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-background/60 backdrop-blur-[2px] rounded-lg">
+            <div className="bg-background border shadow-sm rounded-full px-4 py-2 flex items-center gap-2">
+              <Loader2 className="h-4 w-4 text-primary animate-spin" />
+              <span className="text-sm font-medium text-primary">جاري الرفع...</span>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   )
 }
 
@@ -129,49 +191,12 @@ export function AddCustodyModal({
         </div>
 
         {/* File Upload */}
-        <div className="flex flex-col gap-2">
-          <label className="text-sm font-medium">المستند / الصورة</label>
-
-          {/* Hidden file input — always mounted */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            name="file"
-            className="sr-only"
-            accept="image/jpeg,image/png,image/gif,image/webp,application/pdf"
-            onChange={e => setSelectedFile(e.target.files?.[0] || null)}
-          />
-
-          {selectedFile ? (
-            /* Preview — shown when file is picked */
-            <div className="flex items-center gap-3 p-3 rounded-lg border border-primary/30 bg-primary/5">
-              {isImage
-                ? <ImageIcon className="h-5 w-5 text-primary shrink-0" />
-                : <FileText className="h-5 w-5 text-primary shrink-0" />}
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium truncate">{selectedFile.name}</p>
-                <p className="text-xs text-muted-foreground">
-                  {(selectedFile.size / 1024).toFixed(0)} KB
-                </p>
-              </div>
-              <button type="button" onClick={clearFile}
-                className="text-muted-foreground hover:text-destructive transition-colors shrink-0">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-          ) : (
-            /* Drop zone — shown when no file picked, clicking triggers the hidden input */
-            <button
-              type="button"
-              onClick={() => fileInputRef.current?.click()}
-              className="flex flex-col items-center gap-2 p-4 rounded-lg border-2 border-dashed border-border hover:border-primary/50 cursor-pointer transition-colors w-full"
-            >
-              <Upload className="h-6 w-6 text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">اضغط لرفع ملف أو صورة</span>
-              <span className="text-xs text-muted-foreground">JPG, PNG, PDF — حتى 10MB</span>
-            </button>
-          )}
-        </div>
+        <FileDropzone
+          selectedFile={selectedFile}
+          setSelectedFile={setSelectedFile}
+          fileInputRef={fileInputRef}
+          clearFile={clearFile}
+        />
 
         {state?.error && <p className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">{state.error}</p>}
 
