@@ -59,6 +59,11 @@ export default async function ProjectsPage() {
     .from("employee_custodies")
     .select("project_id, amount, funded_amount")
 
+  // 5. Legacy balances (opening balances from before the app)
+  const { data: legacyBalancesRaw } = await supabase
+    .from("project_legacy_balances")
+    .select("*")
+
   // 4. Bank accounts for the fund modal
   const { data: bankAccountsRaw } = await supabase
     .from("bank_accounts")
@@ -115,6 +120,21 @@ export default async function ProjectsPage() {
       const amt = Number(s.amount)
       vendorPaymentsMap[projId] = (vendorPaymentsMap[projId] || 0) + amt
       expensesMap[projId] = (expensesMap[projId] || 0) + amt
+    }
+  }
+
+  // From legacy balances
+  for (const lb of legacyBalancesRaw || []) {
+    const projId = lb.project_id
+    if (projId) {
+      const legFunds = Number(lb.legacy_funds || 0)
+      const legPaidCustodies = Number(lb.legacy_paid_custodies || 0)
+      const legVendorPayments = Number(lb.legacy_vendor_payments || 0)
+
+      fundsMap[projId] = (fundsMap[projId] || 0) + legFunds
+      paidCustodiesMap[projId] = (paidCustodiesMap[projId] || 0) + legPaidCustodies
+      vendorPaymentsMap[projId] = (vendorPaymentsMap[projId] || 0) + legVendorPayments
+      expensesMap[projId] = (expensesMap[projId] || 0) + legPaidCustodies + legVendorPayments
     }
   }
 

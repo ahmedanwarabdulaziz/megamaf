@@ -42,6 +42,7 @@ const NAV_ITEMS: NavItem[] = [
     subItems: [
       { label: "الموظفون", href: "/employees", icon: <UserCheck className="h-4 w-4" />, slug: "employees" },
       { label: "الموردون والمقاولون", href: "/vendors", icon: <Truck className="h-4 w-4" />, slug: "vendors" },
+      { label: "الأرصدة الافتتاحية للمشروعات", href: "/settings/project-balances", icon: <FolderKanban className="h-4 w-4" />, slug: "settings" },
     ],
   },
 ]
