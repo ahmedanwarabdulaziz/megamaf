@@ -124,12 +124,20 @@ export default async function ProjectsPage() {
   }
 
   // From legacy balances
+  const legacyFundsMap: Record<string, number> = {}
+  const legacyPaidCustodiesMap: Record<string, number> = {}
+  const legacyVendorPaymentsMap: Record<string, number> = {}
+
   for (const lb of legacyBalancesRaw || []) {
     const projId = lb.project_id
     if (projId) {
       const legFunds = Number(lb.legacy_funds || 0)
       const legPaidCustodies = Number(lb.legacy_paid_custodies || 0)
       const legVendorPayments = Number(lb.legacy_vendor_payments || 0)
+
+      legacyFundsMap[projId] = legFunds
+      legacyPaidCustodiesMap[projId] = legPaidCustodies
+      legacyVendorPaymentsMap[projId] = legVendorPayments
 
       fundsMap[projId] = (fundsMap[projId] || 0) + legFunds
       paidCustodiesMap[projId] = (paidCustodiesMap[projId] || 0) + legPaidCustodies
@@ -297,6 +305,11 @@ export default async function ProjectsPage() {
             const pendingPOs = pendingPOsMap[project.id] || 0
             const pendingCustodies = pendingCustodiesMap[project.id] || 0
             const paidCustodies = paidCustodiesMap[project.id] || 0
+            
+            const legFunds = legacyFundsMap[project.id] || 0
+            const legPaidCustodies = legacyPaidCustodiesMap[project.id] || 0
+            const legVendorPayments = legacyVendorPaymentsMap[project.id] || 0
+            
             const profit = funds - expenses
 
             let statusColor = "bg-muted text-muted-foreground border-border"
@@ -403,6 +416,36 @@ export default async function ProjectsPage() {
                                 </span>
                               </span>
                             </div>
+                            
+                            {(legFunds > 0 || legVendorPayments > 0 || legPaidCustodies > 0) && (
+                              <div className="flex flex-wrap gap-3 bg-indigo-500/10 rounded px-2 py-1.5 border border-indigo-500/20 mt-1">
+                                {legFunds > 0 && (
+                                  <span className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">تمويل سابق:</span>
+                                    <span className="font-bold text-indigo-700 dark:text-indigo-300">{formatMoney(legFunds)}</span>
+                                  </span>
+                                )}
+                                {legFunds > 0 && (legVendorPayments > 0 || legPaidCustodies > 0) && (
+                                  <span className="text-indigo-500/40 hidden sm:inline">|</span>
+                                )}
+                                {legVendorPayments > 0 && (
+                                  <span className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">موردين سابقاً:</span>
+                                    <span className="font-bold text-indigo-700 dark:text-indigo-300">{formatMoney(legVendorPayments)}</span>
+                                  </span>
+                                )}
+                                {legVendorPayments > 0 && legPaidCustodies > 0 && (
+                                  <span className="text-indigo-500/40 hidden sm:inline">|</span>
+                                )}
+                                {legPaidCustodies > 0 && (
+                                  <span className="flex items-center gap-1.5 text-xs">
+                                    <span className="text-indigo-600 dark:text-indigo-400 font-medium">عهد مصروفة سابقاً:</span>
+                                    <span className="font-bold text-indigo-700 dark:text-indigo-300">{formatMoney(legPaidCustodies)}</span>
+                                  </span>
+                                )}
+                              </div>
+                            )}
+
                             {(vPayments > 0 || pendingPOs > 0 || pendingCustodies > 0 || paidCustodies > 0) && (
                               <div className="flex flex-wrap gap-3 bg-muted/40 rounded px-2 py-1.5 border border-border/50">
                                 {vPayments > 0 && (
