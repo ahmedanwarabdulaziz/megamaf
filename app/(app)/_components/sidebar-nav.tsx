@@ -22,13 +22,19 @@ const NAV_ITEMS: NavItem[] = [
       { label: "الشهادات والودائع", href: "/finance/certificates", icon: <FileText className="h-4 w-4" />, slug: "finance" },
     ],
   },
-  { label: "الموظفون", href: "/employees", icon: <UserCheck className="h-5 w-5" />, slug: "employees" },
-  { label: "الموردون والمقاولون", href: "/vendors", icon: <Truck className="h-5 w-5" />, slug: "vendors" },
   { label: "المطالبات", href: "/vendor-pos", icon: <Receipt className="h-5 w-5" />, slug: "vendor-pos" },
   { label: "المشروعات", href: "/projects", icon: <FolderKanban className="h-5 w-5" />, slug: "projects" },
   { label: "العهد", href: "/custodies", icon: <ClipboardList className="h-5 w-5" />, slug: "custodies" },
   { label: "المصروفات", href: "/payments", icon: <Banknote className="h-5 w-5" />, slug: "payments" },
-  { label: "الإعدادات", href: "/settings", icon: <Settings className="h-5 w-5" />, slug: "settings" },
+  {
+    label: "الإعدادات",
+    icon: <Settings className="h-5 w-5" />,
+    slug: "settings-group",
+    subItems: [
+      { label: "الموظفون", href: "/employees", icon: <UserCheck className="h-4 w-4" />, slug: "employees" },
+      { label: "الموردون والمقاولون", href: "/vendors", icon: <Truck className="h-4 w-4" />, slug: "vendors" },
+    ],
+  },
 ]
 
 function isAllowed(slug: string, allowedPages: string[] | "all"): boolean {

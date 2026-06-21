@@ -5,10 +5,11 @@ import { usePathname } from "next/navigation"
 import {
   Home, Settings, FileText, Landmark, X, Truck,
   FolderKanban, UserCheck, ClipboardList, Banknote,
-  Receipt, ChevronDown, ChevronUp, Warehouse, PackageOpen, LayoutList
+  Receipt, ChevronDown, ChevronUp, Warehouse, PackageOpen, LayoutList, LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
+import { logout } from "@/app/(auth)/login/actions"
 
 type NavSubItem = { label: string; href: string; icon: React.ReactNode; slug: string }
 type MobileNavItem =
@@ -26,13 +27,19 @@ const MOBILE_NAV_ITEMS: MobileNavItem[] = [
       { label: "الشهادات والودائع", href: "/finance/certificates", icon: <FileText className="h-4 w-4" />, slug: "finance" },
     ],
   },
-  { label: "الموظفون", href: "/employees", icon: <UserCheck className="h-5 w-5" />, slug: "employees" },
-  { label: "الموردون والمقاولون", href: "/vendors", icon: <Truck className="h-5 w-5" />, slug: "vendors" },
   { label: "المطالبات", href: "/vendor-pos", icon: <Receipt className="h-5 w-5" />, slug: "vendor-pos" },
   { label: "المشروعات", href: "/projects", icon: <FolderKanban className="h-5 w-5" />, slug: "projects" },
   { label: "العهد", href: "/custodies", icon: <ClipboardList className="h-5 w-5" />, slug: "custodies" },
   { label: "المصروفات", href: "/payments", icon: <Banknote className="h-5 w-5" />, slug: "payments" },
-  { label: "الإعدادات", href: "/settings", icon: <Settings className="h-5 w-5" />, slug: "settings" },
+  {
+    label: "الإعدادات",
+    icon: <Settings className="h-5 w-5" />,
+    slug: "settings-group",
+    subItems: [
+      { label: "الموظفون", href: "/employees", icon: <UserCheck className="h-4 w-4" />, slug: "employees" },
+      { label: "الموردون والمقاولون", href: "/vendors", icon: <Truck className="h-4 w-4" />, slug: "vendors" },
+    ],
+  },
 ]
 
 function isAllowed(slug: string, allowedPages: string[] | "all"): boolean {
@@ -93,7 +100,7 @@ export function MobileNav({ allowedPages = "all" }: { allowedPages?: string[] | 
         </div>
       )}
 
-      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/90 backdrop-blur-lg flex items-center justify-around h-16 px-2 pb-safe">
+      <nav className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border bg-card/90 backdrop-blur-lg flex items-center overflow-x-auto h-16 px-2 pb-safe gap-2 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         {visibleItems.map(item => {
           const hasSubItems = !!item.subItems
           const isActive = hasSubItems
@@ -109,11 +116,11 @@ export function MobileNav({ allowedPages = "all" }: { allowedPages?: string[] | 
               <button key={item.label}
                 onClick={() => setOpenCategory(openCategory === item.label ? null : item.label)}
                 className={cn(
-                  "flex flex-col items-center justify-center gap-1 w-full h-full transition-colors relative",
+                  "flex flex-col items-center justify-center gap-1 min-w-[4.5rem] px-2 h-full transition-colors relative flex-shrink-0",
                   isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
                 )}>
                 {item.icon}
-                <span className="text-[10px] font-medium">{item.label}</span>
+                <span className="text-[10px] font-medium text-center leading-tight">{item.label}</span>
                 <ChevronUp className={cn("h-2.5 w-2.5 absolute top-1 right-1 transition-transform", openCategory === item.label ? "" : "rotate-180")} />
               </button>
             )
@@ -122,14 +129,23 @@ export function MobileNav({ allowedPages = "all" }: { allowedPages?: string[] | 
           return (
             <Link key={item.label} href={item.href!}
               className={cn(
-                "flex flex-col items-center justify-center gap-1 w-full h-full transition-colors relative",
+                "flex flex-col items-center justify-center gap-1 min-w-[4.5rem] px-2 h-full transition-colors relative flex-shrink-0",
                 isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}>
               {item.icon}
-              <span className="text-[10px] font-medium">{item.label}</span>
+              <span className="text-[10px] font-medium text-center leading-tight">{item.label}</span>
             </Link>
           )
         })}
+
+        {/* Logout Button */}
+        <div className="w-px h-8 bg-border flex-shrink-0 mx-1" />
+        <form action={logout} className="flex-shrink-0 h-full">
+          <button className="flex flex-col items-center justify-center gap-1 min-w-[4.5rem] px-2 h-full transition-colors text-destructive hover:text-destructive/80">
+            <LogOut className="h-5 w-5" />
+            <span className="text-[10px] font-medium text-center leading-tight">خروج</span>
+          </button>
+        </form>
       </nav>
     </>
   )

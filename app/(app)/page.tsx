@@ -27,7 +27,7 @@ export default function HomePage() {
       </div>
 
       {/* Only show FAB and PWA install prompt on the home page */}
-      <FAB modalTrigger="demo-modal" />
+      <FAB modalTrigger="profile-modal" />
       <PWAInstallPrompt />
     </div>
   )

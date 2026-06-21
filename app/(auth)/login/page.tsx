@@ -2,6 +2,7 @@ import { login } from "./actions"
 import { Button } from "@/components/ui/button"
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { PasskeyLoginButton } from "@/components/auth/passkey-login-button"
 
 export default async function LoginPage({
   searchParams,
@@ -49,6 +50,8 @@ export default async function LoginPage({
                 تسجيل الدخول
               </Button>
             </div>
+            
+            <PasskeyLoginButton />
             
             {message && (
               <p className="mt-4 p-4 bg-destructive/10 text-destructive text-center rounded-md text-sm">

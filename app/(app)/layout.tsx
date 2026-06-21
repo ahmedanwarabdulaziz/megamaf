@@ -3,12 +3,12 @@ import Link from "next/link"
 import { LogOut } from "lucide-react"
 import { logout } from "@/app/(auth)/login/actions"
 import { Modal } from "@/components/ui/modal"
-import { QuickActions } from "@/components/ui/quick-actions"
 import { Button } from "@/components/ui/button"
 
 import { getProfile, getEmployeePermissions } from "@/lib/supabase/get-profile"
 import { SidebarNav } from "./_components/sidebar-nav"
 import { MobileNav } from "./_components/mobile-nav"
+import { PasskeyManager } from "@/components/profile/passkey-manager"
 
 export default async function AppLayout({
   children,
@@ -40,18 +40,7 @@ export default async function AppLayout({
   }
   // ─────────────────────────────────────────────────────────────────────────
 
-  const demoActions = [
-    {
-      id: "edit-profile",
-      label: "تعديل الملف الشخصي",
-      modalTrigger: "demo-modal"
-    },
-    {
-      id: "admin-action",
-      label: "إعدادات المسؤول",
-      roles: ["admin"]
-    }
-  ]
+// QuickActions removed
 
   return (
     <div className="flex h-screen bg-background">
@@ -75,8 +64,7 @@ export default async function AppLayout({
         </div>
       </aside>
 
-      {/* Main Content wrapped in QuickActions.
-          QuickActions calls useSearchParams() internally — wrap it in Suspense
+      {/* Main Content wrapped in React.Suspense
           so it doesn't block the initial server render of the surrounding layout. */}
       <React.Suspense fallback={
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
@@ -85,24 +73,14 @@ export default async function AppLayout({
           </main>
         </div>
       }>
-        <QuickActions actions={demoActions} userRole={profile?.role || "member"} className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
-          {/* Mobile Header */}
-          <header className="md:hidden flex h-14 items-center px-4 border-b border-border bg-card justify-between">
-            <div className="font-semibold">{profile?.companies?.name || "الشركة"}</div>
-            <form action={logout}>
-              <button className="text-destructive p-2 rounded-md hover:bg-destructive/10">
-                <LogOut className="h-5 w-5" />
-              </button>
-            </form>
-          </header>
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
+          {/* Global Mobile Header removed in favor of page-specific top headers */}
 
           {/* Scrollable Main Area */}
           <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-24 md:pb-6">
             {children}
           </main>
-
-
-        </QuickActions>
+        </div>
       </React.Suspense>
 
       {/* Mobile Bottom Navigation */}
@@ -111,18 +89,22 @@ export default async function AppLayout({
       {/* Global Modals — Modal calls useSearchParams(), wrap in Suspense
           so it doesn't interrupt the static render of the rest of the layout. */}
       <React.Suspense fallback={null}>
-        <Modal name="demo-modal" title="تعديل الملف الشخصي" description="قم بتغيير تفاصيل ملفك الشخصي هنا.">
-          <div className="flex flex-col gap-4 mt-4">
+        <Modal name="profile-modal" title="تعديل الملف الشخصي" description="إدارة معلومات الحساب وتفضيلات الأمان.">
+          <div className="flex flex-col gap-6 mt-4">
             <div className="flex flex-col gap-2">
               <label className="text-sm font-medium">الاسم الكامل</label>
               <input
                 className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 defaultValue={profile?.full_name || ""}
               />
+              <div className="flex justify-end gap-2 mt-2">
+                <Button variant="default">حفظ التغييرات</Button>
+              </div>
             </div>
-            <div className="flex justify-end gap-2 mt-2">
-              <Button variant="default">حفظ التغييرات</Button>
-            </div>
+            
+            <div className="h-px bg-border w-full" />
+            
+            <PasskeyManager />
           </div>
         </Modal>
       </React.Suspense>

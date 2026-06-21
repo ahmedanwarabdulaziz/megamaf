@@ -52,7 +52,7 @@ export function CustodySummary({
 
   return (
     <Card>
-      <CardContent className="p-0 divide-y divide-border">
+      <CardContent className="p-0 grid grid-cols-3 divide-x divide-x-reverse divide-border">
         {rows.map(({ label, amount, count, status, color, isTotal }) => {
           const isActive = currentStatus === status
           return (
@@ -60,38 +60,38 @@ export function CustodySummary({
               key={label}
               onClick={() => navigate(status)}
               className={cn(
-                "w-full flex items-center justify-between px-4 py-2.5 transition-colors text-right",
+                "flex flex-col items-center justify-center p-3 transition-colors text-center relative",
                 "hover:bg-muted/60",
-                isActive && "bg-primary/8",
-                isTotal && "bg-muted/40 hover:bg-muted/60"
+                isActive && "bg-primary/5",
+                isTotal && "bg-muted/30 hover:bg-muted/50"
               )}
             >
-              <span className={cn(
-                "text-sm",
-                isTotal ? "font-medium" : "text-muted-foreground",
-                isActive && "font-semibold text-foreground"
-              )}>
-                {label}
-                {isActive && !isTotal && (
-                  <span className="mr-1.5 inline-block w-1.5 h-1.5 rounded-full bg-primary align-middle" />
-                )}
-              </span>
-              <div className="flex items-center gap-3">
+              {isActive && !isTotal && (
+                <div className="absolute top-0 left-0 right-0 h-0.5 bg-primary" />
+              )}
+              <div className="flex items-center justify-center gap-1.5 mb-1.5">
                 <span className={cn(
-                  "text-xs border rounded-full px-2 py-0.5 dir-ltr tabular-nums",
+                  "text-xs",
+                  isTotal ? "font-medium" : "text-muted-foreground",
+                  isActive && "font-semibold text-foreground"
+                )}>
+                  {label}
+                </span>
+                <span className={cn(
+                  "text-[10px] border rounded-full px-1.5 py-0.5 dir-ltr tabular-nums leading-none",
                   isActive ? "border-primary/40 text-primary" : "border-border text-muted-foreground"
                 )}>
                   {count}
                 </span>
-                <span className={cn(
-                  "text-sm dir-ltr tabular-nums",
-                  isTotal ? "font-bold" : "font-semibold",
-                  color,
-                  isActive && !color && "text-primary"
-                )}>
-                  {fmt(amount)} EGP
-                </span>
               </div>
+              <span className={cn(
+                "text-sm sm:text-base dir-ltr tabular-nums",
+                isTotal ? "font-bold" : "font-semibold",
+                color,
+                isActive && !color && "text-primary"
+              )}>
+                {fmt(amount)}
+              </span>
             </button>
           )
         })}

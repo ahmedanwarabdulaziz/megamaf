@@ -4,17 +4,19 @@ import { getBatchSignedUrls } from "@/lib/r2"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
-  Plus, ClipboardList, Pencil, Calendar, User,
+  Plus, ClipboardList, Pencil, Calendar, User, Users,
   FileText, Package, BadgeCheck, ShieldAlert,
-  TrendingDown, TrendingUp, Minus, Wallet,
+  TrendingDown, TrendingUp, Minus, Wallet, MoreVertical,
 } from "lucide-react"
 import Link from "next/link"
 import { AddCustodyModal } from "@/components/modals/add-custody-modal"
 import { EditCustodyModal } from "@/components/modals/edit-custody-modal"
-import { EmployeeFilter } from "./_components/employee-filter"
+// EmployeeFilter removed
 import { CustodySummary } from "./_components/custody-summary"
 import { ImageLightbox } from "@/components/ui/image-lightbox"
 import { DeleteConfirmButton } from "@/components/ui/delete-confirm-button"
+import { QuickActions } from "@/components/ui/quick-actions"
+import { Modal } from "@/components/ui/modal"
 import { approveCustody, unapproveCustody, deleteCustody } from "./actions"
 
 function formatDate(dateStr: string | null) {
@@ -168,16 +170,16 @@ export default async function CustodiesPage({
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6">
       {/* Header */}
-      <div className="static md:sticky md:top-0 z-20 bg-background/95 backdrop-blur-md pb-4 border-b border-border -mx-4 px-4 -mt-4 pt-4 md:-mx-6 md:px-6 md:-mt-6 md:pt-6 mb-6">
-        <div className="flex items-center gap-3">
-          <h1 className="text-3xl font-bold tracking-tight">العهد</h1>
-          <Link href="?modal=add-custody" scroll={false} className="ml-auto">
-            <Button variant="default" size="icon" className="h-8 w-8 rounded-full shrink-0" title="إضافة عهدة">
-              <Plus className="h-4 w-4" />
-            </Button>
-          </Link>
+      <div className="static md:sticky md:top-0 z-20 bg-background/95 backdrop-blur-md pb-4 border-b border-border -mx-4 px-4 -mt-4 pt-4 md:-mx-6 md:px-6 md:-mt-6 md:pt-6 mb-6 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-3 shrink-0">
+          <h1 className="text-2xl font-bold tracking-tight">العهد</h1>
         </div>
-        <p className="text-muted-foreground mt-1.5">إدارة عهد الموظفين ومستنداتها.</p>
+        
+        <Link href="?modal=add-custody" scroll={false} className="shrink-0 ml-auto">
+          <Button variant="default" size="icon" className="h-8 w-8 rounded-full" title="إضافة عهدة">
+            <Plus className="h-4 w-4" />
+          </Button>
+        </Link>
       </div>
 
       {/* Target Employee Prominent Balance */}
@@ -255,61 +257,78 @@ export default async function CustodiesPage({
       {/* ── Per-employee balance panel ──────────────────────────────────── */}
       {seeAllCustodies && balanceRows.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">رصيد الموظفين</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">رصيد الموظفين</p>
+            <Link href="?modal=employee-balances" scroll={false}>
+              <Button variant="ghost" size="icon" className="h-5 w-5 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted" title="عرض قائمة تفصيلية بجميع أرصدة الموظفين">
+                <Users className="h-3.5 w-3.5" />
+              </Button>
+            </Link>
+          </div>
+          <div className="flex overflow-x-auto gap-2 pb-2 no-scrollbar -mx-4 px-4 md:-mx-6 md:px-6">
             {balanceRows.map(row => {
               const isPositive = row.balance > 0
               const isNegative = row.balance < 0
+              const isActive = filterEmployeeId === row.eid
+
+              // Toggle filter: if active, remove it. Otherwise set it.
+              const sp = new URLSearchParams()
+              if (filterStatus) sp.set("status", filterStatus)
+              if (!isActive) sp.set("employee_id", row.eid)
+              const href = `?${sp.toString()}`
+
               return (
-                <Card key={row.eid} className={`border ${
-                  isPositive ? "border-green-500/20 bg-green-500/5" :
-                  isNegative ? "border-amber-500/20 bg-amber-500/5" :
-                               "border-border"
-                }`}>
-                  <CardContent className="p-3 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm font-medium truncate">{row.name}</span>
-                      <span className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full ${
-                        isPositive ? "bg-green-500/10 text-green-700" :
-                        isNegative ? "bg-amber-500/10 text-amber-700" :
-                                     "bg-muted text-muted-foreground"
-                      }`}>
-                        {isPositive ? <TrendingUp className="h-3 w-3" /> :
-                         isNegative ? <TrendingDown className="h-3 w-3" /> :
-                                      <Minus className="h-3 w-3" />}
-                        {isPositive ? "+" : ""}{row.balance.toLocaleString("en-US", { minimumFractionDigits: 0 })} EGP
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground">
-                      <span className="flex items-center gap-1">
+                <QuickActions key={row.eid} menuContent={
+                  <div className="p-3 min-w-[200px] flex flex-col gap-2 pointer-events-none">
+                    <span className="text-sm font-semibold truncate text-right">{row.name}</span>
+                    <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground mt-1 text-right">
+                      <span className="flex items-center gap-1 justify-end">
+                        <strong className="text-foreground">{row.paidTotal.toLocaleString("en-US")}</strong> :مدفوع
                         <Wallet className="h-3 w-3" />
-                        مدفوع: <strong className="text-foreground">{row.paidTotal.toLocaleString("en-US")}</strong>
                       </span>
-                      <span className="flex items-center gap-1">
+                      <span className="flex items-center gap-1 justify-end">
+                        <strong className="text-foreground">{row.custodyTotal.toLocaleString("en-US")}</strong> :عهد
                         <ClipboardList className="h-3 w-3" />
-                        عهد: <strong className="text-foreground">{row.custodyTotal.toLocaleString("en-US")}</strong>
                       </span>
                     </div>
-                    <p className="text-xs text-muted-foreground">
+                    <p className="text-xs text-muted-foreground mt-1 text-right">
                       {isPositive ? `✓ لديه ${row.balance.toLocaleString("en-US")} EGP رصيد زائد` :
                        isNegative ? `⚠ يحتاج ${Math.abs(row.balance).toLocaleString("en-US")} EGP إضافية` :
                                     "✓ الحساب متوازن"}
                     </p>
-                  </CardContent>
-                </Card>
+                  </div>
+                }>
+                  <Link href={href} scroll={false} className="shrink-0 focus:outline-none cursor-context-menu">
+                    <div className={`flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all hover:shadow-sm cursor-context-menu ${
+                      isActive ? "ring-2 ring-primary shadow-sm" : "hover:border-primary/40"
+                    } ${
+                      isPositive ? "border-green-500/30 bg-green-500/10" :
+                      isNegative ? "border-amber-500/30 bg-amber-500/10" :
+                                   "border-border bg-muted/30"
+                    }`}>
+                      <span className={`text-sm whitespace-nowrap ${isActive ? "font-bold text-primary" : "font-medium"}`}>
+                        {row.name}
+                      </span>
+                      <span className={`flex items-center gap-1 text-xs font-bold px-1.5 py-0.5 rounded-full ${
+                        isPositive ? "bg-green-500/20 text-green-700" :
+                        isNegative ? "bg-amber-500/20 text-amber-700" :
+                                     "bg-muted-foreground/20 text-muted-foreground"
+                      }`}>
+                        {isPositive ? <TrendingUp className="h-3 w-3" /> :
+                         isNegative ? <TrendingDown className="h-3 w-3" /> :
+                                      <Minus className="h-3 w-3" />}
+                        <span className="dir-ltr">{isPositive ? "+" : ""}{row.balance.toLocaleString("en-US", { minimumFractionDigits: 0 })} EGP</span>
+                      </span>
+                    </div>
+                  </Link>
+                </QuickActions>
               )
             })}
           </div>
         </div>
       )}
 
-      {/* Employee Filter */}
-      {seeAllCustodies && safeEmployees.length > 0 && (
-        <div className="flex items-center gap-3">
-          <User className="h-4 w-4 text-muted-foreground shrink-0" />
-          <EmployeeFilter employees={safeEmployees} currentEmployeeId={filterEmployeeId} />
-        </div>
-      )}
+      {/* Removed old EmployeeFilter dropdown */}
 
       {/* List */}
       {displayed.length === 0 ? (
@@ -333,119 +352,119 @@ export default async function CustodiesPage({
             const isApproved = !!custody.approved_at
 
             return (
-              <Card key={custody.id} className={`transition-shadow hover:shadow-md ${isApproved ? "border-green-500/30 bg-green-500/5" : ""}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-start gap-4">
-                    {/* Icon */}
-                    <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${isApproved ? "bg-green-500/15" : "bg-blue-500/10"}`}>
-                      {isApproved
-                        ? <BadgeCheck className="h-5 w-5 text-green-600" />
-                        : <Package className="h-5 w-5 text-blue-600" />}
+              <QuickActions key={custody.id} menuContent={
+                <div className="flex flex-col gap-0.5 w-full">
+                  {!isApproved && canApprove && (
+                    <form action={async () => { "use server"; await approveCustody(custody.id) }}>
+                      <Button type="submit" variant="ghost" className="w-full justify-start h-9 px-2 text-green-600 hover:text-green-700 hover:bg-green-500/10">
+                        <BadgeCheck className="h-4 w-4 ml-2" />
+                        اعتماد العهدة
+                      </Button>
+                    </form>
+                  )}
+
+                  {isApproved && canUnapprove && (
+                    <form action={async () => { "use server"; await unapproveCustody(custody.id) }}>
+                      <Button type="submit" variant="ghost" className="w-full justify-start h-9 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10">
+                        <ShieldAlert className="h-4 w-4 ml-2" />
+                        إلغاء الاعتماد
+                      </Button>
+                    </form>
+                  )}
+
+                  {(!isApproved || canEditApproved) && (
+                    <Link href={`?modal=edit-custody&edit_custody=${custody.id}`} scroll={false} className="w-full">
+                      <Button variant="ghost" className="w-full justify-start h-9 px-2">
+                        <Pencil className="h-4 w-4 ml-2" />
+                        تعديل
+                      </Button>
+                    </Link>
+                  )}
+
+                  {(!isApproved || canEditApproved) && (
+                    <div className="w-full flex items-center pr-1 hover:bg-muted rounded-md transition-colors">
+                      <DeleteConfirmButton
+                        itemName={custody.item}
+                        action={async () => { "use server"; await deleteCustody(custody.id) }}
+                      />
+                      <span className="text-sm font-medium text-destructive pointer-events-none pr-1">حذف العهدة</span>
                     </div>
+                  )}
+                </div>
+              }>
+                <Card className={`transition-shadow hover:shadow-md cursor-context-menu ${isApproved ? "border-green-500/30 bg-green-500/5" : ""}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-4">
+                      {/* Icon */}
+                      <div className={`h-10 w-10 rounded-full flex items-center justify-center shrink-0 ${isApproved ? "bg-green-500/15" : "bg-blue-500/10"}`}>
+                        {isApproved
+                          ? <BadgeCheck className="h-5 w-5 text-green-600" />
+                          : <Package className="h-5 w-5 text-blue-600" />}
+                      </div>
 
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-semibold text-base">{custody.item}</span>
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20 dir-ltr">
-                          {Number(custody.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })} EGP
-                        </span>
-                        {/* Approval badge */}
-                        {isApproved ? (
-                          <>
-                            <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-700 border border-green-500/20">
-                              <BadgeCheck className="h-3 w-3" /> معتمد
-                            </span>
-                            {Number(custody.funded_amount) > 0 && (
-                              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-700">
-                                صرف جزئي ({Number(custody.funded_amount).toLocaleString("en-US", { minimumFractionDigits: 2 })})
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-semibold text-base">{custody.item}</span>
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 border border-blue-500/20 dir-ltr">
+                            {Number(custody.amount).toLocaleString("en-US", { minimumFractionDigits: 2 })} EGP
+                          </span>
+                          {/* File Icon */}
+                          {signedUrl && (
+                            <div className="flex items-center shrink-0">
+                              {fileIsImage ? (
+                                <ImageLightbox src={signedUrl} alt={custody.item} iconOnly />
+                              ) : (
+                                <a href={signedUrl} target="_blank" rel="noopener noreferrer" title="عرض المستند"
+                                  className="h-6 w-6 rounded-full flex items-center justify-center bg-primary/10 border border-primary/25 hover:bg-primary/20 transition-colors shrink-0 group">
+                                  <FileText className="h-3.5 w-3.5 text-primary group-hover:scale-110 transition-transform" />
+                                </a>
+                              )}
+                            </div>
+                          )}
+                          {/* Approval badge */}
+                          {isApproved ? (
+                            <>
+                              <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-700 border border-green-500/20">
+                                <BadgeCheck className="h-3 w-3" /> معتمد
                               </span>
-                            )}
-                          </>
-                        ) : (
-                          <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
-                            في الانتظار
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
-                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <User className="h-3.5 w-3.5" />{(custody.employees as any)?.name || "—"}
-                        </span>
-                        <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                          <Calendar className="h-3.5 w-3.5" />{formatDate(custody.date)}
-                        </span>
-                        {isApproved && (
-                          <span className="text-xs text-green-700">
-                            اعتمد في {formatDate(custody.approved_at)}
-                          </span>
-                        )}
-                      </div>
-
-                      {custody.notes && (
-                        <p className="text-sm text-muted-foreground mt-1.5 italic">{custody.notes}</p>
-                      )}
-
-                      {/* File */}
-                      {signedUrl && (
-                        <div className="mt-2">
-                          {fileIsImage ? (
-                            <ImageLightbox src={signedUrl} alt={custody.item} />
+                              {Number(custody.funded_amount) > 0 && (
+                                <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-700">
+                                  صرف جزئي ({Number(custody.funded_amount).toLocaleString("en-US", { minimumFractionDigits: 2 })})
+                                </span>
+                              )}
+                            </>
                           ) : (
-                            <a href={signedUrl} target="_blank" rel="noopener noreferrer"
-                              className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline">
-                              <FileText className="h-4 w-4" />عرض المستند
-                            </a>
+                            <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
+                              في الانتظار
+                            </span>
                           )}
                         </div>
-                      )}
+
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-1.5">
+                          <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <User className="h-3.5 w-3.5" />{(custody.employees as any)?.name || "—"}
+                          </span>
+                          <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                            <Calendar className="h-3.5 w-3.5" />{formatDate(custody.date)}
+                          </span>
+                          {isApproved && (
+                            <span className="text-xs text-green-700">
+                              اعتمد في {formatDate(custody.approved_at)}
+                            </span>
+                          )}
+                        </div>
+
+                        {custody.notes && (
+                          <p className="text-sm text-muted-foreground mt-1.5 italic">{custody.notes}</p>
+                        )}
+
+                        {/* Removed File section to top row */}
+                      </div>
                     </div>
-
-                    {/* Action Buttons */}
-                    <div className="flex flex-col gap-1 shrink-0">
-                      {/* Approve — simple one-click, payment happens on /payments */}
-                      {!isApproved && canApprove && (
-                        <form action={async () => { "use server"; await approveCustody(custody.id) }}>
-                          <Button type="submit" variant="ghost" size="icon"
-                            className="h-8 w-8 text-green-600 hover:bg-green-500/10"
-                            title="اعتماد العهدة">
-                            <BadgeCheck className="h-4 w-4" />
-                          </Button>
-                        </form>
-                      )}
-
-                      {/* Unapprove — super admin only */}
-                      {isApproved && canUnapprove && (
-                        <form action={async () => { "use server"; await unapproveCustody(custody.id) }}>
-                          <Button type="submit" variant="ghost" size="icon"
-                            className="h-8 w-8 text-amber-600 hover:bg-amber-500/10"
-                            title="إلغاء الاعتماد">
-                            <ShieldAlert className="h-4 w-4" />
-                          </Button>
-                        </form>
-                      )}
-
-                      {/* Edit — hidden for approved unless canEditApproved */}
-                      {(!isApproved || canEditApproved) && (
-                        <Link href={`?modal=edit-custody&edit_custody=${custody.id}`} scroll={false}>
-                          <Button variant="ghost" size="icon" className="h-8 w-8">
-                            <Pencil className="h-4 w-4" />
-                          </Button>
-                        </Link>
-                      )}
-
-                      {/* Delete */}
-                      {(!isApproved || canEditApproved) && (
-                        <DeleteConfirmButton
-                          itemName={custody.item}
-                          action={async () => { "use server"; await deleteCustody(custody.id) }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
+              </QuickActions>
             )
           })}
         </div>
@@ -461,6 +480,61 @@ export default async function CustodiesPage({
         eligibleEmployees={eligibleEmployees}
         projects={safeProjects}
       />
+
+      <Modal name="employee-balances" title="القائمة التفصيلية لأرصدة الموظفين" description="اختر موظفاً من القائمة لعرض وتصفية العهد الخاصة به.">
+        <div className="flex flex-col gap-2 mt-4 max-h-[60vh] overflow-y-auto pr-1">
+          {balanceRows.map(row => {
+            const isPositive = row.balance > 0
+            const isNegative = row.balance < 0
+            const isActive = filterEmployeeId === row.eid
+
+            const sp = new URLSearchParams()
+            if (filterStatus) sp.set("status", filterStatus)
+            if (!isActive) sp.set("employee_id", row.eid)
+            const href = `?${sp.toString()}`
+
+            return (
+              <Link key={row.eid} href={href} scroll={false} className="block focus:outline-none">
+                <Card className={`border transition-all hover:shadow-md cursor-pointer ${
+                  isActive ? "ring-2 ring-primary shadow-sm" : "hover:border-primary/40"
+                } ${
+                  isPositive ? "border-green-500/20 bg-green-500/5" :
+                  isNegative ? "border-amber-500/20 bg-amber-500/5" :
+                               "border-border"
+                }`}>
+                  <CardContent className="p-3 flex flex-col gap-2">
+                    <div className="flex items-center justify-between">
+                      <span className={`text-sm truncate ${isActive ? "font-bold text-primary" : "font-medium"}`}>
+                        {row.name}
+                      </span>
+                      <span className={`flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                        isPositive ? "bg-green-500/10 text-green-700" :
+                        isNegative ? "bg-amber-500/10 text-amber-700" :
+                                     "bg-muted text-muted-foreground"
+                      }`}>
+                        {isPositive ? <TrendingUp className="h-3 w-3" /> :
+                         isNegative ? <TrendingDown className="h-3 w-3" /> :
+                                      <Minus className="h-3 w-3" />}
+                        {isPositive ? "+" : ""}{row.balance.toLocaleString("en-US", { minimumFractionDigits: 0 })} EGP
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1 text-xs text-muted-foreground mt-1">
+                      <span className="flex items-center gap-1">
+                        <Wallet className="h-3 w-3" />
+                        مدفوع: <strong className="text-foreground">{row.paidTotal.toLocaleString("en-US")}</strong>
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <ClipboardList className="h-3 w-3" />
+                        عهد: <strong className="text-foreground">{row.custodyTotal.toLocaleString("en-US")}</strong>
+                      </span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </Link>
+            )
+          })}
+        </div>
+      </Modal>
     </div>
   )
 }

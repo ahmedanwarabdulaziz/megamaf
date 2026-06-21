@@ -8,19 +8,20 @@ export interface ActionItem {
   id: string
   label: string
   icon?: React.ReactNode
-  modalTrigger?: string // The name of the modal to open
+  modalTrigger?: string
   onClick?: () => void
-  roles?: string[] // e.g. ['admin', 'member']
+  roles?: string[]
 }
 
 interface QuickActionsProps {
   children: React.ReactNode
-  actions: ActionItem[]
+  actions?: ActionItem[]
+  menuContent?: React.ReactNode
   userRole?: string
   className?: string
 }
 
-export function QuickActions({ children, actions, userRole = "member", className }: QuickActionsProps) {
+export function QuickActions({ children, actions = [], menuContent, userRole = "member", className }: QuickActionsProps) {
   const [isOpen, setIsOpen] = React.useState(false)
   const [position, setPosition] = React.useState({ x: 0, y: 0 })
   const menuRef = React.useRef<HTMLDivElement>(null)
@@ -33,7 +34,6 @@ export function QuickActions({ children, actions, userRole = "member", className
     action => !action.roles || action.roles.includes(userRole)
   )
 
-  // Handle outside click
   React.useEffect(() => {
     const handleClickOutside = (e: MouseEvent | TouchEvent) => {
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
@@ -52,14 +52,15 @@ export function QuickActions({ children, actions, userRole = "member", className
 
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault()
+    e.stopPropagation()
     setIsOpen(true)
     setPosition({ x: e.clientX, y: e.clientY })
   }
 
-  // Very basic long press for mobile
   const pressTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null)
   
   const handleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation()
     if (pressTimer.current) clearTimeout(pressTimer.current)
     const clientX = e.touches[0].clientX
     const clientY = e.touches[0].clientY
@@ -67,7 +68,7 @@ export function QuickActions({ children, actions, userRole = "member", className
     pressTimer.current = setTimeout(() => {
       setIsOpen(true)
       setPosition({ x: clientX, y: clientY })
-    }, 600) // Increased to 600ms to ensure it's a deliberate hold
+    }, 600)
   }
   
   const handleTouchEnd = () => {
@@ -79,9 +80,7 @@ export function QuickActions({ children, actions, userRole = "member", className
 
   const handleActionClick = (action: ActionItem) => {
     setIsOpen(false)
-    if (action.onClick) {
-      action.onClick()
-    }
+    if (action.onClick) action.onClick()
     if (action.modalTrigger) {
       const params = new URLSearchParams(searchParams.toString())
       params.set("modal", action.modalTrigger)
@@ -99,17 +98,23 @@ export function QuickActions({ children, actions, userRole = "member", className
     >
       {children}
 
-      {isOpen && filteredActions.length > 0 && (
+      {isOpen && (filteredActions.length > 0 || menuContent) && (
         <div
           ref={menuRef}
           className="fixed z-50 min-w-[160px] overflow-hidden rounded-md border bg-popover p-1 text-popover-foreground shadow-md animate-in fade-in-80 zoom-in-95"
           style={{ 
             top: `${position.y}px`, 
             left: `${position.x}px`,
-            // Prevent going off-screen
             transform: `translate(calc(min(0px, 100vw - 100% - ${position.x}px)), calc(min(0px, 100vh - 100% - ${position.y}px)))`
           }}
+          onClick={(e) => {
+            // Close menu when an internal button/form is clicked
+            if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('a')) {
+              setIsOpen(false)
+            }
+          }}
         >
+          {menuContent}
           {filteredActions.map(action => (
             <button
               key={action.id}
