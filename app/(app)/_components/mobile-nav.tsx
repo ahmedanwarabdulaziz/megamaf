@@ -53,7 +53,6 @@ const MOBILE_NAV_ITEMS: MobileNavItem[] = [
 
 function isAllowed(slug: string, allowedPages: string[] | "all"): boolean {
   if (allowedPages === "all") return true
-  if (slug === "home") return true
   return allowedPages.includes(slug)
 }
 

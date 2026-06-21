@@ -9,12 +9,16 @@ import { updateEmployeePageAccess } from "@/app/(app)/employees/actions"
 import { LayoutGrid, ShieldCheck } from "lucide-react"
 
 const ALL_PAGES = [
+  { slug: "home", label: "الرئيسية", description: "عرض الصفحة الرئيسية ولوحة القيادة" },
   { slug: "accounts", label: "الحسابات البنكية", description: "عرض وإدارة الحسابات البنكية" },
   { slug: "finance", label: "الشهادات والودائع", description: "عرض وإدارة الشهادات المالية" },
-  { slug: "vendors", label: "الموردون والمقاولون", description: "عرض وإدارة الموردين والمقاولين" },
+  { slug: "vendor-pos", label: "المطالبات", description: "عرض وإدارة مطالبات الموردين والمقاولين" },
   { slug: "projects", label: "المشروعات", description: "عرض وإدارة مشروعات الشركة" },
-  { slug: "employees", label: "الموظفون", description: "عرض وإدارة بيانات الموظفين" },
   { slug: "custodies", label: "العهد", description: "عرض وإدارة عهد الموظفين" },
+  { slug: "payments", label: "المصروفات", description: "عرض وإدارة المصروفات والمدفوعات" },
+  { slug: "employees", label: "الموظفون", description: "عرض وإدارة بيانات الموظفين" },
+  { slug: "vendors", label: "الموردون والمقاولون", description: "عرض وإدارة الموردين والمقاولين" },
+  { slug: "settings", label: "الإعدادات", description: "إدارة إعدادات النظام والأرصدة الافتتاحية" },
 ]
 
 function SubmitButton() {

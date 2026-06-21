@@ -49,7 +49,6 @@ const NAV_ITEMS: NavItem[] = [
 
 function isAllowed(slug: string, allowedPages: string[] | "all"): boolean {
   if (allowedPages === "all") return true
-  if (slug === "home") return true
   return allowedPages.includes(slug)
 }
 

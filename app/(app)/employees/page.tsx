@@ -48,11 +48,16 @@ export default async function EmployeesPage() {
   const projectMap = Object.fromEntries(safeProjects.map(p => [p.id, p.name]))
 
   const PAGE_LABELS: Record<string, string> = {
-    accounts: "الحسابات",
+    home: "الرئيسية",
+    accounts: "الحسابات البنكية",
     finance: "الشهادات",
-    vendors: "الموردون",
+    "vendor-pos": "المطالبات",
     projects: "المشروعات",
+    custodies: "العهد",
+    payments: "المصروفات",
     employees: "الموظفون",
+    vendors: "الموردون",
+    settings: "الإعدادات",
   }
 
   return (

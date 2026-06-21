@@ -283,6 +283,7 @@ export async function approveCustody(id: string) {
     }
   }
 
+  revalidatePath("/")
   revalidatePath("/custodies")
   revalidatePath("/payments")
   return { success: true }
