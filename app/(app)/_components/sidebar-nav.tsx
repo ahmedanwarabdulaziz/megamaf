@@ -23,6 +23,8 @@ const NAV_ITEMS: NavItem[] = [
     ],
   },
   { label: "الموظفون", href: "/employees", icon: <UserCheck className="h-5 w-5" />, slug: "employees" },
+  { label: "الموردون والمقاولون", href: "/vendors", icon: <Truck className="h-5 w-5" />, slug: "vendors" },
+  { label: "المطالبات", href: "/vendor-pos", icon: <Receipt className="h-5 w-5" />, slug: "vendor-pos" },
   { label: "المشروعات", href: "/projects", icon: <FolderKanban className="h-5 w-5" />, slug: "projects" },
   { label: "العهد", href: "/custodies", icon: <ClipboardList className="h-5 w-5" />, slug: "custodies" },
   { label: "المصروفات", href: "/payments", icon: <Banknote className="h-5 w-5" />, slug: "payments" },

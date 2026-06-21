@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
   Home, Settings, FileText, Landmark, X, Truck,
   FolderKanban, UserCheck, ClipboardList, Banknote,
@@ -27,6 +27,8 @@ const MOBILE_NAV_ITEMS: MobileNavItem[] = [
     ],
   },
   { label: "الموظفون", href: "/employees", icon: <UserCheck className="h-5 w-5" />, slug: "employees" },
+  { label: "الموردون والمقاولون", href: "/vendors", icon: <Truck className="h-5 w-5" />, slug: "vendors" },
+  { label: "المطالبات", href: "/vendor-pos", icon: <Receipt className="h-5 w-5" />, slug: "vendor-pos" },
   { label: "المشروعات", href: "/projects", icon: <FolderKanban className="h-5 w-5" />, slug: "projects" },
   { label: "العهد", href: "/custodies", icon: <ClipboardList className="h-5 w-5" />, slug: "custodies" },
   { label: "المصروفات", href: "/payments", icon: <Banknote className="h-5 w-5" />, slug: "payments" },
@@ -41,7 +43,6 @@ function isAllowed(slug: string, allowedPages: string[] | "all"): boolean {
 
 export function MobileNav({ allowedPages = "all" }: { allowedPages?: string[] | "all" }) {
   const pathname = usePathname()
-  const router = useRouter()
   const [openCategory, setOpenCategory] = useState<string | null>(null)
 
   const visibleItems = MOBILE_NAV_ITEMS.filter(item => {
@@ -72,6 +73,9 @@ export function MobileNav({ allowedPages = "all" }: { allowedPages?: string[] | 
                 .map(sub => {
                   const isSubActive = pathname === sub.href
                   return (
+                    // Use <Link> here so Next.js prefetches the route on visibility.
+                    // This means tapping a sub-item navigates instantly instead of
+                    // waiting for a fresh fetch to start at click time.
                     <Link key={sub.href} href={sub.href} onClick={() => setOpenCategory(null)}
                       className={cn(
                         "flex flex-col items-center justify-center gap-3 p-4 rounded-xl border transition-colors text-center",
@@ -95,20 +99,35 @@ export function MobileNav({ allowedPages = "all" }: { allowedPages?: string[] | 
           const isActive = hasSubItems
             ? item.subItems!.some(sub => pathname === sub.href)
             : pathname === item.href
+
+          // For items WITH sub-items: keep as button (opens category sheet)
+          // For simple navigation items: use <Link> so Next.js prefetches on render.
+          // This eliminates the "tap and wait" feeling — the page is already loaded
+          // in the background by the time the user taps the nav button.
+          if (hasSubItems) {
+            return (
+              <button key={item.label}
+                onClick={() => setOpenCategory(openCategory === item.label ? null : item.label)}
+                className={cn(
+                  "flex flex-col items-center justify-center gap-1 w-full h-full transition-colors relative",
+                  isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
+                )}>
+                {item.icon}
+                <span className="text-[10px] font-medium">{item.label}</span>
+                <ChevronUp className={cn("h-2.5 w-2.5 absolute top-1 right-1 transition-transform", openCategory === item.label ? "" : "rotate-180")} />
+              </button>
+            )
+          }
+
           return (
-            <button key={item.label}
-              onClick={() => {
-                if (hasSubItems) setOpenCategory(openCategory === item.label ? null : item.label)
-                else if (item.href) router.push(item.href)
-              }}
+            <Link key={item.label} href={item.href!}
               className={cn(
                 "flex flex-col items-center justify-center gap-1 w-full h-full transition-colors relative",
                 isActive ? "text-primary" : "text-muted-foreground hover:text-foreground"
               )}>
               {item.icon}
               <span className="text-[10px] font-medium">{item.label}</span>
-              {hasSubItems && <ChevronUp className={cn("h-2.5 w-2.5 absolute top-1 right-1 transition-transform", openCategory === item.label ? "" : "rotate-180")} />}
-            </button>
+            </Link>
           )
         })}
       </nav>

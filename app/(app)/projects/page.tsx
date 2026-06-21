@@ -109,59 +109,62 @@ export default async function ProjectsPage() {
             }
 
             return (
-              <Card key={project.id} className="hover:shadow-md transition-shadow">
+              <Card key={project.id} className="hover:shadow-md transition-all hover:border-primary/50 group">
                 <CardContent className="p-4">
                   <div className="flex items-start gap-4">
-                    {/* Icon */}
-                    <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 ${isBranch ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
-                      {isBranch ? <Building2 className="h-5 w-5" /> : <FolderKanban className="h-5 w-5" />}
-                    </div>
-
-                    {/* Content */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-semibold text-base">{project.name}</h3>
-                        <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-secondary text-secondary-foreground">
-                          {project.code || "بدون كود"}
-                        </span>
-                        {!isBranch && (
-                          <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusColor}`}>
-                            {statusText}
-                          </span>
-                        )}
-                        {isBranch && (
-                          <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20">
-                            <ShieldCheck className="h-3 w-3" /> فرع شركة (دائم)
-                          </span>
-                        )}
+                    {/* Clickable Wrapper for Icon and Content */}
+                    <Link href={`/payments?projectId=${project.id}`} className="flex flex-1 items-start gap-4 group/link" title="عرض مصروفات المشروع">
+                      {/* Icon */}
+                      <div className={`h-10 w-10 rounded-lg flex items-center justify-center shrink-0 transition-colors ${isBranch ? "bg-primary/10 text-primary group-hover/link:bg-primary/20" : "bg-muted text-muted-foreground group-hover/link:bg-primary/10 group-hover/link:text-primary"}`}>
+                        {isBranch ? <Building2 className="h-5 w-5" /> : <FolderKanban className="h-5 w-5" />}
                       </div>
 
-                      {project.description && (
-                        <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
-                          {project.description}
-                        </p>
-                      )}
+                      {/* Content */}
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <h3 className="font-semibold text-base group-hover/link:text-primary transition-colors">{project.name}</h3>
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-md bg-secondary text-secondary-foreground">
+                            {project.code || "بدون كود"}
+                          </span>
+                          {!isBranch && (
+                            <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${statusColor}`}>
+                              {statusText}
+                            </span>
+                          )}
+                          {isBranch && (
+                            <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full border bg-primary/10 text-primary border-primary/20">
+                              <ShieldCheck className="h-3 w-3" /> فرع شركة (دائم)
+                            </span>
+                          )}
+                        </div>
 
-                      {/* Details */}
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
-                        {project.start_date && (
-                          <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <Calendar className="h-3.5 w-3.5" /> تبدأ: {formatDate(project.start_date)}
-                          </span>
+                        {project.description && (
+                          <p className="text-sm text-muted-foreground mt-1 line-clamp-2">
+                            {project.description}
+                          </p>
                         )}
-                        {project.end_date && (
-                          <span className="flex items-center gap-1 text-sm text-muted-foreground">
-                            <Calendar className="h-3.5 w-3.5" /> تنتهي: {formatDate(project.end_date)}
-                          </span>
-                        )}
-                        {project.budget && (
-                          <span className="flex items-center gap-1 text-sm font-medium">
-                            <Banknote className="h-3.5 w-3.5 text-primary" /> 
-                            {Number(project.budget).toLocaleString("en-US")} EGP
-                          </span>
-                        )}
+
+                        {/* Details */}
+                        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2">
+                          {project.start_date && (
+                            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Calendar className="h-3.5 w-3.5" /> تبدأ: {formatDate(project.start_date)}
+                            </span>
+                          )}
+                          {project.end_date && (
+                            <span className="flex items-center gap-1 text-sm text-muted-foreground">
+                              <Calendar className="h-3.5 w-3.5" /> تنتهي: {formatDate(project.end_date)}
+                            </span>
+                          )}
+                          {project.budget && (
+                            <span className="flex items-center gap-1 text-sm font-medium">
+                              <Banknote className="h-3.5 w-3.5 text-primary" /> 
+                              {Number(project.budget).toLocaleString("en-US")} EGP
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
+                    </Link>
 
                     {/* Action buttons */}
                     <div className="flex flex-col gap-1 shrink-0">

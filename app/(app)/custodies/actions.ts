@@ -202,7 +202,6 @@ export async function deleteCustody(id: string) {
 }
 
 // ─── Approve (manager step) ──────────────────────────────────────────────────
-// Just marks the custody as approved. Finance pays it separately from /custodies/payments.
 export async function approveCustody(id: string) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -214,7 +213,7 @@ export async function approveCustody(id: string) {
 
   const { data: custody } = await supabase
     .from("employee_custodies")
-    .select("funded_at")
+    .select("funded_at, employee_id")
     .eq("id", id)
     .single()
   if (custody?.funded_at) return { error: "هذه العهدة تم صرفها مسبقاً." }
@@ -226,8 +225,66 @@ export async function approveCustody(id: string) {
     .eq("company_id", companyId)
 
   if (error) return { error: `فشل في اعتماد العهدة: ${error.message}` }
+
+  // ── Auto-Settle with Existing Surplus Payments ──────────────────────────
+  const { data: surplusPayments } = await supabase
+    .from("expenses")
+    .select("id, amount, allocated_amount")
+    .in("payment_type", ["employee_advance", "direct"])
+    .eq("employee_id", custody!.employee_id)
+    .eq("company_id", companyId)
+    .order("expense_date", { ascending: true })
+    .order("created_at", { ascending: true })
+
+  if (surplusPayments && surplusPayments.length > 0) {
+    const { data: openCustodies } = await supabase
+      .from("employee_custodies")
+      .select("id, amount, funded_amount")
+      .eq("employee_id", custody!.employee_id)
+      .eq("company_id", companyId)
+      .not("approved_at", "is", null)
+      .order("date", { ascending: true })
+      .order("created_at", { ascending: true })
+
+    if (openCustodies && openCustodies.length > 0) {
+      const settlementsToInsert = []
+      let pIdx = 0
+      
+      for (const oc of openCustodies) {
+        let missing = Number(oc.amount) - Number(oc.funded_amount || 0)
+        
+        while (missing > 0 && pIdx < surplusPayments.length) {
+          const payment = surplusPayments[pIdx]
+          const surplus = Number(payment.amount) - Number(payment.allocated_amount || 0)
+          
+          if (surplus <= 0) {
+            pIdx++
+            continue
+          }
+          
+          const toPay = Math.min(missing, surplus)
+          settlementsToInsert.push({
+            company_id: companyId,
+            employee_custody_id: oc.id,
+            expense_id: payment.id,
+            amount: toPay
+          })
+          
+          missing -= toPay
+          payment.allocated_amount = (Number(payment.allocated_amount || 0) + toPay) as any
+          
+          if (missing <= 0) break
+        }
+      }
+
+      if (settlementsToInsert.length > 0) {
+        await supabase.from("employee_custody_settlements").insert(settlementsToInsert)
+      }
+    }
+  }
+
   revalidatePath("/custodies")
-  revalidatePath("/custodies/payments")
+  revalidatePath("/payments")
   return { success: true }
 }
 

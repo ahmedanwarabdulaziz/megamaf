@@ -29,8 +29,11 @@ The app has sections in the navigation (sidebar on desktop, bottom bar on mobile
 | 2a | الحسابات البنكية (Bank accounts) | `/accounts` | Banks → bank accounts. Each account has an opening balance; current balance = opening + transactions. Account statement at `/accounts/statement`. | `banks`, `bank_accounts`, `bank_transactions` |
 | 2b | الشهادات والودائع (Certificates) | `/finance/certificates` | Investment certificates / deposits. Auto-generates a profit payout schedule; you "collect profit" which records a transaction. | `certificates` |
 | 3 | الموظفون (Employees) | `/employees` | Employee records + their **login credentials** and **page access** control. Flags: super-admin, can-have-custody, can-approve-custodies. | `employees`, `employee_page_access` |
-| 4 | العهد (Custodies / العهدة) | `/custodies` | Money entrusted to an employee. Lifecycle: created → approved → funded (paid). Can attach a file (stored in R2). | `employee_custodies` |
-| 5 | المصروفات (Expenses / Payments) | `/payments` | Records advance payments: employee advance or direct. Creates the expense + bank withdrawal, and auto-settles open custodies. | writes `expenses` + `bank_transactions` |
+| 4 | الموردون والمقاولون (Vendors) | `/vendors` | Manage suppliers and contractors, assign them to projects, record POs (Invoices), and view their balances. | `vendors`, `vendor_project_access`, `vendor_pos` |
+| 5 | المطالبات (Vendor POs) | `/vendor-pos` | View and manage all purchase orders / invoices submitted by vendors. | `vendor_pos` |
+| 6 | المشروعات (Projects) | `/projects` | Manage projects. Click on a project card to view its specific expenses in `/payments`. | `projects` |
+| 7 | العهد (Custodies / العهدة) | `/custodies` | Money entrusted to an employee. Lifecycle: created → approved → funded (paid). Can attach a file (stored in R2). | `employee_custodies` |
+| 8 | المصروفات (Expenses / Payments) | `/payments` | Records advance payments: employee advance, vendor payment, or direct. Creates the expense + bank withdrawal, and auto-settles open custodies. | writes `expenses` + `bank_transactions` |
 
 Auth lives separately under `app/(auth)/`: `/login`, `/change-password`, plus logout.
 

@@ -1,7 +1,6 @@
 import { createClient } from "@/lib/supabase/server"
-import { createR2Client, R2_BUCKET } from "@/lib/r2"
-import { GetObjectCommand } from "@aws-sdk/client-s3"
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
+import { getProfile, getEmployeePermissions } from "@/lib/supabase/get-profile"
+import { getBatchSignedUrls } from "@/lib/r2"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import {
@@ -32,30 +31,26 @@ export default async function CustodiesPage({
 }: {
   searchParams: Promise<{ employee_id?: string; status?: string }>
 }) {
-  const supabase = await createClient()
+  // Use React.cache()-memoized helpers — if getProfile() was already called by the
+  // layout in the same request, this returns the cached result (zero extra DB calls).
+  const { user, profile, supabase } = await getProfile()
   const { employee_id: filterEmployeeId, status: filterStatus = "" } = await searchParams
-
-  // Fetch current user permissions
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase.from("profiles").select("role").eq("id", user!.id).single()
 
   let canApprove = false
   let canUnapprove = false
   let canEditApproved = false
   let seeAllCustodies = false   // false = only own custodies
+  let seeAllProjects = false    // false = only assigned projects
   let myEmployeeId: string | null = null
 
   if (profile?.role === "admin" || profile?.role === "member") {
-    canApprove = true; canUnapprove = true; canEditApproved = true; seeAllCustodies = true
-  } else if (profile?.role === "employee") {
-    const { data: emp } = await supabase
-      .from("employees")
-      .select("id, is_super_admin, can_approve_custodies")
-      .eq("auth_user_id", user!.id)
-      .single()
+    canApprove = true; canUnapprove = true; canEditApproved = true; seeAllCustodies = true; seeAllProjects = true;
+  } else if (profile?.role === "employee" && user) {
+    // getEmployeePermissions() is also memoized — reuses layout's fetch if already called
+    const emp = await getEmployeePermissions(user.id)
     myEmployeeId = emp?.id ?? null
     if (emp?.is_super_admin) {
-      canApprove = true; canUnapprove = true; canEditApproved = true; seeAllCustodies = true
+      canApprove = true; canUnapprove = true; canEditApproved = true; seeAllCustodies = true; seeAllProjects = true;
     } else if (emp?.can_approve_custodies) {
       canApprove = true; seeAllCustodies = true
     }
@@ -72,6 +67,22 @@ export default async function CustodiesPage({
     custodiesQuery = custodiesQuery.eq("employee_id", myEmployeeId) as any
   }
 
+  // Build projects query — restrict to assigned projects for regular employees
+  let projectsQuery = supabase.from("projects").select("id, name, is_company_branch").order("name")
+  if (!seeAllProjects && myEmployeeId) {
+    const { data: access } = await supabase
+      .from("employee_project_access")
+      .select("project_id")
+      .eq("employee_id", myEmployeeId)
+    
+    const allowedProjectIds = access?.map(a => a.project_id) || []
+    if (allowedProjectIds.length > 0) {
+      projectsQuery = projectsQuery.in("id", allowedProjectIds) as any
+    } else {
+      projectsQuery = projectsQuery.eq("id", "00000000-0000-0000-0000-000000000000") as any
+    }
+  }
+
   const [{ data: custodies }, { data: employees }, { data: bankAccountsRaw }, { data: employeePayments }, { data: projects }] = await Promise.all([
     custodiesQuery,
     supabase.from("employees").select("id, name, job_title, can_have_custody").order("name"),
@@ -79,10 +90,10 @@ export default async function CustodiesPage({
     // Fetch total payments made per employee (advances + direct custody payments)
     supabase.from("expenses").select("employee_id, amount, payment_type")
       .not("employee_id", "is", null),
-    supabase.from("projects").select("id, name, is_company_branch").order("name"),
+    projectsQuery,
   ])
 
-  const safeCustodies = (custodies || []).filter(c => !c.funded_at) // funded ones live on expenses page
+  const safeCustodies = (custodies || []).filter(c => Number(c.funded_amount || 0) < Number(c.amount)) // fully funded ones live on expenses page
   const safeEmployees = employees || []
   const safeProjects = projects || []
   const eligibleEmployees = safeEmployees.filter(e => e.can_have_custody)
@@ -98,17 +109,10 @@ export default async function CustodiesPage({
     filterStatus === "approved" ? afterEmployeeFilter.filter(c => !!c.approved_at) :
     afterEmployeeFilter
 
-  // Generate R2 signed URLs in parallel
+  // Get R2 signed URLs via the cached helper (55-min TTL via unstable_cache).
+  // Repeated page visits within 55 min reuse the cached URL — no outbound R2 call.
   const filePaths = displayed.filter(c => c.file_path).map(c => c.file_path as string)
-  const signedUrls: Record<string, string> = {}
-  if (filePaths.length > 0) {
-    const r2 = createR2Client()
-    await Promise.all(filePaths.map(async (path) => {
-      try {
-        signedUrls[path] = await getSignedUrl(r2, new GetObjectCommand({ Bucket: R2_BUCKET, Key: path }), { expiresIn: 3600 })
-      } catch { }
-    }))
-  }
+  const signedUrls = await getBatchSignedUrls(filePaths)
 
   const notApprovedCount = displayed.filter(c => !c.approved_at).length
   const approvedCount = displayed.filter(c => !!c.approved_at).length
@@ -118,13 +122,14 @@ export default async function CustodiesPage({
 
   // ── Per-employee balance ──────────────────────────────────────────────────
   // Total approved custody amounts per employee (all custodies, funded or not)
-  const allApprovedCustodies = (custodies || []).filter(c => !!c.approved_at)
   const custodyByEmployee: Record<string, { name: string; custodyTotal: number }> = {}
-  for (const c of allApprovedCustodies) {
+  for (const c of custodies || []) {
     const emp = (c as any).employees
     const name = emp?.name ?? "غير معروف"
     if (!custodyByEmployee[c.employee_id]) custodyByEmployee[c.employee_id] = { name, custodyTotal: 0 }
-    custodyByEmployee[c.employee_id].custodyTotal += Number(c.amount)
+    if (c.approved_at) {
+      custodyByEmployee[c.employee_id].custodyTotal += Number(c.amount)
+    }
   }
 
   // Total payments received per employee from expenses
@@ -147,6 +152,19 @@ export default async function CustodiesPage({
     return { eid, name, custodyTotal, paidTotal, balance }
   }).sort((a, b) => Math.abs(b.balance) - Math.abs(a.balance)) // largest imbalance first
 
+  // Targeted employee balance for top summary
+  const targetEmployeeId = seeAllCustodies ? filterEmployeeId : myEmployeeId
+  let targetEmployeeBalance = null
+  if (targetEmployeeId) {
+    const row = balanceRows.find(r => r.eid === targetEmployeeId)
+    if (row) {
+      targetEmployeeBalance = row
+    } else {
+      const name = safeEmployees.find(e => e.id === targetEmployeeId)?.name ?? "موظف"
+      targetEmployeeBalance = { eid: targetEmployeeId, name, custodyTotal: 0, paidTotal: 0, balance: 0 }
+    }
+  }
+
   return (
     <div className="max-w-5xl mx-auto flex flex-col gap-6">
       {/* Header */}
@@ -161,6 +179,68 @@ export default async function CustodiesPage({
         </div>
         <p className="text-muted-foreground mt-1.5">إدارة عهد الموظفين ومستنداتها.</p>
       </div>
+
+      {/* Target Employee Prominent Balance */}
+      {targetEmployeeBalance && (
+        <Card className={`border-2 ${
+          targetEmployeeBalance.balance > 0 ? "border-green-500/40 bg-green-500/5 shadow-green-500/5" :
+          targetEmployeeBalance.balance < 0 ? "border-amber-500/40 bg-amber-500/5 shadow-amber-500/5" :
+          "border-border bg-muted/20"
+        }`}>
+          <CardContent className="p-6 flex flex-col sm:flex-row items-center justify-between gap-6">
+            <div className="flex items-center gap-4">
+              <div className={`h-14 w-14 rounded-full flex items-center justify-center ${
+                targetEmployeeBalance.balance > 0 ? "bg-green-500/20 text-green-700" :
+                targetEmployeeBalance.balance < 0 ? "bg-amber-500/20 text-amber-700" :
+                "bg-muted text-muted-foreground"
+              }`}>
+                <Wallet className="h-7 w-7" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">
+                  رصيد {targetEmployeeBalance.name} الحالي
+                </p>
+                <div className="flex items-baseline gap-1.5 mt-0.5">
+                  <h2 className={`text-3xl font-bold ${
+                    targetEmployeeBalance.balance > 0 ? "text-green-700" :
+                    targetEmployeeBalance.balance < 0 ? "text-amber-700" :
+                    "text-foreground"
+                  }`}>
+                    {targetEmployeeBalance.balance > 0 ? "+" : ""}
+                    {targetEmployeeBalance.balance.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </h2>
+                  <span className="text-sm font-medium text-muted-foreground">EGP</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {targetEmployeeBalance.balance > 0 ? "رصيد زائد متوفر مع الموظف" :
+                   targetEmployeeBalance.balance < 0 ? "رصيد مستحق للموظف يجب تسويته" :
+                   "الحساب متوازن تماماً"}
+                </p>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-8 text-sm">
+              <div className="flex flex-col items-end">
+                <span className="text-muted-foreground mb-1 flex items-center gap-1.5">
+                  <TrendingUp className="h-3.5 w-3.5 text-green-600" /> إجمالي سلف / دفعات
+                </span>
+                <span className="font-bold text-base">
+                  {targetEmployeeBalance.paidTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EGP
+                </span>
+              </div>
+              <div className="w-px h-10 bg-border"></div>
+              <div className="flex flex-col items-end">
+                <span className="text-muted-foreground mb-1 flex items-center gap-1.5">
+                  <TrendingDown className="h-3.5 w-3.5 text-amber-600" /> إجمالي عهد معتمدة
+                </span>
+                <span className="font-bold text-base">
+                  {targetEmployeeBalance.custodyTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} EGP
+                </span>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Clickable Summary */}
       <CustodySummary
@@ -272,9 +352,16 @@ export default async function CustodiesPage({
                         </span>
                         {/* Approval badge */}
                         {isApproved ? (
-                          <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-700 border border-green-500/20">
-                            <BadgeCheck className="h-3 w-3" /> معتمد
-                          </span>
+                          <>
+                            <span className="flex items-center gap-1 text-xs font-medium px-2 py-0.5 rounded-full bg-green-500/10 text-green-700 border border-green-500/20">
+                              <BadgeCheck className="h-3 w-3" /> معتمد
+                            </span>
+                            {Number(custody.funded_amount) > 0 && (
+                              <span className="flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full border border-blue-500/30 bg-blue-500/10 text-blue-700">
+                                صرف جزئي ({Number(custody.funded_amount).toLocaleString("en-US", { minimumFractionDigits: 2 })})
+                              </span>
+                            )}
+                          </>
                         ) : (
                           <span className="flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-muted text-muted-foreground border border-border">
                             في الانتظار

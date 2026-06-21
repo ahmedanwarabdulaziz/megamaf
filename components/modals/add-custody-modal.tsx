@@ -148,10 +148,10 @@ export function AddCustodyModal({
           </div>
         )}
 
-        {/* Project */}
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium" htmlFor="ac-project">المشروع / الفرع</label>
           <select id="ac-project" name="project_id" required
+            defaultValue={projects.length === 1 ? projects[0].id : ""}
             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
             <option value="">— اختر المشروع أو الفرع —</option>
             {projects.map(p => (
