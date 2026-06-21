@@ -11,8 +11,8 @@ interface Props {
   custody: any
   employee: any
   bankAccount: any
-  settlingExpense: any
-  isAdvanceSettled: boolean
+  settlingExpense?: any
+  isAdvanceSettled?: boolean
   trigger?: React.ReactNode
 }
 

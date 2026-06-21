@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation"
 import {
   Home, Settings, FileText, Landmark, X, Truck,
   FolderKanban, UserCheck, ClipboardList, Banknote,
-  Receipt, ChevronDown, ChevronUp, Warehouse, PackageOpen, LayoutList, LogOut
+  Receipt, ChevronDown, ChevronUp, LayoutList, Users, LogOut
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { useState } from "react"
@@ -30,7 +30,16 @@ const MOBILE_NAV_ITEMS: MobileNavItem[] = [
   { label: "المطالبات", href: "/vendor-pos", icon: <Receipt className="h-5 w-5" />, slug: "vendor-pos" },
   { label: "المشروعات", href: "/projects", icon: <FolderKanban className="h-5 w-5" />, slug: "projects" },
   { label: "العهد", href: "/custodies", icon: <ClipboardList className="h-5 w-5" />, slug: "custodies" },
-  { label: "المصروفات", href: "/payments", icon: <Banknote className="h-5 w-5" />, slug: "payments" },
+  {
+    label: "المصروفات",
+    icon: <Banknote className="h-5 w-5" />,
+    slug: "payments-group",
+    subItems: [
+      { label: "نظرة عامة", href: "/payments", icon: <LayoutList className="h-4 w-4" />, slug: "payments" },
+      { label: "مدفوعات الموظفين", href: "/payments/employees", icon: <Users className="h-4 w-4" />, slug: "payments" },
+      { label: "مدفوعات الموردين", href: "/payments/vendors", icon: <Truck className="h-4 w-4" />, slug: "payments" },
+    ],
+  },
   {
     label: "الإعدادات",
     icon: <Settings className="h-5 w-5" />,
@@ -78,7 +87,7 @@ export function MobileNav({ allowedPages = "all" }: { allowedPages?: string[] | 
               {activeCategoryObject.subItems
                 .filter(sub => isAllowed(sub.slug, allowedPages))
                 .map(sub => {
-                  const isSubActive = pathname === sub.href
+                  const isSubActive = pathname === sub.href || pathname.startsWith(sub.href + "/")
                   return (
                     // Use <Link> here so Next.js prefetches the route on visibility.
                     // This means tapping a sub-item navigates instantly instead of
@@ -104,8 +113,8 @@ export function MobileNav({ allowedPages = "all" }: { allowedPages?: string[] | 
         {visibleItems.map(item => {
           const hasSubItems = !!item.subItems
           const isActive = hasSubItems
-            ? item.subItems!.some(sub => pathname === sub.href)
-            : pathname === item.href
+            ? item.subItems!.some(sub => pathname === sub.href || pathname.startsWith(sub.href + "/"))
+            : pathname === item.href || (item.href ? pathname.startsWith(item.href + "/") : false)
 
           // For items WITH sub-items: keep as button (opens category sheet)
           // For simple navigation items: use <Link> so Next.js prefetches on render.

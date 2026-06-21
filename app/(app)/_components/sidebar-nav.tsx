@@ -2,7 +2,7 @@
 
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-import { Home, Settings, FileText, Landmark, ChevronDown, ChevronUp, Truck, FolderKanban, UserCheck, ClipboardList, Receipt, Banknote, Warehouse, PackageOpen, LayoutList } from "lucide-react"
+import { Home, Settings, FileText, Landmark, ChevronDown, ChevronUp, Truck, FolderKanban, UserCheck, ClipboardList, Receipt, Banknote, Users, LayoutList } from "lucide-react"
 import { useState } from "react"
 import { cn } from "@/lib/utils"
 
@@ -25,7 +25,16 @@ const NAV_ITEMS: NavItem[] = [
   { label: "المطالبات", href: "/vendor-pos", icon: <Receipt className="h-5 w-5" />, slug: "vendor-pos" },
   { label: "المشروعات", href: "/projects", icon: <FolderKanban className="h-5 w-5" />, slug: "projects" },
   { label: "العهد", href: "/custodies", icon: <ClipboardList className="h-5 w-5" />, slug: "custodies" },
-  { label: "المصروفات", href: "/payments", icon: <Banknote className="h-5 w-5" />, slug: "payments" },
+  {
+    label: "المصروفات",
+    icon: <Banknote className="h-5 w-5" />,
+    slug: "payments-group",
+    subItems: [
+      { label: "نظرة عامة", href: "/payments", icon: <LayoutList className="h-4 w-4" />, slug: "payments" },
+      { label: "مدفوعات الموظفين", href: "/payments/employees", icon: <Users className="h-4 w-4" />, slug: "payments" },
+      { label: "مدفوعات الموردين", href: "/payments/vendors", icon: <Truck className="h-4 w-4" />, slug: "payments" },
+    ],
+  },
   {
     label: "الإعدادات",
     icon: <Settings className="h-5 w-5" />,
@@ -45,7 +54,9 @@ function isAllowed(slug: string, allowedPages: string[] | "all"): boolean {
 
 export function SidebarNav({ allowedPages = "all" }: { allowedPages?: string[] | "all" }) {
   const pathname = usePathname()
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({ "المالية": true })
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(
+    { "المالية": true, "المصروفات": true }
+  )
 
   const toggleGroup = (label: string) => {
     setOpenGroups(prev => ({ ...prev, [label]: !prev[label] }))
@@ -58,7 +69,7 @@ export function SidebarNav({ allowedPages = "all" }: { allowedPages?: string[] |
           const visibleSubItems = item.subItems.filter(sub => isAllowed(sub.slug, allowedPages))
           if (visibleSubItems.length === 0) return null
           const isOpen = openGroups[item.label]
-          const isActive = visibleSubItems.some(sub => pathname === sub.href)
+          const isActive = visibleSubItems.some(sub => pathname === sub.href || pathname.startsWith(sub.href + "/"))
           return (
             <div key={item.label} className="space-y-1">
               <button onClick={() => toggleGroup(item.label)}
@@ -72,7 +83,7 @@ export function SidebarNav({ allowedPages = "all" }: { allowedPages?: string[] |
               {isOpen && (
                 <div className="pr-6 space-y-1 mt-1 border-r-2 border-border mr-4">
                   {visibleSubItems.map(sub => {
-                    const isSubActive = pathname === sub.href
+                    const isSubActive = pathname === sub.href || pathname.startsWith(sub.href + "/")
                     return (
                       <Link key={sub.href} href={sub.href}
                         className={cn(

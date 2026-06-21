@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache"
 import { createClient } from "@/lib/supabase/server"
-import { addProjectSchema, editProjectSchema } from "@/lib/validators/projects"
+import { addProjectSchema, editProjectSchema, addProjectFundSchema } from "@/lib/validators/projects"
 
 export async function addProject(prevState: any, formData: FormData) {
   const supabase = await createClient()
@@ -34,6 +34,7 @@ export async function addProject(prevState: any, formData: FormData) {
       name: parsed.data.name,
       code: projectCode,
       description: parsed.data.description || null,
+      owner_name: parsed.data.owner_name || null,
       status: parsed.data.status,
       start_date: parsed.data.start_date || null,
       end_date: parsed.data.end_date || null,
@@ -68,6 +69,7 @@ export async function editProject(prevState: any, formData: FormData) {
   const updateData: any = {
       name: parsed.data.name,
       description: parsed.data.description || null,
+      owner_name: parsed.data.owner_name || null,
       status: parsed.data.status,
       start_date: parsed.data.start_date || null,
       end_date: parsed.data.end_date || null,
@@ -91,6 +93,7 @@ export async function editProject(prevState: any, formData: FormData) {
   }
 
   revalidatePath("/projects")
+  revalidatePath(`/projects/${parsed.data.id}`)
   return { success: true }
 }
 
@@ -112,5 +115,107 @@ export async function deleteProject(id: string) {
   }
 
   revalidatePath("/projects")
+  return { success: true }
+}
+
+export async function addProjectFund(prevState: any, formData: FormData) {
+  const supabase = await createClient()
+  const data = Object.fromEntries(formData.entries())
+
+  const parsed = addProjectFundSchema.safeParse(data)
+  if (!parsed.success) {
+    return { error: parsed.error.issues[0].message }
+  }
+
+  const { data: companyId, error: companyError } = await supabase.rpc("get_my_company_id").single()
+  if (companyError || !companyId) return { error: "لم يتم العثور على شركتك" }
+
+  const { data: { user } } = await supabase.auth.getUser()
+
+  // 1. Create the bank transaction deposit first
+  const { data: txn, error: txnError } = await supabase
+    .from("bank_transactions")
+    .insert({
+      company_id: companyId,
+      bank_account_id: parsed.data.bank_account_id,
+      type: "deposit",
+      amount: parsed.data.amount,
+      transaction_date: parsed.data.fund_date,
+      description: parsed.data.note || `تمويل مشروع`,
+      reference_type: "project_fund",
+    })
+    .select("id")
+    .single()
+
+  if (txnError || !txn) {
+    console.error("Create bank transaction error:", txnError)
+    return { error: "فشل في تسجيل العملية البنكية. " + txnError?.message }
+  }
+
+  // 2. Create the project_funds record linked to the bank transaction
+  const { error } = await supabase
+    .from("project_funds")
+    .insert({
+      project_id: parsed.data.project_id,
+      company_id: companyId,
+      bank_account_id: parsed.data.bank_account_id,
+      bank_transaction_id: txn.id,
+      amount: parsed.data.amount,
+      note: parsed.data.note || null,
+      fund_date: parsed.data.fund_date,
+      created_by: user?.id,
+    })
+
+  if (error) {
+    // Rollback the bank transaction if fund insert fails
+    await supabase.from("bank_transactions").delete().eq("id", txn.id)
+    console.error("Add project fund error:", error)
+    return { error: "فشل في إضافة التمويل. " + error.message }
+  }
+
+  revalidatePath("/projects")
+  revalidatePath(`/projects/${parsed.data.project_id}`)
+  revalidatePath("/accounts")
+  return { success: true }
+}
+
+export async function deleteProjectFund(id: string, projectId: string) {
+  const supabase = await createClient()
+
+  const { data: companyId, error: companyError } = await supabase.rpc("get_my_company_id").single()
+  if (companyError || !companyId) return { error: "لم يتم العثور على شركتك" }
+
+  // Fetch the fund to get the linked bank transaction id
+  const { data: fund } = await supabase
+    .from("project_funds")
+    .select("bank_transaction_id")
+    .eq("id", id)
+    .eq("company_id", companyId)
+    .single()
+
+  // Delete the project fund record
+  const { error } = await supabase
+    .from("project_funds")
+    .delete()
+    .eq("id", id)
+    .eq("company_id", companyId)
+
+  if (error) {
+    console.error("Delete project fund error:", error)
+    return { error: "فشل في حذف التمويل." }
+  }
+
+  // Also delete the paired bank transaction
+  if (fund?.bank_transaction_id) {
+    await supabase
+      .from("bank_transactions")
+      .delete()
+      .eq("id", fund.bank_transaction_id)
+      .eq("company_id", companyId)
+  }
+
+  revalidatePath("/projects")
+  revalidatePath(`/projects/${projectId}`)
+  revalidatePath("/accounts")
   return { success: true }
 }

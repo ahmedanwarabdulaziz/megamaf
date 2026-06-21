@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { editProject } from "@/app/(app)/projects/actions"
 import { useSearchParams } from "next/navigation"
-import { Building2 } from "lucide-react"
+import { Building2, User } from "lucide-react"
 
 function SubmitButton() {
   const { pending } = useFormStatus()
@@ -52,6 +52,13 @@ export function EditProjectModal({ projects }: { projects: any[] }) {
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium" htmlFor="ep-name">اسم المشروع / الفرع</label>
           <Input id="ep-name" name="name" defaultValue={projectToEdit.name} required />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium" htmlFor="ep-owner">
+            <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> صاحب المشروع (اختياري)</span>
+          </label>
+          <Input id="ep-owner" name="owner_name" defaultValue={projectToEdit.owner_name || ""} placeholder="مثال: أحمد محمد" />
         </div>
 
         <div className="flex flex-col gap-2">

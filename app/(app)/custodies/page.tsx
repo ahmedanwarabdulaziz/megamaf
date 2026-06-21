@@ -13,11 +13,12 @@ import { AddCustodyModal } from "@/components/modals/add-custody-modal"
 import { EditCustodyModal } from "@/components/modals/edit-custody-modal"
 // EmployeeFilter removed
 import { CustodySummary } from "./_components/custody-summary"
+import { CustodyApproveButton } from "./_components/custody-approve-button"
 import { ImageLightbox } from "@/components/ui/image-lightbox"
 import { DeleteConfirmButton } from "@/components/ui/delete-confirm-button"
 import { QuickActions } from "@/components/ui/quick-actions"
 import { Modal } from "@/components/ui/modal"
-import { approveCustody, unapproveCustody, deleteCustody } from "./actions"
+import { deleteCustody } from "./actions"
 
 function formatDate(dateStr: string | null) {
   if (!dateStr) return null
@@ -355,21 +356,11 @@ export default async function CustodiesPage({
               <QuickActions key={custody.id} menuContent={
                 <div className="flex flex-col gap-0.5 w-full">
                   {!isApproved && canApprove && (
-                    <form action={async () => { "use server"; await approveCustody(custody.id) }}>
-                      <Button type="submit" variant="ghost" className="w-full justify-start h-9 px-2 text-green-600 hover:text-green-700 hover:bg-green-500/10">
-                        <BadgeCheck className="h-4 w-4 ml-2" />
-                        اعتماد العهدة
-                      </Button>
-                    </form>
+                    <CustodyApproveButton custodyId={custody.id} mode="approve" />
                   )}
 
                   {isApproved && canUnapprove && (
-                    <form action={async () => { "use server"; await unapproveCustody(custody.id) }}>
-                      <Button type="submit" variant="ghost" className="w-full justify-start h-9 px-2 text-amber-600 hover:text-amber-700 hover:bg-amber-500/10">
-                        <ShieldAlert className="h-4 w-4 ml-2" />
-                        إلغاء الاعتماد
-                      </Button>
-                    </form>
+                    <CustodyApproveButton custodyId={custody.id} mode="unapprove" />
                   )}
 
                   {(!isApproved || canEditApproved) && (

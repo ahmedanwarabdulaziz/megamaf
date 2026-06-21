@@ -7,7 +7,7 @@ import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { addProject } from "@/app/(app)/projects/actions"
-import { Building2 } from "lucide-react"
+import { Building2, User } from "lucide-react"
 
 function SubmitButton() {
   const { pending } = useFormStatus()
@@ -40,6 +40,13 @@ export function AddProjectModal() {
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium" htmlFor="ap-name">اسم المشروع / الفرع</label>
           <Input id="ap-name" name="name" placeholder="مثال: مشروع البناء الجديد" required />
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <label className="text-sm font-medium" htmlFor="ap-owner">
+            <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5" /> صاحب المشروع (اختياري)</span>
+          </label>
+          <Input id="ap-owner" name="owner_name" placeholder="مثال: أحمد محمد" />
         </div>
 
         <div className="flex flex-col gap-2">
