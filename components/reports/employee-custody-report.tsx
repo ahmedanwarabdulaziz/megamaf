@@ -11,18 +11,22 @@ import { Input } from '@/components/ui/input';
 export function EmployeeCustodyReport({ 
   employees, 
   projects,
+  categories,
   data, 
   selectedEmployeeId,
   selectedProjectId,
+  selectedCategoryId,
   startDate,
   endDate,
   balance
 }: { 
   employees: any[], 
   projects: any[],
+  categories: any[],
   data: any[],
   selectedEmployeeId: string,
   selectedProjectId: string,
+  selectedCategoryId: string,
   startDate: string,
   endDate: string,
   balance: number
@@ -30,6 +34,7 @@ export function EmployeeCustodyReport({
   const router = useRouter();
   const [employee, setEmployee] = useState(selectedEmployeeId);
   const [project, setProject] = useState(selectedProjectId);
+  const [category, setCategory] = useState(selectedCategoryId);
   const [start, setStart] = useState(startDate);
   const [end, setEnd] = useState(endDate);
 
@@ -41,6 +46,7 @@ export function EmployeeCustodyReport({
         end_date: end
       });
       if (project) params.set('project_id', project);
+      if (category) params.set('category_id', category);
       
       router.push(`/reports/employee-custody?${params.toString()}`);
     }
@@ -51,6 +57,7 @@ export function EmployeeCustodyReport({
     const exportData = data.map(row => ({
       'التاريخ': new Date(row.date).toLocaleDateString('en-GB'),
       'المشروع': row.project || '-',
+      'التصنيف': row.category || '-',
       'النوع': row.type === 'disbursement' ? 'منصرف عهدة (وارد للموظف)' : 'مصروف (صادر من الموظف)',
       'المبلغ': row.amount,
       'الملاحظات': row.notes
@@ -89,6 +96,19 @@ export function EmployeeCustodyReport({
           </select>
         </div>
         <div className="flex-1 min-w-[150px]">
+          <label className="block text-sm font-medium mb-1">تصنيف المصروف</label>
+          <select 
+            value={category} 
+            onChange={e => setCategory(e.target.value)} 
+            className="w-full p-2 rounded-md border bg-background"
+          >
+            <option value="">كل التصنيفات</option>
+            {categories.map(c => (
+              <option key={c.id} value={c.id}>{c.name}</option>
+            ))}
+          </select>
+        </div>
+        <div className="flex-1 min-w-[150px]">
           <label className="block text-sm font-medium mb-1">من تاريخ</label>
           <Input type="date" value={start} onChange={e => setStart(e.target.value)} />
         </div>
@@ -120,6 +140,7 @@ export function EmployeeCustodyReport({
                 <tr>
                   <th className="p-3 font-medium">التاريخ</th>
                   <th className="p-3 font-medium">المشروع</th>
+                  <th className="p-3 font-medium">تصنيف المصروف</th>
                   <th className="p-3 font-medium">النوع</th>
                   <th className="p-3 font-medium">منصرف للموظف (عهدة)</th>
                   <th className="p-3 font-medium">مصروف معتمد (تسوية)</th>
@@ -131,6 +152,7 @@ export function EmployeeCustodyReport({
                   <tr key={row.id} className="hover:bg-muted/30">
                     <td className="p-3 font-sans" dir="ltr">{new Date(row.date).toLocaleDateString('en-GB')}</td>
                     <td className="p-3">{row.project || <span className="text-muted-foreground">-</span>}</td>
+                    <td className="p-3">{row.category || <span className="text-muted-foreground">-</span>}</td>
                     <td className="p-3 font-medium">{row.type === 'disbursement' ? 'منصرف عهدة' : 'مصروف معتمد'}</td>
                     <td className="p-3 font-medium text-green-600">{row.type === 'disbursement' ? formatMoney(row.amount) : '-'}</td>
                     <td className="p-3 font-medium text-red-600">{row.type === 'expense' ? formatMoney(row.amount) : '-'}</td>
@@ -140,7 +162,7 @@ export function EmployeeCustodyReport({
                 
                 {data.length === 0 && (
                   <tr>
-                    <td colSpan={6} className="p-8 text-center text-muted-foreground">لا توجد حركات عهد لهذا الموظف ضمن هذا النطاق</td>
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">لا توجد حركات عهد لهذا الموظف ضمن هذا النطاق</td>
                   </tr>
                 )}
               </tbody>

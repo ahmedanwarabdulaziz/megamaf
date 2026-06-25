@@ -9,24 +9,30 @@ export const metadata = { title: 'كشوف عهد الموظفين' };
 export default async function EmployeeCustodyPage({
   searchParams,
 }: {
-  searchParams: Promise<{ employee_id?: string, project_id?: string, start_date?: string, end_date?: string }>
+  searchParams: Promise<{ employee_id?: string, project_id?: string, category_id?: string, start_date?: string, end_date?: string }>
 }) {
-  const { employee_id, project_id, start_date, end_date } = await searchParams;
+  const { employee_id, project_id, category_id, start_date, end_date } = await searchParams;
   const supabase = await createClient();
 
   const now = new Date();
-  const defaultStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString().split('T')[0];
-  const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0).toISOString().split('T')[0];
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+  
+  const defaultStart = `${year}-${month}-01`;
+  const defaultEnd = `${year}-${month}-${lastDay}`;
 
   const startDate = start_date || defaultStart;
   const endDate = end_date || defaultEnd;
 
   const [
     { data: employees },
-    { data: projects }
+    { data: projects },
+    { data: categories }
   ] = await Promise.all([
     supabase.from('employees').select('id, full_name').order('full_name'),
-    supabase.from('projects').select('id, name').order('name')
+    supabase.from('projects').select('id, name').order('name'),
+    supabase.from('expense_categories').select('id, name').order('name')
   ]);
 
   let statementData: any[] = [];
@@ -35,6 +41,8 @@ export default async function EmployeeCustodyPage({
   if (employee_id && employees) {
     const { data: balanceData } = await supabase.from('v_employee_custody_balance').select('*').eq('employee_id', employee_id).single();
     
+    // For disbursements, there is no "category_id" of expenses, so if they filter by an expense category, 
+    // we should NOT return any disbursements.
     let disburseQuery = supabase.from('ledger_entries')
       .select('id, entry_date, amount, memo, projects(name)')
       .eq('category', 'custody_disbursement')
@@ -45,18 +53,22 @@ export default async function EmployeeCustodyPage({
     if (project_id) disburseQuery = disburseQuery.eq('project_id', project_id);
     
     let expenseQuery = supabase.from('expenses')
-      .select('id, expense_date, amount, notes, status, settled_amount, projects(name)')
+      .select('id, expense_date, amount, notes, status, settled_amount, projects(name), expense_categories(name)')
       .eq('employee_id', employee_id)
       .eq('status', 'approved')
       .gte('expense_date', startDate)
       .lte('expense_date', endDate);
       
     if (project_id) expenseQuery = expenseQuery.eq('project_id', project_id);
+    if (category_id) expenseQuery = expenseQuery.eq('category_id', category_id);
 
     const [
       { data: disbursements },
       { data: expenses },
-    ] = await Promise.all([disburseQuery, expenseQuery]);
+    ] = await Promise.all([
+      category_id ? Promise.resolve({ data: [] }) : disburseQuery, // Skip disbursements if filtering by expense category
+      expenseQuery
+    ]);
 
     if (balanceData) {
       balance = balanceData.balance;
@@ -69,6 +81,7 @@ export default async function EmployeeCustodyPage({
         amount: d.amount, 
         notes: d.memo, 
         project: (d.projects as any)?.name,
+        category: 'تمويل عهدة',
         id: d.id 
       })),
       ...(expenses || []).map(e => ({ 
@@ -77,6 +90,7 @@ export default async function EmployeeCustodyPage({
         amount: e.amount, 
         notes: e.notes, 
         project: (e.projects as any)?.name,
+        category: (e.expense_categories as any)?.name,
         id: e.id, 
         settled: e.settled_amount 
       }))
@@ -104,9 +118,11 @@ export default async function EmployeeCustodyPage({
       <EmployeeCustodyReport 
         employees={employees || []} 
         projects={projects || []}
+        categories={categories || []}
         data={statementData} 
         selectedEmployeeId={employee_id || ''}
         selectedProjectId={project_id || ''}
+        selectedCategoryId={category_id || ''}
         startDate={startDate}
         endDate={endDate}
         balance={balance}
