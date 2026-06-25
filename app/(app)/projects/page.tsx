@@ -10,17 +10,27 @@ export const dynamic = 'force-dynamic'
 export default async function ProjectsPage() {
   const supabase = await createClient()
   
-  // Fetch projects and their financial position
-  const { data: projects } = await supabase
+  // Fetch projects
+  const { data: projectsData } = await supabase
     .from('projects')
     .select(`
       *,
-      project_owners(name),
-      v_project_financial_position(*)
+      project_owners(name)
     `)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
     
+  // Fetch financial position
+  const { data: finData } = await supabase
+    .from('v_project_financial_position')
+    .select('*')
+    
+  // Merge them
+  const projects = (projectsData || []).map(p => ({
+    ...p,
+    v_project_financial_position: (finData || []).filter(f => f.project_id === p.id)
+  }))
+
   const { data: owners } = await supabase.from('project_owners').select('id, name')
 
   return (
@@ -32,9 +42,9 @@ export default async function ProjectsPage() {
         </Link>
       </div>
 
-      <ProjectCards data={projects || []} />
+      <ProjectCards data={projects} />
       
-      <ProjectModal owners={owners || []} projects={projects || []} />
+      <ProjectModal owners={owners || []} projects={projectsData || []} />
     </div>
   )
 }
