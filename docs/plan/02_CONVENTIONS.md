@@ -21,12 +21,16 @@
 5. **`<Link>` for navigation**, not `router.push()` for static routes.
 6. **Derive balances from the ledger** via SQL aggregation / DB views, not by pulling rows to the client and summing in JS.
 
-## 3. Database conventions
+## 3. Database Security & Conventions
 
 - One concern per migration; **migrations are append-only** — never edit a shipped migration, always add a new one. No "restore/simplify/fix" churn: if the model must change, update `01_DATA_MODEL.md` first and discuss.
 - Use **Postgres views** for read models: `v_bank_account_balances`, `v_project_financial_position`, `v_employee_custody_balance`, `v_vendor_account`, `v_claim_totals`. Pages read views, not ad-hoc joins.
 - **Money math runs in Postgres** (numeric), not JS floats. Totals on documents (`invoices.total`, claim totals) are computed by triggers or generated columns so they can't drift.
-- **RLS on every table.** Policies: super admin = full; standard user = rows for projects in `employee_project_access` + pages in `employee_page_access`. Writes also pass the audit helper.
+- **Row-Level Security (RLS)** is enabled on all tables. 
+- Use the `public.is_super_admin()` and `public.has_project_access()` functions to secure rows.
+- **Sensitive Employee Data**: Columns like `pin_hash` and `failed_pin_attempts` must never exist on `public.employees`. They must be isolated in `public.employee_secrets` which has RLS enabled with **no authenticated policies**, forcing access to happen strictly via the `service_role` on the server.
+- **Views**: All views MUST be created or altered with `security_invoker = true` to ensure they respect the RLS policies of the calling user rather than the creator.
+- **Auto-Timestamps**: Always attach the `set_updated_at` trigger to any table possessing an `updated_at` column.
 
 ## 4. Security
 

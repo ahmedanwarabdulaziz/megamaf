@@ -1,66 +1,24 @@
-import { login } from "./actions"
-import { Button } from "@/components/ui/button"
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { PasskeyLoginButton } from "@/components/auth/passkey-login-button"
+import { Suspense } from "react"
+import { LoginForm } from "./login-form"
 
-export default async function LoginPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ message: string }>
-}) {
-  const message = (await searchParams).message
-  
+export default function LoginPage() {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center p-4">
-      <Card className="w-full max-w-sm">
-        <CardHeader className="text-center">
-          <CardTitle className="text-2xl">تسجيل الدخول إلى حسابك</CardTitle>
-          <CardDescription>
+    <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
+      <div className="w-full max-w-sm rounded-xl border border-border bg-card text-card-foreground shadow-sm">
+        <div className="flex flex-col space-y-1.5 p-6 text-center">
+          <h1 className="text-2xl font-semibold leading-none tracking-tight">
+            تسجيل الدخول
+          </h1>
+          <p className="text-sm text-muted-foreground">
             أدخل اسم المستخدم وكلمة المرور أدناه
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form className="flex-1 flex flex-col w-full justify-center gap-4 text-foreground">
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="username">
-                اسم المستخدم
-              </label>
-              <Input
-                name="username"
-                placeholder="ahmed"
-                required
-              />
-            </div>
-            
-            <div className="flex flex-col gap-2">
-              <label className="text-sm font-medium" htmlFor="password">
-                كلمة المرور
-              </label>
-              <Input
-                type="password"
-                name="password"
-                placeholder="••••••••"
-                required
-              />
-            </div>
-
-            <div className="flex flex-col gap-2 mt-4">
-              <Button formAction={login} variant="default" className="w-full">
-                تسجيل الدخول
-              </Button>
-            </div>
-            
-            <PasskeyLoginButton />
-            
-            {message && (
-              <p className="mt-4 p-4 bg-destructive/10 text-destructive text-center rounded-md text-sm">
-                {message}
-              </p>
-            )}
-          </form>
-        </CardContent>
-      </Card>
+          </p>
+        </div>
+        <div className="p-6 pt-0">
+          <Suspense>
+            <LoginForm />
+          </Suspense>
+        </div>
+      </div>
     </div>
   )
 }

@@ -35,7 +35,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
-      <body className={`${cairo.variable} antialiased`}>
+      <body className={`${cairo.variable} antialiased`} suppressHydrationWarning>
         {children}
       </body>
     </html>

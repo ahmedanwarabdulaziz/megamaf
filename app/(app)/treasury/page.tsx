@@ -1,0 +1,292 @@
+import { createClient } from '@/lib/supabase/server';
+import Link from 'next/link';
+import { formatMoney } from '@/lib/money';
+import { Wallet } from 'lucide-react';
+import { AdvancePayButton } from './advance-pay-button';
+import { AdvanceReceiveButton } from './advance-receive-button';
+import { AssignPaymentButton } from '../settings/owners/[id]/statement/assign-payment-button';
+
+export const metadata = { title: 'الخزينة والمدفوعات' };
+
+export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
+  const { tab = 'payables' } = await searchParams;
+  const supabase = await createClient();
+
+  const [
+    { data: vendors },
+    { data: owners },
+    { data: allContractors },
+    { data: allOwners },
+    { data: vendorHistory },
+    { data: ownerHistory },
+    { data: projects },
+    { data: allOwnerClaims },
+  ] = await Promise.all([
+    supabase.from('v_vendor_balances').select('*').order('balance', { ascending: false }),
+    supabase.from('v_owner_balances').select('*').order('balance', { ascending: false }),
+    supabase.from('vendors').select('id, name').eq('kind', 'contractor').order('name'),
+    supabase.from('project_owners').select('id, name').order('name'),
+    supabase.from('ledger_entries').select('*, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)').eq('category', 'vendor_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
+    supabase.from('ledger_entries').select('*, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)').eq('category', 'owner_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
+    supabase.from('projects').select('id, name').order('name'),
+    supabase.from('claims').select('id, claim_number, project_id, party_id').eq('claim_type', 'owner').eq('status', 'approved').order('claim_number', { ascending: false }),
+  ]);
+
+  // Build open-claims-for-assign per owner: latest claim per (owner, project), with outstanding amount
+  // We'll build a per-owner map so the button component gets only the relevant claims.
+  // For simplicity on the treasury page, pass ALL owner claims totals and filter client-side.
+  const latestClaimIds = (() => {
+    const seen = new Map<string, string>(); // key: `${party_id}_${project_id}` → claim_id
+    for (const c of allOwnerClaims ?? []) {
+      const key = `${c.party_id}_${c.project_id}`;
+      if (!seen.has(key)) seen.set(key, c.id); // already desc order → first = latest
+    }
+    return Array.from(seen.values());
+  })();
+
+  const { data: latestClaimTotals } = latestClaimIds.length > 0
+    ? await supabase.from('v_claim_totals').select('claim_id, total_due_this_claim').in('claim_id', latestClaimIds)
+    : { data: [] };
+
+  // Map: claim_id → { claim_number, project_id, party_id, amount_due }
+  const openClaimsByOwner = new Map<string, { claim_id: string; claim_number: number; project_id: string; amount_due: number }[]>();
+  for (const claim of allOwnerClaims ?? []) {
+    if (!latestClaimIds.includes(claim.id)) continue;
+    const t = latestClaimTotals?.find((t) => t.claim_id === claim.id);
+    if (!t || t.total_due_this_claim <= 0) continue;
+    const arr = openClaimsByOwner.get(claim.party_id) ?? [];
+    arr.push({ claim_id: claim.id, claim_number: claim.claim_number, project_id: claim.project_id, amount_due: t.total_due_this_claim });
+    openClaimsByOwner.set(claim.party_id, arr);
+  }
+
+  return (
+    <div className="space-y-6 max-w-7xl mx-auto">
+      <div className="flex items-center justify-between bg-card p-6 rounded-lg border shadow-sm">
+        <div className="flex items-center gap-4">
+          <div className="p-3 bg-primary/10 rounded-full">
+            <Wallet className="w-8 h-8 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold">الخزينة والمدفوعات</h1>
+            <p className="text-muted-foreground mt-1">إدارة الدفعات والمقبوضات للمقاولين والملاك</p>
+          </div>
+        </div>
+        {/* Advance payment to any contractor, even with no prior docs */}
+        {tab === 'payables' && (
+          <AdvancePayButton contractors={allContractors || []} />
+        )}
+        {/* Advance receipt from any owner, even with no prior docs */}
+        {tab === 'receivables' && (
+          <AdvanceReceiveButton owners={allOwners || []} />
+        )}
+      </div>
+
+      <div className="flex gap-2 border-b overflow-x-auto pb-1">
+        <Link href="/treasury?tab=payables" className={`px-4 py-2 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${tab === 'payables' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+          المدفوعات (المقاولون)
+        </Link>
+        <Link href="/treasury?tab=receivables" className={`px-4 py-2 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${tab === 'receivables' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+          المقبوضات (الملاك)
+        </Link>
+      </div>
+
+      {tab === 'payables' && (
+        <div className="space-y-4">
+          <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
+            <table className="w-full text-sm text-right">
+              <thead className="bg-muted/50 border-b">
+                <tr>
+                  <th className="p-4 font-medium">المقاول</th>
+                  <th className="p-4 font-medium text-amber-600">إجمالي المستحق</th>
+                  <th className="p-4 font-medium text-green-600">إجمالي المدفوع</th>
+                  <th className="p-4 font-medium text-primary">المتبقي (الرصيد)</th>
+                  <th className="p-4 font-medium w-40"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {vendors?.map(v => (
+                  <tr key={v.vendor_id} className="hover:bg-muted/30 transition-colors">
+                    <td className="p-4 font-semibold">{v.vendor_name}</td>
+                    <td className="p-4">{formatMoney(v.total_due)}</td>
+                    <td className="p-4">{formatMoney(v.total_paid)}</td>
+                    <td className="p-4 font-bold text-primary">{formatMoney(v.balance)}</td>
+                    <td className="p-4">
+                      <Link href={`/vendors/${v.vendor_id}/statement`} className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md font-medium">كشف حساب</Link>
+                    </td>
+                  </tr>
+                ))}
+                {(!vendors || vendors.length === 0) && (
+                  <tr>
+                    <td colSpan={5} className="p-8 text-center text-muted-foreground">لا يوجد مقاولون بأرصدة مستحقة</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Recent Payments History */}
+          <div className="mt-8">
+            <h2 className="text-lg font-bold mb-4">أحدث المدفوعات للمقاولين</h2>
+            <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
+              <table className="w-full text-sm text-right">
+                <thead className="bg-muted/50 border-b">
+                  <tr>
+                    <th className="p-4 font-medium">التاريخ</th>
+                    <th className="p-4 font-medium">المقاول</th>
+                    <th className="p-4 font-medium">المشروع</th>
+                    <th className="p-4 font-medium">الحساب البنكي / الخزينة</th>
+                    <th className="p-4 font-medium">المبلغ</th>
+                    <th className="p-4 font-medium">البيان</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {vendorHistory?.map(entry => (
+                    <tr key={entry.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="p-4">{entry.entry_date}</td>
+                      <td className="p-4 font-semibold">{allContractors?.find(c => c.id === entry.counterparty_id)?.name || 'غير معروف'}</td>
+                      <td className="p-4 text-muted-foreground">{entry.projects?.name || '-'}</td>
+                      <td className="p-4 text-muted-foreground">{(entry.bank_accounts as any)?.banks?.name || ''} - {(entry.bank_accounts as any)?.account_name || ''}</td>
+                      <td className="p-4 font-bold text-destructive">{formatMoney(entry.amount)}</td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-1">
+                          {entry.memo && <span className="text-muted-foreground">{entry.memo}</span>}
+                          {entry.payment_allocations && entry.payment_allocations.length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {entry.payment_allocations.map((alloc: any, i: number) => (
+                                <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-primary/10 text-primary">
+                                  {alloc.target_type === 'claim' ? 'مستخلص' : alloc.target_type === 'invoice' ? 'فاتورة' : alloc.target_type}
+                                  {' • '}
+                                  {formatMoney(alloc.allocated_amount)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {!entry.memo && (!entry.payment_allocations || entry.payment_allocations.length === 0) && (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                  {(!vendorHistory || vendorHistory.length === 0) && (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-muted-foreground">لا توجد مدفوعات مسجلة</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tab === 'receivables' && (
+        <div className="space-y-4">
+          <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
+            <table className="w-full text-sm text-right">
+              <thead className="bg-muted/50 border-b">
+                <tr>
+                  <th className="p-4 font-medium">المالك</th>
+                  <th className="p-4 font-medium text-amber-600">إجمالي المطلوب</th>
+                  <th className="p-4 font-medium text-green-600">إجمالي المحصل</th>
+                  <th className="p-4 font-medium text-primary">المتبقي (الرصيد)</th>
+                  <th className="p-4 font-medium w-32"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {owners?.map(o => (
+                  <tr key={o.owner_id} className="hover:bg-muted/30 transition-colors">
+                    <td className="p-4 font-semibold">{o.owner_name}</td>
+                    <td className="p-4">{formatMoney(o.total_due)}</td>
+                    <td className="p-4">{formatMoney(o.total_paid)}</td>
+                    <td className="p-4 font-bold text-primary">{formatMoney(o.balance)}</td>
+                    <td className="p-4 flex gap-2">
+                      <Link href={`/settings/owners/${o.owner_id}/statement`} className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md font-medium">كشف حساب</Link>
+                      <Link href={`/treasury/receive/${o.owner_id}`} className="text-xs bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-1.5 rounded-md font-medium">تحصيل</Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Recent Receipts History */}
+          <div className="mt-8">
+            <h2 className="text-lg font-bold mb-4">أحدث المقبوضات من الملاك</h2>
+            <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
+              <table className="w-full text-sm text-right">
+                <thead className="bg-muted/50 border-b">
+                  <tr>
+                    <th className="p-4 font-medium">التاريخ</th>
+                    <th className="p-4 font-medium">المالك</th>
+                    <th className="p-4 font-medium">المشروع</th>
+                    <th className="p-4 font-medium">الحساب البنكي / الخزينة</th>
+                    <th className="p-4 font-medium">المبلغ</th>
+                    <th className="p-4 font-medium">البيان</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {ownerHistory?.map(entry => {
+                    const isUnassigned = !entry.project_id || !(entry.payment_allocations as any[]).length;
+                    const ownerOpenClaims = openClaimsByOwner.get(entry.counterparty_id) ?? [];
+                    return (
+                    <tr key={entry.id} className={`hover:bg-muted/30 transition-colors ${isUnassigned ? 'bg-amber-50/40' : ''}`}>
+                      <td className="p-4">{entry.entry_date}</td>
+                      <td className="p-4 font-semibold">{allOwners?.find(o => o.id === entry.counterparty_id)?.name || 'غير معروف'}</td>
+                      <td className="p-4">
+                        {isUnassigned ? (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span>🟡</span> غير محدد</span>
+                        ) : (
+                          <span className="text-muted-foreground">{(entry.projects as any)?.name || '-'}</span>
+                        )}
+                      </td>
+                      <td className="p-4 text-muted-foreground">{(entry.bank_accounts as any)?.banks?.name || ''} - {(entry.bank_accounts as any)?.account_name || ''}</td>
+                      <td className="p-4 font-bold text-green-600">{formatMoney(entry.amount)}</td>
+                      <td className="p-4">
+                        <div className="flex flex-col gap-1">
+                          {entry.memo && <span className="text-muted-foreground">{entry.memo}</span>}
+                          {(entry.payment_allocations as any[]).length > 0 && (
+                            <div className="flex flex-wrap gap-1 mt-1">
+                              {(entry.payment_allocations as any[]).map((alloc: any, i: number) => (
+                                <span key={i} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800">
+                                  {alloc.target_type === 'claim' ? 'مستخلص' : alloc.target_type === 'owner_schedule' ? 'دفعة متوقعة' : alloc.target_type}
+                                  {' • '}
+                                  {formatMoney(alloc.allocated_amount)}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {/* Assign button for unlinked/unallocated receipts */}
+                          {isUnassigned && (
+                            <div className="mt-1">
+                              <AssignPaymentButton
+                                ledgerEntryId={entry.id}
+                                entryAmount={entry.amount}
+                                openClaims={ownerOpenClaims}
+                                projects={projects ?? []}
+                              />
+                            </div>
+                          )}
+                          {!entry.memo && !isUnassigned && (entry.payment_allocations as any[]).length === 0 && (
+                            <span className="text-muted-foreground">-</span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                    );
+                  })}
+                  {(!ownerHistory || ownerHistory.length === 0) && (
+                    <tr>
+                      <td colSpan={6} className="p-8 text-center text-muted-foreground">لا توجد مقبوضات مسجلة</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+

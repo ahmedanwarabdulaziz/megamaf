@@ -21,25 +21,19 @@ export const getProfile = cache(async () => {
   if (!user) return { user: null, profile: null, supabase }
 
   const { data: profile } = await supabase
-    .from("profiles")
-    .select("*, companies(name)")
-    .eq("id", user.id)
+    .from("employees")
+    .select("*")
+    .eq("auth_user_id", user.id)
     .single()
 
   return { user, profile, supabase }
 })
 
-/**
- * Memoized employee permissions fetch for authenticated employees.
- * Runs in parallel with getProfile() — do NOT await getProfile() before calling.
- *
- * Returns null for non-employee roles (admin/member get "all" access).
- */
 export const getEmployeePermissions = cache(async (userId: string) => {
   const supabase = await createClient()
   const { data: employee } = await supabase
     .from("employees")
-    .select("id, is_super_admin, can_approve_custodies, employee_page_access(page_slug)")
+    .select("id, is_super_admin, can_approve, employee_page_access(page_slug)")
     .eq("auth_user_id", userId)
     .single()
   return employee
