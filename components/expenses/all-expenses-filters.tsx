@@ -15,7 +15,9 @@ export function AllExpensesFilters({
   selectedCategoryId,
   startDate,
   endDate,
-  showAll
+  showAll,
+  basePath,
+  activeTab
 }: {
   employees: any[];
   projects: any[];
@@ -26,6 +28,8 @@ export function AllExpensesFilters({
   startDate: string;
   endDate: string;
   showAll: boolean;
+  basePath?: string;
+  activeTab?: string;
 }) {
   const router = useRouter();
   const [employee, setEmployee] = useState(selectedEmployeeId);
@@ -36,7 +40,8 @@ export function AllExpensesFilters({
   const [isAll, setIsAll] = useState(showAll);
 
   const handleSearch = () => {
-    const params = new URLSearchParams({ tab: 'all' });
+    const params = new URLSearchParams();
+    if (activeTab) params.set('tab', activeTab);
     if (employee) params.set('employee_id', employee);
     if (project) params.set('project_id', project);
     if (category) params.set('category_id', category);
@@ -46,7 +51,8 @@ export function AllExpensesFilters({
       if (start) params.set('start_date', start);
       if (end) params.set('end_date', end);
     }
-    router.push(`/expenses?${params.toString()}`);
+    const path = basePath || '/expenses';
+    router.push(`${path}?${params.toString()}`);
   };
 
   const handleToggleShowAll = (e: React.ChangeEvent<HTMLInputElement>) => {

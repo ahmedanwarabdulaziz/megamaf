@@ -124,7 +124,7 @@ export async function getOwnerCustodyDetails(ownerId: string) {
   return data;
 }
 
-export async function getAllExpenses(filters: { startDate?: string, endDate?: string, employeeId?: string, projectId?: string, categoryId?: string, ownerId?: string }) {
+export async function getAllExpenses(filters: { startDate?: string, endDate?: string, employeeId?: string, projectId?: string, categoryId?: string, ownerId?: string, status?: string }) {
   const supabase = await createClient();
   let query = supabase
     .from('expenses')
@@ -143,6 +143,7 @@ export async function getAllExpenses(filters: { startDate?: string, endDate?: st
   if (filters.ownerId) query = query.eq('owner_id', filters.ownerId);
   if (filters.projectId) query = query.eq('project_id', filters.projectId);
   if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
+  if (filters.status) query = query.eq('status', filters.status);
 
   // Default limit to prevent huge loads if no date filters are present
   if (!filters.startDate && !filters.endDate) {
