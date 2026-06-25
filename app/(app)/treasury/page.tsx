@@ -6,12 +6,21 @@ import { AdvancePayButton } from './advance-pay-button';
 import { AdvanceReceiveButton } from './advance-receive-button';
 import { AssignPaymentButton } from '../settings/owners/[id]/statement/assign-payment-button';
 
+import { getAllCustodyBalances, getAllOwnerCustodyBalances } from '@/lib/queries/expenses';
+import { getBanks } from '@/lib/queries/banks';
+import { DisburseCustodyModal } from '@/components/treasury/disburse-custody-modal';
+import { DisburseOwnerCustodyModal } from '@/components/treasury/disburse-owner-custody-modal';
+
 export const dynamic = 'force-dynamic';
-export const metadata = { title: 'الخزينة والمدفوعات' };
+export const metadata = { title: 'الخزينة والمدفوعات والعهد' };
 
 export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const { tab = 'payables' } = await searchParams;
   const supabase = await createClient();
+
+  // If we are on custodies tabs, we fetch custody data.
+  // We can fetch everything simultaneously or conditionally, but let's fetch based on tab.
+  // Actually, Promise.all runs concurrently so it's fast enough.
 
   const [
     { data: vendors },
@@ -21,8 +30,11 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     { data: vendorHistory },
     { data: ownerHistory },
     { data: projects },
-    { data: latestOwnerClaims },   // replaces unbounded allOwnerClaims fetch
-    { data: latestClaimTotals },   // folded into main Promise.all
+    { data: latestOwnerClaims },
+    { data: latestClaimTotals },
+    empCustodyBalances,
+    ownerCustodyBalances,
+    banks
   ] = await Promise.all([
     supabase.from('v_vendor_balances').select('vendor_id, vendor_name, total_due, total_paid, balance').order('balance', { ascending: false }),
     supabase.from('v_owner_balances').select('owner_id, owner_name, total_due, total_paid, balance').order('balance', { ascending: false }),
@@ -35,12 +47,13 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
       .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
       .eq('category', 'owner_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
     supabase.from('projects').select('id, name').order('name'),
-    // Use view instead of fetching all claims — DISTINCT ON (party_id, project_id) in DB
     supabase.from('v_latest_owner_claims').select('claim_id, claim_number, project_id, party_id'),
     supabase.from('v_claim_totals').select('claim_id, total_due_this_claim'),
+    tab === 'emp_custodies' ? getAllCustodyBalances() : Promise.resolve([]),
+    tab === 'owner_custodies' ? getAllOwnerCustodyBalances() : Promise.resolve([]),
+    tab === 'emp_custodies' || tab === 'owner_custodies' ? getBanks() : Promise.resolve([])
   ]);
 
-  // Build Map<ownerId, openClaims[]> for the assign button — O(1) lookup
   const totalsMap = new Map((latestClaimTotals ?? []).map(t => [t.claim_id, t.total_due_this_claim]));
   const openClaimsByOwner = new Map<string, { claim_id: string; claim_number: number; project_id: string; amount_due: number }[]>();
   for (const c of latestOwnerClaims ?? []) {
@@ -51,10 +64,8 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     openClaimsByOwner.set(c.party_id, arr);
   }
 
-  // O(1) name maps for render loop
   const contractorMap = new Map((allContractors ?? []).map(c => [c.id, c.name]));
   const ownerMap      = new Map((allOwners ?? []).map(o => [o.id, o.name]));
-
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -64,18 +75,14 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
             <Wallet className="w-8 h-8 text-primary" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold">الخزينة والمدفوعات</h1>
-            <p className="text-muted-foreground mt-1">إدارة الدفعات والمقبوضات للمقاولين والملاك</p>
+            <h1 className="text-2xl font-bold">الخزينة والمدفوعات والعهد</h1>
+            <p className="text-muted-foreground mt-1">إدارة الدفعات والمقبوضات والعهد للموظفين والملاك</p>
           </div>
         </div>
-        {/* Advance payment to any contractor, even with no prior docs */}
-        {tab === 'payables' && (
-          <AdvancePayButton contractors={allContractors || []} />
-        )}
-        {/* Advance receipt from any owner, even with no prior docs */}
-        {tab === 'receivables' && (
-          <AdvanceReceiveButton owners={allOwners || []} />
-        )}
+        {tab === 'payables' && <AdvancePayButton contractors={allContractors || []} />}
+        {tab === 'receivables' && <AdvanceReceiveButton owners={allOwners || []} />}
+        {tab === 'emp_custodies' && <DisburseCustodyModal employees={empCustodyBalances} banks={banks} />}
+        {tab === 'owner_custodies' && <DisburseOwnerCustodyModal owners={allOwners || []} banks={banks} />}
       </div>
 
       <div className="flex gap-2 border-b overflow-x-auto pb-1">
@@ -84,6 +91,12 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
         </Link>
         <Link href="/treasury?tab=receivables" className={`px-4 py-2 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${tab === 'receivables' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
           المقبوضات (الملاك)
+        </Link>
+        <Link href="/treasury?tab=emp_custodies" className={`px-4 py-2 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${tab === 'emp_custodies' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+          عهد الموظفين
+        </Link>
+        <Link href="/treasury?tab=owner_custodies" className={`px-4 py-2 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${tab === 'owner_custodies' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+          عهد الملاك
         </Link>
       </div>
 
@@ -121,7 +134,6 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
             </table>
           </div>
 
-          {/* Recent Payments History */}
           <div className="mt-8">
             <h2 className="text-lg font-bold mb-4">أحدث المدفوعات للمقاولين</h2>
             <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
@@ -142,7 +154,6 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                       <td className="p-4">{entry.entry_date}</td>
                       <td className="p-4 font-semibold">{contractorMap.get(entry.counterparty_id) || 'غير معروف'}</td>
                       <td className="p-4 text-muted-foreground">{(entry.projects as any)?.name || '-'}</td>
-
                       <td className="p-4 text-muted-foreground">{(entry.bank_accounts as any)?.banks?.name || ''} - {(entry.bank_accounts as any)?.account_name || ''}</td>
                       <td className="p-4 font-bold text-destructive">{formatMoney(entry.amount)}</td>
                       <td className="p-4">
@@ -208,7 +219,6 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
             </table>
           </div>
 
-          {/* Recent Receipts History */}
           <div className="mt-8">
             <h2 className="text-lg font-bold mb-4">أحدث المقبوضات من الملاك</h2>
             <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
@@ -231,7 +241,6 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                     <tr key={entry.id} className={`hover:bg-muted/30 transition-colors ${isUnassigned ? 'bg-amber-50/40' : ''}`}>
                       <td className="p-4">{entry.entry_date}</td>
                       <td className="p-4 font-semibold">{ownerMap.get(entry.counterparty_id) || 'غير معروف'}</td>
-
                       <td className="p-4">
                         {isUnassigned ? (
                           <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span>🟡</span> غير محدد</span>
@@ -255,7 +264,6 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                               ))}
                             </div>
                           )}
-                          {/* Assign button for unlinked/unallocated receipts */}
                           {isUnassigned && (
                             <div className="mt-1">
                               <AssignPaymentButton
@@ -285,7 +293,62 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
           </div>
         </div>
       )}
+
+      {tab === 'emp_custodies' && (
+        <div className="bg-card rounded-lg border shadow-sm divide-y divide-border">
+          {empCustodyBalances.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">لا يوجد موظفين لديهم صلاحية العهد</div>
+          ) : (
+            empCustodyBalances.map((b: any) => (
+              <div key={b.employee_id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4 hover:bg-muted/20 transition-colors">
+                <div>
+                  <p className="font-bold">{b.full_name}</p>
+                  <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-4">
+                    <span>إجمالي المنصرف: <span className="font-medium text-foreground">{formatMoney(b.total_disbursed)}</span></span>
+                    <span>العهد المسواة: <span className="font-medium text-foreground">{formatMoney(b.total_settled)}</span></span>
+                    <span>المصروفات المعتمدة: <span className="font-medium text-foreground">{formatMoney(b.total_approved_expenses)}</span></span>
+                  </div>
+                </div>
+                <div className="text-left">
+                  <p className="text-xs text-muted-foreground mb-1">الرصيد المتبقي</p>
+                  <div className={`text-xl font-bold whitespace-nowrap ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                    {formatMoney(b.balance)}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {tab === 'owner_custodies' && (
+        <div className="bg-card rounded-lg border shadow-sm divide-y divide-border">
+          {ownerCustodyBalances.length === 0 ? (
+            <div className="p-8 text-center text-muted-foreground">
+              <p className="text-base">لا يوجد ملاك لديهم عهد مفتوحة</p>
+              <p className="text-sm mt-1">استخدم الزر في الأعلى لبدء صرف عهدة لمالك</p>
+            </div>
+          ) : (
+            ownerCustodyBalances.map((b: any) => (
+              <div key={b.owner_id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4 hover:bg-muted/20 transition-colors">
+                <div>
+                  <p className="font-bold">{b.name}</p>
+                  <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-4">
+                    <span>إجمالي المنصرف: <span className="font-medium text-foreground">{formatMoney(b.total_disbursed)}</span></span>
+                    <span>المصروفات المعتمدة: <span className="font-medium text-foreground">{formatMoney(b.total_approved_expenses)}</span></span>
+                  </div>
+                </div>
+                <div className="text-left">
+                  <p className="text-xs text-muted-foreground mb-1">الرصيد المتبقي</p>
+                  <div className={`text-xl font-bold whitespace-nowrap ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                    {formatMoney(b.balance)}
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }
-
