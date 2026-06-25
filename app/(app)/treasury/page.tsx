@@ -5,6 +5,7 @@ import { Wallet } from 'lucide-react';
 import { AdvancePayButton } from './advance-pay-button';
 import { AdvanceReceiveButton } from './advance-receive-button';
 import { AssignPaymentButton } from '../settings/owners/[id]/statement/assign-payment-button';
+import { TreasuryHistoryFilters } from '@/components/treasury/treasury-history-filters';
 
 import { getAllCustodyBalances, getAllOwnerCustodyBalances } from '@/lib/queries/expenses';
 import { getBanks } from '@/lib/queries/banks';
@@ -14,13 +15,33 @@ import { DisburseOwnerCustodyModal } from '@/components/treasury/disburse-owner-
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الخزينة والمدفوعات والعهد' };
 
-export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
-  const { tab = 'payables' } = await searchParams;
+export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string, vendor_id?: string, project_id?: string, start_date?: string, end_date?: string, show_all?: string }> }) {
+  const { tab = 'payables', vendor_id, project_id, start_date, end_date, show_all } = await searchParams;
   const supabase = await createClient();
 
-  // If we are on custodies tabs, we fetch custody data.
-  // We can fetch everything simultaneously or conditionally, but let's fetch based on tab.
-  // Actually, Promise.all runs concurrently so it's fast enough.
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+  const defaultStart = `${year}-${month}-01`;
+  const defaultEnd = `${year}-${month}-${lastDay}`;
+
+  const startDate = start_date || defaultStart;
+  const endDate = end_date || defaultEnd;
+  const isShowAll = show_all === 'true';
+
+  let vendorHistoryQuery = supabase.from('ledger_entries')
+      .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
+      .eq('category', 'vendor_payment')
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+  if (vendor_id) vendorHistoryQuery = vendorHistoryQuery.eq('counterparty_id', vendor_id);
+  if (project_id) vendorHistoryQuery = vendorHistoryQuery.eq('project_id', project_id);
+  if (!isShowAll) {
+      vendorHistoryQuery = vendorHistoryQuery.gte('entry_date', startDate).lte('entry_date', endDate);
+  }
+  vendorHistoryQuery = vendorHistoryQuery.limit(isShowAll || start_date || end_date || vendor_id || project_id ? 200 : 20);
 
   const [
     { data: vendors },
@@ -40,9 +61,7 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     supabase.from('v_owner_balances').select('owner_id, owner_name, total_due, total_paid, balance').order('balance', { ascending: false }),
     supabase.from('vendors').select('id, name').eq('kind', 'contractor').order('name'),
     supabase.from('project_owners').select('id, name').order('name'),
-    supabase.from('ledger_entries')
-      .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
-      .eq('category', 'vendor_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
+    vendorHistoryQuery,
     supabase.from('ledger_entries')
       .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
       .eq('category', 'owner_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
@@ -136,6 +155,17 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
 
           <div className="mt-8">
             <h2 className="text-lg font-bold mb-4">أحدث المدفوعات للمقاولين</h2>
+            
+            <TreasuryHistoryFilters 
+              vendors={allContractors || []}
+              projects={projects || []}
+              selectedVendorId={vendor_id || ''}
+              selectedProjectId={project_id || ''}
+              startDate={startDate}
+              endDate={endDate}
+              showAll={isShowAll}
+            />
+
             <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
               <table className="w-full text-sm text-right">
                 <thead className="bg-muted/50 border-b">
