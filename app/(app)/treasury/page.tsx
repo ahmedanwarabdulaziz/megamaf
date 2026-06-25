@@ -6,6 +6,7 @@ import { AdvancePayButton } from './advance-pay-button';
 import { AdvanceReceiveButton } from './advance-receive-button';
 import { AssignPaymentButton } from '../settings/owners/[id]/statement/assign-payment-button';
 import { TreasuryHistoryFilters } from '@/components/treasury/treasury-history-filters';
+import { OwnerHistoryFilters } from '@/components/treasury/owner-history-filters';
 
 import { getAllCustodyBalances, getAllOwnerCustodyBalances } from '@/lib/queries/expenses';
 import { getBanks } from '@/lib/queries/banks';
@@ -15,8 +16,8 @@ import { DisburseOwnerCustodyModal } from '@/components/treasury/disburse-owner-
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الخزينة والمدفوعات والعهد' };
 
-export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string, vendor_id?: string, project_id?: string, start_date?: string, end_date?: string, show_all?: string }> }) {
-  const { tab = 'payables', vendor_id, project_id, start_date, end_date, show_all } = await searchParams;
+export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string, vendor_id?: string, owner_id?: string, project_id?: string, start_date?: string, end_date?: string, show_all?: string }> }) {
+  const { tab = 'payables', vendor_id, owner_id, project_id, start_date, end_date, show_all } = await searchParams;
   const supabase = await createClient();
 
   const now = new Date();
@@ -37,11 +38,24 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
       .order('created_at', { ascending: false });
 
   if (vendor_id) vendorHistoryQuery = vendorHistoryQuery.eq('counterparty_id', vendor_id);
-  if (project_id) vendorHistoryQuery = vendorHistoryQuery.eq('project_id', project_id);
-  if (!isShowAll) {
+  if (project_id && tab === 'payables') vendorHistoryQuery = vendorHistoryQuery.eq('project_id', project_id);
+  if (!isShowAll && tab === 'payables') {
       vendorHistoryQuery = vendorHistoryQuery.gte('entry_date', startDate).lte('entry_date', endDate);
   }
-  vendorHistoryQuery = vendorHistoryQuery.limit(isShowAll || start_date || end_date || vendor_id || project_id ? 200 : 20);
+  vendorHistoryQuery = vendorHistoryQuery.limit((isShowAll || start_date || end_date || vendor_id || project_id) && tab === 'payables' ? 200 : 20);
+
+  let ownerHistoryQuery = supabase.from('ledger_entries')
+      .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
+      .eq('category', 'owner_payment')
+      .order('entry_date', { ascending: false })
+      .order('created_at', { ascending: false });
+
+  if (owner_id) ownerHistoryQuery = ownerHistoryQuery.eq('counterparty_id', owner_id);
+  if (project_id && tab === 'receivables') ownerHistoryQuery = ownerHistoryQuery.eq('project_id', project_id);
+  if (!isShowAll && tab === 'receivables') {
+      ownerHistoryQuery = ownerHistoryQuery.gte('entry_date', startDate).lte('entry_date', endDate);
+  }
+  ownerHistoryQuery = ownerHistoryQuery.limit((isShowAll || start_date || end_date || owner_id || project_id) && tab === 'receivables' ? 200 : 20);
 
   const [
     { data: vendors },
@@ -62,9 +76,7 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     supabase.from('vendors').select('id, name').eq('kind', 'contractor').order('name'),
     supabase.from('project_owners').select('id, name').order('name'),
     vendorHistoryQuery,
-    supabase.from('ledger_entries')
-      .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
-      .eq('category', 'owner_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
+    ownerHistoryQuery,
     supabase.from('projects').select('id, name').order('name'),
     supabase.from('v_latest_owner_claims').select('claim_id, claim_number, project_id, party_id'),
     supabase.from('v_claim_totals').select('claim_id, total_due_this_claim'),
@@ -251,6 +263,17 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
 
           <div className="mt-8">
             <h2 className="text-lg font-bold mb-4">أحدث المقبوضات من الملاك</h2>
+
+            <OwnerHistoryFilters 
+              owners={allOwners || []}
+              projects={projects || []}
+              selectedOwnerId={owner_id || ''}
+              selectedProjectId={project_id || ''}
+              startDate={startDate}
+              endDate={endDate}
+              showAll={isShowAll}
+            />
+
             <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
               <table className="w-full text-sm text-right">
                 <thead className="bg-muted/50 border-b">
