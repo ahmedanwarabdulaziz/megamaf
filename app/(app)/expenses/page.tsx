@@ -1,4 +1,4 @@
-import { getEmployeeExpenses, getOwnerExpenses, getExpenseCategories } from '@/lib/queries/expenses';
+import { getEmployeeExpenses, getOwnerExpenses, getExpenseCategories, getAllExpenses } from '@/lib/queries/expenses';
 import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
 
@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server';
 import { formatMoney } from '@/lib/money';
 import { CreateExpenseModal } from '@/components/expenses/create-expense-modal';
 import { CreateOwnerExpenseModal } from '@/components/expenses/create-owner-expense-modal';
+import { AllExpensesFilters } from '@/components/expenses/all-expenses-filters';
 
 export const metadata = {
   title: 'المصروفات',
@@ -16,13 +17,25 @@ export const metadata = {
 export default async function EmployeeExpensesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string }>;
+  searchParams: Promise<{ tab?: string, employee_id?: string, project_id?: string, category_id?: string, start_date?: string, end_date?: string, show_all?: string }>;
 }) {
-  const { tab = 'mine' } = await searchParams;
+  const { tab = 'mine', employee_id, project_id, category_id, start_date, end_date, show_all } = await searchParams;
   const { profile: employee } = await getProfile();
   if (!employee) return <div>Not authenticated</div>;
 
   const isApprover = employee.can_approve || employee.is_super_admin;
+  const isSuperAdmin = employee.is_super_admin;
+
+  const now = new Date();
+  const year = now.getFullYear();
+  const month = String(now.getMonth() + 1).padStart(2, '0');
+  const lastDay = new Date(year, now.getMonth() + 1, 0).getDate();
+  const defaultStart = `${year}-${month}-01`;
+  const defaultEnd = `${year}-${month}-${lastDay}`;
+
+  const startDate = start_date || defaultStart;
+  const endDate = end_date || defaultEnd;
+  const isShowAll = show_all === 'true';
 
   const [categories, projects] = await Promise.all([
     getExpenseCategories(),
@@ -34,6 +47,17 @@ export default async function EmployeeExpensesPage({
   // Load data based on tab
   const myExpenses   = tab === 'mine'   ? await getEmployeeExpenses(employee.id) : [];
   const ownerExpenses = (tab === 'owners' && isApprover) ? await getOwnerExpenses() : [];
+  
+  let allExpensesData: any[] = [];
+  if (tab === 'all' && isSuperAdmin) {
+    allExpensesData = await getAllExpenses({
+      employeeId: employee_id,
+      projectId: project_id,
+      categoryId: category_id,
+      startDate: isShowAll ? undefined : startDate,
+      endDate: isShowAll ? undefined : endDate
+    });
+  }
 
   // Owner list for the create owner expense modal
   let owners: any[] = [];
@@ -57,7 +81,7 @@ export default async function EmployeeExpensesPage({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">المصروفات</h1>
         <div className="flex gap-2">
-          {tab === 'mine' && (employee.has_custody_access || employee.is_super_admin) && (
+          {(tab === 'mine' || tab === 'all') && (employee.has_custody_access || employee.is_super_admin) && (
             <CreateExpenseModal
               categories={activeCategories}
               projects={projects || []}
@@ -75,22 +99,22 @@ export default async function EmployeeExpensesPage({
         </div>
       </div>
 
-      {/* Tabs — only show owners tab for approvers/admins */}
-      {isApprover && (
-        <div className="flex gap-1 border-b">
-          <a
-            href="?tab=mine"
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
-              tab === 'mine'
-                ? 'border-primary text-primary'
-                : 'border-transparent text-muted-foreground hover:text-foreground'
-            }`}
-          >
-            مصروفاتي
-          </a>
+      {/* Tabs */}
+      <div className="flex gap-1 border-b overflow-x-auto pb-1">
+        <a
+          href="?tab=mine"
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+            tab === 'mine'
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          مصروفاتي
+        </a>
+        {isApprover && (
           <a
             href="?tab=owners"
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
               tab === 'owners'
                 ? 'border-primary text-primary'
                 : 'border-transparent text-muted-foreground hover:text-foreground'
@@ -98,8 +122,20 @@ export default async function EmployeeExpensesPage({
           >
             مصروفات الملاك
           </a>
-        </div>
-      )}
+        )}
+        {isSuperAdmin && (
+          <a
+            href="?tab=all"
+            className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+              tab === 'all'
+                ? 'border-primary text-primary'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            }`}
+          >
+            كل المصروفات (للإدارة)
+          </a>
+        )}
+      </div>
 
       {/* My expenses list */}
       {tab === 'mine' && (
@@ -109,7 +145,6 @@ export default async function EmployeeExpensesPage({
           ) : (
             myExpenses.map((expense: any) => (
               <div key={expense.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-
                 <div>
                   <p className="font-bold">{expense.project?.name} - {expense.category?.name}</p>
                   <p className="text-sm text-muted-foreground">{expense.notes}</p>
@@ -167,6 +202,63 @@ export default async function EmployeeExpensesPage({
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {/* All expenses list */}
+      {tab === 'all' && isSuperAdmin && (
+        <div className="space-y-4">
+          <AllExpensesFilters 
+            employees={allEmployees}
+            projects={projects || []}
+            categories={categories || []}
+            selectedEmployeeId={employee_id || ''}
+            selectedProjectId={project_id || ''}
+            selectedCategoryId={category_id || ''}
+            startDate={startDate}
+            endDate={endDate}
+            showAll={isShowAll}
+          />
+
+          <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
+            <table className="w-full text-sm text-right">
+              <thead className="bg-muted/50 border-b">
+                <tr>
+                  <th className="p-4 font-medium">التاريخ</th>
+                  <th className="p-4 font-medium">الموظف / المالك</th>
+                  <th className="p-4 font-medium">المشروع</th>
+                  <th className="p-4 font-medium">بند الصرف</th>
+                  <th className="p-4 font-medium">المبلغ</th>
+                  <th className="p-4 font-medium">الحالة</th>
+                  <th className="p-4 font-medium">البيان</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {allExpensesData?.map((expense: any) => (
+                  <tr key={expense.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="p-4 whitespace-nowrap">{expense.expense_date}</td>
+                    <td className="p-4 font-semibold">
+                      {expense.owner_id ? (
+                        <span className="text-orange-600">مالك: {expense.owner?.name}</span>
+                      ) : (
+                        <span className="text-primary">{expense.employee?.full_name}</span>
+                      )}
+                    </td>
+                    <td className="p-4 text-muted-foreground">{expense.project?.name || '-'}</td>
+                    <td className="p-4 text-muted-foreground">{expense.category?.name || '-'}</td>
+                    <td className="p-4 font-bold">{formatMoney(expense.amount)}</td>
+                    <td className="p-4"><StatusBadge status={expense.status} /></td>
+                    <td className="p-4 text-muted-foreground">{expense.notes || '-'}</td>
+                  </tr>
+                ))}
+                {(!allExpensesData || allExpensesData.length === 0) && (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">لا توجد مصروفات مسجلة</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

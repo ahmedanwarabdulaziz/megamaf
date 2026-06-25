@@ -113,6 +113,62 @@ export async function getEmployeeCustodyBalance(employeeId: string) {
   return data || { balance: 0, total_disbursed: 0, total_approved_expenses: 0, total_settled: 0 };
 }
 
+export async function getOwnerCustodyDetails(ownerId: string) {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('v_owner_custody_details')
+    .select('*')
+    .eq('owner_id', ownerId)
+    .order('transaction_date', { ascending: true });
+  if (error) throw error;
+  return data;
+}
+
+export async function getAllExpenses(filters: { startDate?: string, endDate?: string, employeeId?: string, projectId?: string, categoryId?: string, ownerId?: string }) {
+  const supabase = await createClient();
+  let query = supabase
+    .from('expenses')
+    .select(`
+      *,
+      project:projects(name),
+      employee:employees!expenses_employee_id_fkey(full_name),
+      owner:project_owners(name),
+      category:expense_categories(name)
+    `)
+    .order('expense_date', { ascending: false });
+
+  if (filters.startDate) query = query.gte('expense_date', filters.startDate);
+  if (filters.endDate) query = query.lte('expense_date', filters.endDate);
+  if (filters.employeeId) query = query.eq('employee_id', filters.employeeId);
+  if (filters.ownerId) query = query.eq('owner_id', filters.ownerId);
+  if (filters.projectId) query = query.eq('project_id', filters.projectId);
+  if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
+
+  // Default limit to prevent huge loads if no date filters are present
+  if (!filters.startDate && !filters.endDate) {
+    query = query.limit(200);
+  }
+
+  const { data: expenses, error } = await query;
+  
+  if (error) {
+    console.error('[getAllExpenses]', error);
+    return [];
+  }
+  if (!expenses || expenses.length === 0) return [];
+
+  const { data: attachments } = await supabase
+    .from('attachments')
+    .select('entity_id, r2_key')
+    .eq('entity_type', 'expense')
+    .in('entity_id', expenses.map(e => e.id));
+
+  return expenses.map(e => ({
+    ...e,
+    attachments: attachments?.filter(a => a.entity_id === e.id) || []
+  }));
+}
+
 export async function getAllCustodyBalances() {
   const supabase = await createClient();
   const { data, error } = await supabase
