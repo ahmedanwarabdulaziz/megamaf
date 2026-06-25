@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button"
 import { getProfile, getEmployeePermissions } from "@/lib/supabase/get-profile"
 import { PasskeyManager } from "@/components/profile/passkey-manager"
 import { NotificationBell } from "@/components/ui/notification-bell"
+import { MobileNav } from "@/components/layout/mobile-nav"
 
 export default async function AppLayout({
   children,
@@ -238,9 +239,24 @@ export default async function AppLayout({
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
           {/* Mobile Header + Global Desktop Topbar */}
           <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4 md:justify-end">
-            <div className="font-semibold md:hidden">
-              ميجا ماف
-            </div>
+            {/* Mobile: hamburger (MobileNav renders the button) */}
+            <MobileNav
+              employeeName={employee?.full_name || user?.email || ''}
+              employeeRole={employee?.role === 'owner' ? 'المدير العام' : 'موظف'}
+              canSeeProjects={canSeeProjects}
+              canSeeBanks={canSeeBanks}
+              canSeeDeposits={canSeeDeposits}
+              canSeeTreasury={canSeeTreasury}
+              canSeeExpenses={canSeeExpenses}
+              canApprove={!!(isSuperAdmin || employee?.can_approve)}
+              canSeeVendors={canSeeVendors}
+              canSeeClaims={canSeeClaims}
+              canSeeInventory={canSeeInventory}
+              canSeeEmployees={canSeeEmployees}
+              canSeeSettings={canSeeSettings}
+              canSeeOwners={canSeeOwners}
+              isSuperAdmin={isSuperAdmin}
+            />
             <div className="flex items-center gap-2">
               <NotificationBell />
             </div>
