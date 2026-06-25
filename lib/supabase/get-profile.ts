@@ -2,15 +2,14 @@ import { cache } from "react"
 import { createClient } from "@/lib/supabase/server"
 
 /**
- * Memoized user + profile fetch using React.cache().
+ * Merged profile + permissions fetch — single employees query per request.
  *
- * React.cache() deduplicates calls within the same request lifecycle,
- * meaning if layout.tsx AND a page both call getProfile(), only ONE
- * Supabase round-trip is made per request. This eliminates the repeated
- * auth.getUser() + profiles query on every navigation.
+ * Previously layout.tsx called getProfile() + getEmployeePermissions() as two
+ * sequential awaits, hitting the employees table TWICE.
+ * Now one query fetches everything: profile fields + is_super_admin + page access.
  *
- * IMPORTANT: This is only deduplicated per-request (per server render).
- * It does NOT persist across requests — it's pure request-level memoization.
+ * React.cache() deduplicates within the same request — layout + page can both
+ * call getProfile() and only ONE round-trip is made.
  */
 export const getProfile = cache(async () => {
   const supabase = await createClient()
@@ -22,13 +21,19 @@ export const getProfile = cache(async () => {
 
   const { data: profile } = await supabase
     .from("employees")
-    .select("*")
+    .select(
+      "id, full_name, role, is_super_admin, can_approve, has_custody_access, is_active, active_session_id, employee_page_access(page_slug)"
+    )
     .eq("auth_user_id", user.id)
     .single()
 
   return { user, profile, supabase }
 })
 
+/**
+ * @deprecated Use getProfile() — it now includes permissions in one query.
+ * Kept for backward compatibility. Returns the same employee row from cache.
+ */
 export const getEmployeePermissions = cache(async (userId: string) => {
   const supabase = await createClient()
   const { data: employee } = await supabase

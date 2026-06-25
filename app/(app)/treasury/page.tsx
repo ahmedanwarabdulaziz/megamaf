@@ -6,6 +6,7 @@ import { AdvancePayButton } from './advance-pay-button';
 import { AdvanceReceiveButton } from './advance-receive-button';
 import { AssignPaymentButton } from '../settings/owners/[id]/statement/assign-payment-button';
 
+export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الخزينة والمدفوعات' };
 
 export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
@@ -20,44 +21,40 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     { data: vendorHistory },
     { data: ownerHistory },
     { data: projects },
-    { data: allOwnerClaims },
+    { data: latestOwnerClaims },   // replaces unbounded allOwnerClaims fetch
+    { data: latestClaimTotals },   // folded into main Promise.all
   ] = await Promise.all([
-    supabase.from('v_vendor_balances').select('*').order('balance', { ascending: false }),
-    supabase.from('v_owner_balances').select('*').order('balance', { ascending: false }),
+    supabase.from('v_vendor_balances').select('vendor_id, vendor_name, total_due, total_paid, balance').order('balance', { ascending: false }),
+    supabase.from('v_owner_balances').select('owner_id, owner_name, total_due, total_paid, balance').order('balance', { ascending: false }),
     supabase.from('vendors').select('id, name').eq('kind', 'contractor').order('name'),
     supabase.from('project_owners').select('id, name').order('name'),
-    supabase.from('ledger_entries').select('*, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)').eq('category', 'vendor_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
-    supabase.from('ledger_entries').select('*, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)').eq('category', 'owner_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
+    supabase.from('ledger_entries')
+      .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
+      .eq('category', 'vendor_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
+    supabase.from('ledger_entries')
+      .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
+      .eq('category', 'owner_payment').order('entry_date', { ascending: false }).order('created_at', { ascending: false }).limit(20),
     supabase.from('projects').select('id, name').order('name'),
-    supabase.from('claims').select('id, claim_number, project_id, party_id').eq('claim_type', 'owner').eq('status', 'approved').order('claim_number', { ascending: false }),
+    // Use view instead of fetching all claims — DISTINCT ON (party_id, project_id) in DB
+    supabase.from('v_latest_owner_claims').select('claim_id, claim_number, project_id, party_id'),
+    supabase.from('v_claim_totals').select('claim_id, total_due_this_claim'),
   ]);
 
-  // Build open-claims-for-assign per owner: latest claim per (owner, project), with outstanding amount
-  // We'll build a per-owner map so the button component gets only the relevant claims.
-  // For simplicity on the treasury page, pass ALL owner claims totals and filter client-side.
-  const latestClaimIds = (() => {
-    const seen = new Map<string, string>(); // key: `${party_id}_${project_id}` → claim_id
-    for (const c of allOwnerClaims ?? []) {
-      const key = `${c.party_id}_${c.project_id}`;
-      if (!seen.has(key)) seen.set(key, c.id); // already desc order → first = latest
-    }
-    return Array.from(seen.values());
-  })();
-
-  const { data: latestClaimTotals } = latestClaimIds.length > 0
-    ? await supabase.from('v_claim_totals').select('claim_id, total_due_this_claim').in('claim_id', latestClaimIds)
-    : { data: [] };
-
-  // Map: claim_id → { claim_number, project_id, party_id, amount_due }
+  // Build Map<ownerId, openClaims[]> for the assign button — O(1) lookup
+  const totalsMap = new Map((latestClaimTotals ?? []).map(t => [t.claim_id, t.total_due_this_claim]));
   const openClaimsByOwner = new Map<string, { claim_id: string; claim_number: number; project_id: string; amount_due: number }[]>();
-  for (const claim of allOwnerClaims ?? []) {
-    if (!latestClaimIds.includes(claim.id)) continue;
-    const t = latestClaimTotals?.find((t) => t.claim_id === claim.id);
-    if (!t || t.total_due_this_claim <= 0) continue;
-    const arr = openClaimsByOwner.get(claim.party_id) ?? [];
-    arr.push({ claim_id: claim.id, claim_number: claim.claim_number, project_id: claim.project_id, amount_due: t.total_due_this_claim });
-    openClaimsByOwner.set(claim.party_id, arr);
+  for (const c of latestOwnerClaims ?? []) {
+    const due = totalsMap.get(c.claim_id) ?? 0;
+    if (due <= 0) continue;
+    const arr = openClaimsByOwner.get(c.party_id) ?? [];
+    arr.push({ claim_id: c.claim_id, claim_number: c.claim_number, project_id: c.project_id, amount_due: due });
+    openClaimsByOwner.set(c.party_id, arr);
   }
+
+  // O(1) name maps for render loop
+  const contractorMap = new Map((allContractors ?? []).map(c => [c.id, c.name]));
+  const ownerMap      = new Map((allOwners ?? []).map(o => [o.id, o.name]));
+
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -143,8 +140,9 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                   {vendorHistory?.map(entry => (
                     <tr key={entry.id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-4">{entry.entry_date}</td>
-                      <td className="p-4 font-semibold">{allContractors?.find(c => c.id === entry.counterparty_id)?.name || 'غير معروف'}</td>
-                      <td className="p-4 text-muted-foreground">{entry.projects?.name || '-'}</td>
+                      <td className="p-4 font-semibold">{contractorMap.get(entry.counterparty_id) || 'غير معروف'}</td>
+                      <td className="p-4 text-muted-foreground">{(entry.projects as any)?.name || '-'}</td>
+
                       <td className="p-4 text-muted-foreground">{(entry.bank_accounts as any)?.banks?.name || ''} - {(entry.bank_accounts as any)?.account_name || ''}</td>
                       <td className="p-4 font-bold text-destructive">{formatMoney(entry.amount)}</td>
                       <td className="p-4">
@@ -232,7 +230,8 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                     return (
                     <tr key={entry.id} className={`hover:bg-muted/30 transition-colors ${isUnassigned ? 'bg-amber-50/40' : ''}`}>
                       <td className="p-4">{entry.entry_date}</td>
-                      <td className="p-4 font-semibold">{allOwners?.find(o => o.id === entry.counterparty_id)?.name || 'غير معروف'}</td>
+                      <td className="p-4 font-semibold">{ownerMap.get(entry.counterparty_id) || 'غير معروف'}</td>
+
                       <td className="p-4">
                         {isUnassigned ? (
                           <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span>🟡</span> غير محدد</span>

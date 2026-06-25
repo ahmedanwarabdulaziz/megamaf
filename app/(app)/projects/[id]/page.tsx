@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
+import { getProfile } from '@/lib/supabase/get-profile'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -12,6 +13,8 @@ import { ClaimHistory } from '@/components/claims/claim-history'
 import { ProjectModal } from '../_components/project-modal'
 import { OpeningBalanceForm } from './opening-balance-form'
 
+export const dynamic = 'force-dynamic';
+
 export default async function ProjectDetailPage({ 
   params,
   searchParams 
@@ -23,59 +26,47 @@ export default async function ProjectDetailPage({
   const { tab = 'overview' } = await searchParams
   const supabase = await createClient()
 
-  const { data: project } = await supabase
-    .from('projects')
-    .select(`*, project_owners(name)`)
-    .eq('id', id)
-    .single()
+  // Batch 1: all independent queries in parallel
+  const [
+    { data: project },
+    { profile },
+    { data: owners },
+    { data: allProjects },
+    { data: finances },
+    { data: ownerClaims },
+    { data: scheduleRows },
+  ] = await Promise.all([
+    supabase.from('projects').select('*, project_owners(name)').eq('id', id).single(),
+    getProfile(),
+    supabase.from('project_owners').select('id, name').order('name'),
+    supabase.from('projects').select('id, name, code, parent_id, node_type, sort_order, owner_id').order('sort_order'),
+    supabase.from('v_project_financial_position').select('*').eq('project_id', id).single(),
+    supabase.from('claims')
+      .select('id, claim_number, claim_date, status, party_id, project_id, claim_type')
+      .eq('project_id', id)
+      .eq('claim_type', 'owner')
+      .order('claim_number', { ascending: false }),
+    supabase.from('owner_payment_schedule').select('*').eq('project_id', id).order('due_date', { ascending: true }),
+  ])
 
   if (!project) notFound()
 
-  const { data: { user } } = await supabase.auth.getUser()
-  const { data: profile } = await supabase
-    .from('employees')
-    .select('can_approve, is_super_admin')
-    .eq('auth_user_id', user?.id ?? '')
-    .single()
   const canEdit = !!profile?.is_super_admin
+  const canApprove = !!(profile?.is_super_admin || profile?.can_approve)
 
-  // Owners + all projects (for the edit modal: owner dropdown + parent lookup)
-  const [{ data: owners }, { data: allProjects }] = await Promise.all([
-    supabase.from('project_owners').select('id, name').order('name'),
-    supabase.from('projects').select('*').order('sort_order'),
-  ])
-
-  // Fetch financial position
-  const { data: finances } = await supabase
-    .from('v_project_financial_position')
-    .select('*')
-    .eq('project_id', id)
-    .single()
-
-  // Fetch owner claims
-  const { data: ownerClaims } = await supabase
-    .from('claims')
-    .select(`*`)
-    .eq('project_id', id)
-    .eq('claim_type', 'owner')
-    .order('claim_number', { ascending: false })
-
+  // Batch 2: claim totals+paid (depends on ownerClaims from batch 1)
   if (ownerClaims && ownerClaims.length > 0) {
-    const claimIds = ownerClaims.map(c => c.id)
-    const { data: claimTotals } = await supabase.from('v_claim_totals').select('*').in('claim_id', claimIds)
-    const { data: claimPaid } = await supabase.from('v_claim_paid').select('*').in('claim_id', claimIds)
+    const claimIds = ownerClaims.map((c: any) => c.id)
+    const [{ data: claimTotals }, { data: claimPaid }] = await Promise.all([
+      supabase.from('v_claim_totals').select('claim_id, claim_cumulative_total, claim_cumulative_retained, claim_cumulative_payable, prior_cumulative_payable, total_due_this_claim').in('claim_id', claimIds),
+      supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', claimIds),
+    ])
     ownerClaims.forEach((c: any) => {
-      c.v_claim_totals = claimTotals?.filter(t => t.claim_id === c.id) || []
-      c.v_claim_paid = claimPaid?.filter(p => p.claim_id === c.id) || []
+      c.v_claim_totals = claimTotals?.filter((t: any) => t.claim_id === c.id) || []
+      c.v_claim_paid  = claimPaid?.filter((p: any)  => p.claim_id  === c.id) || []
     })
   }
 
-  // Fetch schedule
-  const { data: scheduleRows } = await supabase
-    .from('owner_payment_schedule')
-    .select('*')
-    .eq('project_id', id)
-    .order('due_date', { ascending: true })
 
   const isMainCompany = project.node_type === 'main_company';
 

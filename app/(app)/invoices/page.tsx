@@ -28,7 +28,8 @@ export default async function InvoicesPage() {
         {invoices.length === 0 ? (
           <div className="p-8 text-center text-muted-foreground">لا توجد فواتير</div>
         ) : (
-          invoices.map(invoice => (
+          invoices.map((invoice: any) => (
+
             <div key={invoice.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
               <div>
                 <div className="flex items-center gap-2 mb-1">

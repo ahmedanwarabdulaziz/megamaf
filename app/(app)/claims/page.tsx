@@ -1,6 +1,9 @@
 import Link from 'next/link';
 import { getClaims } from '@/lib/queries/claims';
 import { getProfile } from '@/lib/supabase/get-profile';
+
+export const dynamic = 'force-dynamic';
+
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
 import { ClaimApproveRejectButtons } from '@/components/claims/approve-reject-buttons';

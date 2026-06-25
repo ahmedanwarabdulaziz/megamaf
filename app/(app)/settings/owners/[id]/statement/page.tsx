@@ -11,40 +11,37 @@ export default async function OwnerStatementPage({ params }: { params: Promise<{
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: owner } = await supabase.from('project_owners').select('*').eq('id', id).single();
+  // ── Batch 1: all independent queries in parallel ──────────────────────────
+  const [
+    { data: owner },
+    { data: claims },
+    { data: receipts },
+    { data: projects },
+  ] = await Promise.all([
+    supabase.from('project_owners').select('*').eq('id', id).single(),
+    supabase
+      .from('claims')
+      .select('id, claim_number, claim_date, project_id, projects(name)')
+      .eq('party_id', id)
+      .eq('claim_type', 'owner')
+      .eq('status', 'approved')
+      .order('claim_number', { ascending: true }),
+    supabase
+      .from('ledger_entries')
+      .select('id, amount, project_id, entry_date, memo, projects(name), payment_allocations(allocated_amount)')
+      .eq('counterparty_id', id)
+      .eq('counterparty_type', 'owner')
+      .eq('direction', 'in')
+      .order('entry_date', { ascending: true }),
+    supabase.from('projects').select('id, name').order('name'),
+  ]);
+
   if (!owner) notFound();
 
-  // ── 1. Fetch all approved owner claims (all, not just latest — for statement history) ──
-  const { data: claims } = await supabase
-    .from('claims')
-    .select('id, claim_number, claim_date, project_id, projects(name)')
-    .eq('party_id', id)
-    .eq('claim_type', 'owner')
-    .eq('status', 'approved')
-    .order('claim_number', { ascending: true });
-
-  // ── 2. Claim payable amounts from v_claim_totals ──────────────────────────
+  // ── Batch 2: claim totals (depends on claims from batch 1) ────────────────
   const allClaimIds = claims?.map((c) => c.id) ?? [];
-  const { data: claimTotals } = allClaimIds.length > 0
-    ? await supabase
-        .from('v_claim_totals')
-        .select('claim_id, claim_cumulative_payable')
-        .in('claim_id', allClaimIds)
-    : { data: [] };
 
-  // ── 3. Ledger entries (receipts) with their allocations ───────────────────
-  const { data: receipts } = await supabase
-    .from('ledger_entries')
-    .select('id, amount, project_id, entry_date, memo, projects(name), payment_allocations(allocated_amount)')
-    .eq('counterparty_id', id)
-    .eq('counterparty_type', 'owner')
-    .eq('direction', 'in')
-    .order('entry_date', { ascending: true });
-
-  // ── 4. Projects list (for assign form) ────────────────────────────────────
-  const { data: projects } = await supabase.from('projects').select('id, name').order('name');
-
-  // ── 5. Latest open claim per project (for assign form) ────────────────────
+  // Latest claim per project (for assign form)
   const seenProjects = new Set<string>();
   const latestClaims = (claims ?? [])
     .slice()
@@ -54,14 +51,18 @@ export default async function OwnerStatementPage({ params }: { params: Promise<{
       seenProjects.add(c.project_id);
       return true;
     });
-
   const latestClaimIds = latestClaims.map((c) => c.id);
-  const { data: latestTotals } = latestClaimIds.length > 0
-    ? await supabase
-        .from('v_claim_totals')
-        .select('claim_id, total_due_this_claim')
-        .in('claim_id', latestClaimIds)
-    : { data: [] };
+
+  const [{ data: claimTotals }, { data: latestTotals }] = await Promise.all([
+    allClaimIds.length > 0
+      ? supabase.from('v_claim_totals').select('claim_id, claim_cumulative_payable').in('claim_id', allClaimIds)
+      : Promise.resolve({ data: [] }),
+    latestClaimIds.length > 0
+      ? supabase.from('v_claim_totals').select('claim_id, total_due_this_claim').in('claim_id', latestClaimIds)
+      : Promise.resolve({ data: [] }),
+  ]);
+
+
 
   const openClaimsForAssign = latestClaims
     .map((c) => ({

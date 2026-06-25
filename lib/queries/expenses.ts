@@ -46,13 +46,11 @@ export async function getEmployeeExpenses(employeeId: string) {
   const supabase = await createClient();
   const { data: expenses, error } = await supabase
     .from('expenses')
-    .select(`
-      *,
-      project:projects(name),
-      category:expense_categories(name)
-    `)
+    .select('id, expense_date, amount, notes, status, settled_amount, employee_id, project_id, category_id, project:projects(name), category:expense_categories(name)')
     .eq('employee_id', employeeId)
-    .order('expense_date', { ascending: false });
+    .order('expense_date', { ascending: false })
+    .limit(300);
+
     
   if (error) throw error;
   if (!expenses || expenses.length === 0) return [];

@@ -7,7 +7,9 @@ import { Landmark, ArrowRightLeft, Clock, Wallet, AlertCircle } from 'lucide-rea
 import { FAB } from '@/components/ui/fab';
 import { PWAInstallPrompt } from '@/components/ui/pwa-install-prompt';
 
+export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الرئيسية' };
+
 
 export default async function HomePage() {
   const { profile } = await getProfile();

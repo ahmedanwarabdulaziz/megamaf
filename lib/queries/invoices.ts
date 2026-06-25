@@ -4,12 +4,10 @@ export async function getInvoices() {
   const supabase = await createClient();
   const { data: invoices, error } = await supabase
     .from('invoices')
-    .select(`
-      *,
-      vendor:vendors(name),
-      project:projects(name)
-    `)
-    .order('invoice_date', { ascending: false });
+    .select('id, invoice_date, invoice_number, status, total_amount, vendor_id, project_id, vendor:vendors(name), project:projects(name)')
+    .order('invoice_date', { ascending: false })
+    .limit(200);
+
     
   if (error) throw error;
   if (!invoices || invoices.length === 0) return [];

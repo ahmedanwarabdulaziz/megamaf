@@ -4,7 +4,7 @@ import { Home, LogOut, Landmark, Receipt, CheckSquare, Users, Settings, FolderKa
 import { logout } from "@/app/(auth)/login/actions"
 import { Modal } from "@/components/ui/modal"
 import { Button } from "@/components/ui/button"
-import { getProfile, getEmployeePermissions } from "@/lib/supabase/get-profile"
+import { getProfile } from "@/lib/supabase/get-profile"
 import { PasskeyManager } from "@/components/profile/passkey-manager"
 import { NotificationBell } from "@/components/ui/notification-bell"
 import { MobileNav } from "@/components/layout/mobile-nav"
@@ -15,9 +15,9 @@ export default async function AppLayout({
   children: React.ReactNode
 }) {
   const { user, profile: employee } = await getProfile()
-  const permissions = user ? await getEmployeePermissions(user.id) : null
-  const isSuperAdmin = permissions?.is_super_admin || false
-  const grantedPages = permissions?.employee_page_access?.map((p: any) => p.page_slug) || []
+  // employee now includes is_super_admin, can_approve, employee_page_access — no second query needed
+  const isSuperAdmin = employee?.is_super_admin || false
+  const grantedPages = (employee?.employee_page_access as any[])?.map((p: any) => p.page_slug) || []
 
   const canSeeProjects = isSuperAdmin || grantedPages.includes('projects')
   const canSeeBanks = isSuperAdmin || grantedPages.includes('banks')

@@ -1,6 +1,9 @@
 import { getEmployeeExpenses, getOwnerExpenses, getExpenseCategories } from '@/lib/queries/expenses';
 import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
+
+export const dynamic = 'force-dynamic';
+
 import { createClient } from '@/lib/supabase/server';
 import { formatMoney } from '@/lib/money';
 import { CreateExpenseModal } from '@/components/expenses/create-expense-modal';
@@ -104,8 +107,9 @@ export default async function EmployeeExpensesPage({
           {myExpenses.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">لا توجد مصروفات</div>
           ) : (
-            myExpenses.map(expense => (
+            myExpenses.map((expense: any) => (
               <div key={expense.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+
                 <div>
                   <p className="font-bold">{expense.project?.name} - {expense.category?.name}</p>
                   <p className="text-sm text-muted-foreground">{expense.notes}</p>

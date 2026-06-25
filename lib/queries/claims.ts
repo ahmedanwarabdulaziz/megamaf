@@ -1,60 +1,65 @@
 import { createClient } from '@/lib/supabase/server';
 
+const CLAIM_COLUMNS = `
+  id, claim_type, party_id, project_id, claim_number, claim_date, status,
+  tax_enabled, tax_rate, retention_pct, notes,
+  project:projects(name)
+`;
+
 export async function getClaims(type: 'vendor' | 'owner' = 'vendor') {
   const supabase = await createClient();
   const { data: claims, error } = await supabase
     .from('claims')
-    .select(`
-      *,
-      project:projects(name)
-    `)
+    .select(CLAIM_COLUMNS)
     .eq('claim_type', type)
-    .order('claim_number', { ascending: false });
-    
+    .order('claim_number', { ascending: false })
+    .limit(500); // safety cap — paginate if more needed
+
   if (error) throw error;
   if (!claims || claims.length === 0) return [];
 
-  const claimIds = claims.map(c => c.id);
-  const { data: claimTotals } = await supabase
-    .from('v_claim_totals')
-    .select('*')
-    .in('claim_id', claimIds);
+  const claimIds   = claims.map(c => c.id);
+  const partyIds   = [...new Set(claims.map(c => c.party_id))];
+  const projectIds = [...new Set(claims.map(c => c.project_id))];
 
-  const { data: claimPaid } = await supabase
-    .from('v_claim_paid')
-    .select('*')
-    .in('claim_id', claimIds);
+  // Run all dependent queries in parallel
+  const [
+    { data: claimTotals },
+    { data: claimPaid },
+    partyData,
+    priorData,
+  ] = await Promise.all([
+    supabase.from('v_claim_totals')
+      .select('claim_id, claim_cumulative_total, claim_cumulative_retained, claim_cumulative_payable, prior_cumulative_payable, total_due_this_claim')
+      .in('claim_id', claimIds),
+    supabase.from('v_claim_paid')
+      .select('claim_id, paid_amount')
+      .in('claim_id', claimIds),
+    type === 'vendor'
+      ? supabase.from('vendors').select('id, name').in('id', partyIds)
+      : supabase.from('project_owners').select('id, name').in('id', partyIds),
+    type === 'vendor'
+      ? supabase.from('vendor_prior_claims').select('*').in('project_id', projectIds)
+      : Promise.resolve({ data: null }),
+  ]);
 
-  claims.forEach(c => {
+  claims.forEach((c: any) => {
     c.v_claim_totals = claimTotals?.filter(t => t.claim_id === c.id) || [];
-    c.v_claim_paid = claimPaid?.filter(p => p.claim_id === c.id) || [];
+    c.v_claim_paid   = claimPaid?.filter(p => p.claim_id === c.id) || [];
   });
 
-  // Manual join for polymorphic party_id
-  const partyIds = claims.map(c => c.party_id);
-  
-  if (type === 'vendor') {
-    const { data: vendors } = await supabase.from('vendors').select('id, name').in('id', partyIds);
-    const allProjectIds = [...new Set(claims.map(c => c.project_id))];
-    const { data: priorClaims } = await supabase
-      .from('vendor_prior_claims')
-      .select('*')
-      .in('project_id', allProjectIds);
+  const parties = partyData.data || [];
+  const priorClaims = priorData.data || [];
 
-    return claims.map(c => ({
-      ...c,
-      party_name: vendors?.find(v => v.id === c.party_id)?.name || 'Unknown',
-      vendor_prior_claim: priorClaims?.find(
-        p => p.project_id === c.project_id && p.vendor_id === c.party_id
+  return claims.map((c: any) => ({
+    ...c,
+    party_name: parties.find((p: any) => p.id === c.party_id)?.name || 'Unknown',
+    ...(type === 'vendor' && {
+      vendor_prior_claim: priorClaims.find(
+        (p: any) => p.project_id === c.project_id && p.vendor_id === c.party_id
       ) || null,
-    }));
-  } else {
-    const { data: owners } = await supabase.from('project_owners').select('id, name').in('id', partyIds);
-    return claims.map(c => ({
-      ...c,
-      party_name: owners?.find(o => o.id === c.party_id)?.name || 'Unknown'
-    }));
-  }
+    }),
+  }));
 }
 
 export async function getClaim(id: string) {
@@ -62,49 +67,42 @@ export async function getClaim(id: string) {
   const { data, error } = await supabase
     .from('claims')
     .select(`
-      *,
+      id, claim_type, party_id, project_id, claim_number, claim_date, status,
+      tax_enabled, tax_rate, retention_pct, notes, approved_at,
       project:projects(name),
-      items:claim_items(*)
+      items:claim_items(id, description, item_ref, unit, unit_price, previous_qty, current_qty, disbursement_pct, notes)
     `)
     .eq('id', id)
     .single();
-    
+
   if (error) throw error;
-  
-  const { data: claimTotals } = await supabase
-    .from('v_claim_totals')
-    .select('*')
-    .eq('claim_id', id);
 
-  const { data: claimPaid } = await supabase
-    .from('v_claim_paid')
-    .select('*')
-    .eq('claim_id', id);
+  // Parallel: totals + paid + party + attachments
+  const [
+    { data: claimTotals },
+    { data: claimPaid },
+    partyResult,
+    { data: attachments },
+  ] = await Promise.all([
+    supabase.from('v_claim_totals').select('*').eq('claim_id', id),
+    supabase.from('v_claim_paid').select('*').eq('claim_id', id),
+    data.claim_type === 'vendor'
+      ? supabase.from('vendors').select('name').eq('id', data.party_id).single()
+      : supabase.from('project_owners').select('name').eq('id', data.party_id).single(),
+    supabase.from('attachments').select('r2_key').eq('entity_type', 'claim').eq('entity_id', id),
+  ]);
 
-  data.v_claim_totals = claimTotals || [];
-  data.v_claim_paid = claimPaid || [];
+  const result = data as any;
+  result.v_claim_totals = claimTotals || [];
+  result.v_claim_paid   = claimPaid   || [];
 
-  let party_name = 'Unknown';
-  if (data.claim_type === 'vendor') {
-    const { data: vendor } = await supabase.from('vendors').select('name').eq('id', data.party_id).single();
-    if (vendor) party_name = vendor.name;
-  } else {
-    const { data: owner } = await supabase.from('project_owners').select('name').eq('id', data.party_id).single();
-    if (owner) party_name = owner.name;
-  }
+  return { ...result, party_name: partyResult.data?.name || 'Unknown', attachments: attachments || [] };
 
-  const { data: attachments } = await supabase
-    .from('attachments')
-    .select('r2_key')
-    .eq('entity_type', 'claim')
-    .eq('entity_id', id);
-
-  return { ...data, party_name, attachments: attachments || [] };
 }
 
-export async function getPreviousApprovedClaimItems(partyId: string, projectId: string, claimType: 'vendor'|'owner') {
+export async function getPreviousApprovedClaimItems(partyId: string, projectId: string, claimType: 'vendor' | 'owner') {
   const supabase = await createClient();
-  
+
   const { data: lastClaim } = await supabase
     .from('claims')
     .select('id, claim_number')
