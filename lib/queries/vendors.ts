@@ -35,7 +35,7 @@ export async function getVendorsWithSummary(filters?: { startDate?: string, endD
   // 1. Get vendors (filter by kind and search text)
   let vQuery = supabase.from('vendors').select(`
     *,
-    vendor_project_access(project_id)
+    vendor_project_access(project_id, project:projects(name))
   `).order('name');
   
   if (filters?.kind) vQuery = vQuery.eq('kind', filters.kind);

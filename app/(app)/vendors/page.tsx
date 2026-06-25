@@ -73,14 +73,22 @@ export default async function VendorsPage({
               
               <div className="text-sm text-muted-foreground mb-4">
                 <p>الهاتف: {vendor.phone || 'لا يوجد'}</p>
-                <p className="mt-1">
-                  المشاريع:{' '}
+                <div className="mt-2">
+                  <p className="mb-1">المشاريع:</p>
                   {vendor.all_projects ? (
-                    <span className="text-green-600">كل المشاريع</span>
+                    <span className="text-green-600 font-medium">كل المشاريع</span>
+                  ) : vendor.vendor_project_access?.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {vendor.vendor_project_access.map((acc: any) => (
+                        <span key={acc.project_id} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+                          {acc.project?.name || 'غير معروف'}
+                        </span>
+                      ))}
+                    </div>
                   ) : (
-                    <span>{vendor.vendor_project_access?.length || 0} مشروع محدد</span>
+                    <span className="text-muted-foreground">لا توجد مشاريع محددة</span>
                   )}
-                </p>
+                </div>
               </div>
               
               {/* Summary Box */}
