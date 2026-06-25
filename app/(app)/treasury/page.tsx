@@ -309,11 +309,14 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                     <span>المصروفات المعتمدة: <span className="font-medium text-foreground">{formatMoney(b.total_approved_expenses)}</span></span>
                   </div>
                 </div>
-                <div className="text-left">
+                <div className="text-left flex flex-col sm:items-end">
                   <p className="text-xs text-muted-foreground mb-1">الرصيد المتبقي</p>
                   <div className={`text-xl font-bold whitespace-nowrap ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
                     {formatMoney(b.balance)}
                   </div>
+                  <Link href={`/reports/employee-custody?employee_id=${b.employee_id}`} className="mt-2 text-xs font-medium text-primary hover:text-primary/80 flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg transition-colors hover:bg-primary/20">
+                    التفاصيل / كشف العهدة
+                  </Link>
                 </div>
               </div>
             ))
@@ -338,11 +341,14 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                     <span>المصروفات المعتمدة: <span className="font-medium text-foreground">{formatMoney(b.total_approved_expenses)}</span></span>
                   </div>
                 </div>
-                <div className="text-left">
+                <div className="text-left flex flex-col sm:items-end">
                   <p className="text-xs text-muted-foreground mb-1">الرصيد المتبقي</p>
                   <div className={`text-xl font-bold whitespace-nowrap ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
                     {formatMoney(b.balance)}
                   </div>
+                  <Link href={`/settings/owners/${b.owner_id}/statement`} className="mt-2 text-xs font-medium text-primary hover:text-primary/80 flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg transition-colors hover:bg-primary/20">
+                    التفاصيل / كشف الحساب
+                  </Link>
                 </div>
               </div>
             ))
