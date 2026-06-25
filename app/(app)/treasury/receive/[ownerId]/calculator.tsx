@@ -3,9 +3,10 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Paperclip, FileText, Image, X } from 'lucide-react';
 import { receiveFromOwner } from '@/lib/actions/payments';
 import { formatMoney } from '@/lib/money';
+import { createClient } from '@/lib/supabase/client';
 
 export function OwnerReceiptCalculator({
   ownerId,
@@ -24,6 +25,8 @@ export function OwnerReceiptCalculator({
   const [bankId, setBankId] = useState('');
   const [projectId, setProjectId] = useState('');
   const [memo, setMemo] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
+  const supabase = createClient();
 
   const [allocations, setAllocations] = useState<any[]>([]);
 
@@ -67,6 +70,11 @@ export function OwnerReceiptCalculator({
     setAllocations(newAllocations);
   };
 
+  const handleFiles = (flist: FileList | null) => {
+    if (!flist) return;
+    setFiles(prev => [...prev, ...Array.from(flist)]);
+  };
+
   const totalAllocated = useMemo(
     () => allocations.reduce((sum, a) => sum + (a.amount || 0), 0),
     [allocations]
@@ -84,27 +92,46 @@ export function OwnerReceiptCalculator({
       return;
     }
     setLoading(true);
-    const formData = new FormData();
-    formData.append('owner_id', ownerId);
-    formData.append('bank_account_id', bankId);
-    formData.append('amount', amount.toString());
-    formData.append('memo', memo);
-    formData.append('project_id', projectId);
 
-    const apiAllocations = allocations
-      .filter((a) => a.amount > 0)
-      .map((a) => ({
-        target_type: a.target_type,
-        target_id: a.target_id,
-        amount: a.amount,
-      }));
+    try {
+      // Upload attachments first
+      const uploadedPaths: string[] = [];
+      for (const file of files) {
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+        const { error: uploadError } = await supabase.storage
+          .from('attachments')
+          .upload(fileName, file);
 
-    const result = await receiveFromOwner(formData, apiAllocations);
-    if (result.error) {
-      alert(result.error);
+        if (uploadError) throw uploadError;
+        uploadedPaths.push(fileName);
+      }
+
+      const formData = new FormData();
+      formData.append('owner_id', ownerId);
+      formData.append('bank_account_id', bankId);
+      formData.append('amount', amount.toString());
+      formData.append('memo', memo);
+      formData.append('project_id', projectId);
+
+      const apiAllocations = allocations
+        .filter((a) => a.amount > 0)
+        .map((a) => ({
+          target_type: a.target_type,
+          target_id: a.target_id,
+          amount: a.amount,
+        }));
+
+      const result = await receiveFromOwner(formData, apiAllocations, uploadedPaths);
+      if (result.error) {
+        alert(result.error);
+        setLoading(false);
+      } else {
+        router.push('/treasury?tab=receivables');
+      }
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء رفع الملفات');
       setLoading(false);
-    } else {
-      router.push('/treasury?tab=receivables');
     }
   }
 
@@ -183,6 +210,43 @@ export function OwnerReceiptCalculator({
             placeholder="دفعة مقدمة، سداد مستخلص، إلخ..."
           />
         </div>
+
+        {/* File upload */}
+        <div className="md:col-span-2">
+          <label className="block text-sm font-medium mb-2">مرفقات الدفعة (صور التحويل، إيصالات، PDF)</label>
+          <label
+            htmlFor="receipt-files"
+            className="flex flex-col items-center justify-center gap-2 border-2 border-dashed border-border rounded-lg p-4 cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors disabled:opacity-50"
+          >
+            <Paperclip className="w-5 h-5 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">انقر لاختيار ملفات الإيصال</span>
+            <input
+              id="receipt-files"
+              type="file"
+              multiple
+              disabled={!projectId}
+              accept="image/*,.pdf"
+              className="hidden"
+              onChange={e => handleFiles(e.target.files)}
+            />
+          </label>
+          {files.length > 0 && (
+            <ul className="mt-2 space-y-1">
+              {files.map((f, i) => (
+                <li key={i} className="flex items-center gap-2 text-sm bg-muted/40 rounded px-2 py-1">
+                  {f.type === 'application/pdf'
+                    ? <FileText className="w-4 h-4 text-red-500 shrink-0" />
+                    : <Image className="w-4 h-4 text-blue-500 shrink-0" />}
+                  <span className="flex-1 truncate">{f.name}</span>
+                  <button type="button" onClick={() => setFiles(p => p.filter((_, j) => j !== i))}>
+                    <X className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
       </div>
 
       {/* ── Allocation table — only shown after project is selected ── */}

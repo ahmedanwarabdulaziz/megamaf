@@ -44,7 +44,7 @@ export async function payVendor(formData: FormData, allocations: any[]) {
   return { success: true };
 }
 
-export async function receiveFromOwner(formData: FormData, allocations: any[]) {
+export async function receiveFromOwner(formData: FormData, allocations: any[], attachments: string[] = []) {
   const supabase = await createClient();
   
   const bank_account_id = formData.get('bank_account_id') as string;
@@ -64,6 +64,17 @@ export async function receiveFromOwner(formData: FormData, allocations: any[]) {
 
   if (error) {
     return { error: error.message };
+  }
+
+  const ledgerEntryId = data;
+
+  if (attachments && attachments.length > 0) {
+    const attachmentRows = attachments.map((url) => ({
+      entity_type: 'ledger_entry',
+      entity_id: ledgerEntryId,
+      file_url: url
+    }));
+    await supabase.from('attachments').insert(attachmentRows);
   }
 
   // Notify admins
