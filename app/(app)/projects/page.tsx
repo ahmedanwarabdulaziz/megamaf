@@ -2,18 +2,21 @@ import { createClient } from '@/lib/supabase/server'
 import { Button } from '@/components/ui/button'
 import { Plus } from 'lucide-react'
 import Link from 'next/link'
-import { ProjectTreeTable } from './_components/project-tree-table'
+import { ProjectCards } from './_components/project-cards'
 import { ProjectModal } from './_components/project-modal'
+
+export const dynamic = 'force-dynamic'
 
 export default async function ProjectsPage() {
   const supabase = await createClient()
   
-  // Fetch all projects. RLS automatically scopes this to what the user can see.
+  // Fetch projects and their financial position
   const { data: projects } = await supabase
     .from('projects')
     .select(`
       *,
-      project_owners(name)
+      project_owners(name),
+      v_project_financial_position(*)
     `)
     .order('sort_order', { ascending: true })
     .order('created_at', { ascending: true })
@@ -21,15 +24,15 @@ export default async function ProjectsPage() {
   const { data: owners } = await supabase.from('project_owners').select('id, name')
 
   return (
-    <div className="space-y-4 p-4">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">هيكل المشاريع</h1>
+    <div className="space-y-6 p-4 md:p-8">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <h1 className="text-3xl font-bold text-foreground">هيكل المشاريع</h1>
         <Link href="?modal=add-project" scroll={false}>
-          <Button><Plus className="ml-2 h-4 w-4" /> إضافة عقد / مشروع</Button>
+          <Button size="lg" className="shadow-lg shadow-primary/20"><Plus className="ml-2 h-5 w-5" /> إضافة عقد / مشروع</Button>
         </Link>
       </div>
 
-      <ProjectTreeTable data={projects || []} />
+      <ProjectCards data={projects || []} />
       
       <ProjectModal owners={owners || []} projects={projects || []} />
     </div>
