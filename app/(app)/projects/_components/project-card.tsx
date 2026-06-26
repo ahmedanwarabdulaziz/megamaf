@@ -34,9 +34,9 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
   
   const fin = project.v_project_financial_position?.[0] || {}
   
-  // Extract financial data
-  const ownerBilled = Number(fin.owner_billed || 0)
-  const ownerPaid = Number(fin.owner_paid || 0)
+  // Extract financial data using the view's comprehensive totals
+  const ownerBilled = Number(fin.total_income || 0)
+  const ownerPaid = Number(fin.owner_paid || 0) + Number(fin.prior_owner_income || 0)
   
   const vendorClaimsBilled = Number(fin.vendor_claims_billed || 0)
   const vendorClaimsPaid = Number(fin.vendor_claims_paid || 0)
@@ -46,14 +46,13 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
   
   const empExpBilled = Number(fin.employee_expenses_billed || 0)
   const empExpPaid = Number(fin.employee_expenses_paid || 0)
+
+  const priorExpenses = Number(fin.prior_expenses || 0)
   
-  const totalExpBilled = vendorClaimsBilled + invoicesBilled + empExpBilled
-  const totalExpPaid = vendorClaimsPaid + invoicesPaid + empExpPaid
-  
+  const totalExpBilled = Number(fin.total_expenses || 0)
   const inventoryValue = Number(fin.inventory_asset_value || 0)
   
-  const netExpenses = totalExpBilled - inventoryValue
-  const netProfit = ownerBilled - netExpenses
+  const netProfit = Number(fin.net_profit || 0)
   const profitMargin = ownerBilled > 0 ? (netProfit / ownerBilled) * 100 : 0
 
   const getPercentage = (paid: number, billed: number) => {
@@ -137,7 +136,14 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
               </div>
             </div>
             <Progress value={getPercentage(ownerPaid, ownerBilled)} className="h-1.5" indicatorColor="bg-blue-500" />
-            <p className="text-[10px] text-muted-foreground mt-1.5 text-left">{getPercentage(ownerPaid, ownerBilled)}% محصل</p>
+            <div className="flex justify-between items-center mt-1.5">
+              <p className="text-[10px] text-muted-foreground">{getPercentage(ownerPaid, ownerBilled)}% محصل</p>
+              {Number(fin.prior_owner_income || 0) > 0 && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">
+                  يتضمن {formatMoney(Number(fin.prior_owner_income))} رصيد افتتاحي
+                </p>
+              )}
+            </div>
           </div>
         </div>
 
@@ -147,7 +153,17 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             تفاصيل المصروفات
           </h3>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div className={`grid grid-cols-1 ${priorExpenses > 0 ? 'sm:grid-cols-2 md:grid-cols-4' : 'sm:grid-cols-3'} gap-3`}>
+            {/* Prior Expenses */}
+            {priorExpenses > 0 && (
+              <div className="p-3 rounded-xl bg-background border border-border/50 shadow-sm flex flex-col justify-center bg-amber-50/30 dark:bg-amber-950/20">
+                <p className="text-xs font-medium mb-2 text-amber-700 dark:text-amber-400">مصروفات سابقة (افتتاحي)</p>
+                <div className="flex justify-between items-baseline mb-1">
+                  <span className="text-sm font-bold text-amber-700 dark:text-amber-400">{formatMoney(priorExpenses)}</span>
+                </div>
+              </div>
+            )}
+            
             {/* Vendor Claims */}
             <div className="p-3 rounded-xl bg-background border border-border/50 shadow-sm">
               <p className="text-xs font-medium mb-2">مستخلصات المقاولين</p>

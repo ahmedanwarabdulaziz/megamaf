@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { ItemForm } from './item-form';
+import Link from 'next/link';
 
 export const metadata = { title: 'إدارة الأصناف' };
 
@@ -27,6 +28,7 @@ export default async function ItemsPage() {
                 <th className="p-3 font-medium">الكود</th>
                 <th className="p-3 font-medium">الصنف</th>
                 <th className="p-3 font-medium">الوحدة</th>
+                <th className="p-3 font-medium text-center">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -35,11 +37,16 @@ export default async function ItemsPage() {
                   <td className="p-3 font-medium text-muted-foreground">{item.code}</td>
                   <td className="p-3 font-bold">{item.name}</td>
                   <td className="p-3">{item.unit}</td>
+                  <td className="p-3 text-center">
+                    <Link href={`/inventory/items/${item.id}/transactions`} className="text-xs bg-muted hover:bg-muted/80 text-foreground px-3 py-1.5 rounded border transition-colors inline-block">
+                      حركة الصنف
+                    </Link>
+                  </td>
                 </tr>
               ))}
               {(!items || items.length === 0) && (
                 <tr>
-                  <td colSpan={3} className="p-8 text-center text-muted-foreground">لم يتم إضافة أصناف بعد.</td>
+                  <td colSpan={4} className="p-8 text-center text-muted-foreground">لم يتم إضافة أصناف بعد.</td>
                 </tr>
               )}
             </tbody>

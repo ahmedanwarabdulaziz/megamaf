@@ -1,17 +1,23 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { Package } from 'lucide-react';
+import { getInventoryStock } from '@/lib/queries/inventory';
+import { InventoryFilters } from '@/components/inventory/inventory-filters';
 
 export const metadata = { title: 'المخزون' };
 
-export default async function InventoryPage() {
+export default async function InventoryPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ warehouse_id?: string; search?: string }>;
+}) {
+  const { warehouse_id, search } = await searchParams;
   const supabase = await createClient();
 
-  const { data: stock } = await supabase
-    .from('v_stock_on_hand')
-    .select('*')
-    .order('warehouse_name')
-    .order('item_name');
+  const [{ data: warehouses }, stock] = await Promise.all([
+    supabase.from('warehouses').select('*, projects(name)').order('name'),
+    getInventoryStock({ warehouseId: warehouse_id, search: search })
+  ]);
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -37,6 +43,12 @@ export default async function InventoryPage() {
           </Link>
         </div>
       </div>
+
+      <InventoryFilters 
+        warehouses={warehouses || []} 
+        selectedWarehouseId={warehouse_id || ''} 
+        searchQuery={search || ''} 
+      />
 
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
         <table className="w-full text-sm text-right">

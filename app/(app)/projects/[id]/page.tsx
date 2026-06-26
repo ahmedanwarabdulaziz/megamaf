@@ -486,6 +486,7 @@ export default async function ProjectDetailPage({
             vendors={vendors}
             warehouses={warehouses}
             inventoryItems={inventoryItems}
+            allProjects={allProjects || []}
           />
         </div>
       )}

@@ -44,7 +44,27 @@ export async function saveVendorPriorClaim(formData: FormData) {
   });
 
   if (error) throw new Error(error.message);
+
+  // Automatically assign vendor to this project if not already assigned
+  const { data: vendor } = await supabase.from('vendors').select('all_projects').eq('id', vendorId).single();
+  if (vendor && !vendor.all_projects) {
+    const { data: existingAccess } = await supabase
+      .from('vendor_project_access')
+      .select('vendor_id')
+      .eq('vendor_id', vendorId)
+      .eq('project_id', projectId)
+      .maybeSingle();
+
+    if (!existingAccess) {
+      await supabase.from('vendor_project_access').insert({
+        vendor_id: vendorId,
+        project_id: projectId,
+      });
+    }
+  }
+
   revalidatePath(`/projects/${projectId}`);
+  revalidatePath('/vendors');
 }
 
 export async function deleteVendorPriorClaim(id: string, projectId: string) {

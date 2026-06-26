@@ -5,9 +5,10 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { saveProject } from "@/app/(app)/projects/actions"
+import { saveOwner } from "@/app/(app)/settings/owners/actions"
 import { useTransition, useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Info } from "lucide-react"
+import { Info, X } from "lucide-react"
 
 export function ProjectModal({ owners, projects }: { owners: any[], projects: any[] }) {
   const [isPending, startTransition] = useTransition()
@@ -26,6 +27,15 @@ export function ProjectModal({ owners, projects }: { owners: any[], projects: an
   const [selectedParentId, setSelectedParentId] = useState(editingProject?.parent_id || "")
   const [selectedOwnerId, setSelectedOwnerId] = useState(editingProject?.owner_id || "")
   const [ownerInherited, setOwnerInherited] = useState(false)
+  const [isAddingOwner, setIsAddingOwner] = useState(false)
+  const [isOwnerPending, startOwnerTransition] = useTransition()
+
+  const handleAddOwner = (formData: FormData) => {
+    startOwnerTransition(async () => {
+      await saveOwner(formData)
+      setIsAddingOwner(false)
+    })
+  }
 
   useEffect(() => {
     if (editingProject) {
@@ -126,19 +136,31 @@ export function ProjectModal({ owners, projects }: { owners: any[], projects: an
                   </span>
                 )}
               </div>
-              <Select
-                name="owner_id"
-                value={selectedOwnerId}
-                onChange={(e) => {
-                  setSelectedOwnerId(e.target.value)
-                  setOwnerInherited(false)
-                }}
-              >
-                <option value="">بدون مالك (يرث من الأب تلقائياً)</option>
-                {owners.map(o => (
-                  <option key={o.id} value={o.id}>{o.name}</option>
-                ))}
-              </Select>
+              <div className="flex items-center gap-2">
+                <Select
+                  name="owner_id"
+                  value={selectedOwnerId}
+                  onChange={(e) => {
+                    setSelectedOwnerId(e.target.value)
+                    setOwnerInherited(false)
+                  }}
+                  className="flex-1"
+                >
+                  <option value="">بدون مالك (يرث من الأب تلقائياً)</option>
+                  {owners.map(o => (
+                    <option key={o.id} value={o.id}>{o.name}</option>
+                  ))}
+                </Select>
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  size="icon" 
+                  onClick={() => setIsAddingOwner(true)}
+                  title="إضافة مالك جديد"
+                >
+                  <span className="text-lg font-bold">+</span>
+                </Button>
+              </div>
             </div>
 
             <div className="space-y-2">
@@ -173,6 +195,43 @@ export function ProjectModal({ owners, projects }: { owners: any[], projects: an
           </Button>
         </div>
       </form>
+
+      {/* Add New Owner Popup */}
+      {isAddingOwner && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setIsAddingOwner(false)} />
+          <div className="relative z-10 w-full max-w-sm bg-card border rounded-xl shadow-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">إضافة مالك جديد</h3>
+              <button type="button" onClick={() => setIsAddingOwner(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form action={handleAddOwner} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">الاسم <span className="text-destructive">*</span></label>
+                <Input name="name" required placeholder="اسم الجهة المالكة" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">رقم الهاتف <span className="text-destructive">*</span></label>
+                <Input name="phone" required placeholder="05XXXXXXXX" dir="ltr" className="text-right" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">ملاحظات</label>
+                <Input name="notes" placeholder="معلومات إضافية..." />
+              </div>
+              <div className="pt-2 flex justify-end gap-2">
+                <Button type="button" variant="outline" onClick={() => setIsAddingOwner(false)}>
+                  إلغاء
+                </Button>
+                <Button type="submit" disabled={isOwnerPending}>
+                  {isOwnerPending ? "جاري الإضافة..." : "إضافة المالك"}
+                </Button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </Modal>
   )
 }

@@ -1,19 +1,39 @@
 import Link from 'next/link';
-import { getInvoices } from '@/lib/queries/invoices';
+import { getInvoicesWithFilters, getActionRequiredInvoices } from '@/lib/queries/invoices';
+import { getProjects } from '@/lib/queries/projects';
+import { getVendors } from '@/lib/queries/vendors';
 import { getProfile } from '@/lib/supabase/get-profile';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
 import { InvoiceApproveRejectButtons } from '@/components/invoices/approve-reject-buttons';
+import { InvoicesFilters } from '@/components/invoices/invoices-filters';
 
 export const metadata = {
   title: 'فواتير الموردين',
 };
 
-export default async function InvoicesPage() {
+export default async function InvoicesPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ project_id?: string, vendor_id?: string, search?: string, start_date?: string, end_date?: string, status?: string }>;
+}) {
+  const { project_id, vendor_id, search, start_date, end_date, status } = await searchParams;
   const { profile } = await getProfile();
   if (!profile) return null;
 
-  const invoices = await getInvoices();
+  const [invoices, actionRequiredInvoices, projects, vendors] = await Promise.all([
+    getInvoicesWithFilters({
+      projectId: project_id,
+      vendorId: vendor_id,
+      search,
+      startDate: start_date,
+      endDate: end_date,
+      status
+    }),
+    getActionRequiredInvoices(),
+    getProjects(),
+    getVendors()
+  ]);
 
   return (
     <div className="space-y-6">
@@ -24,38 +44,108 @@ export default async function InvoicesPage() {
         </Link>
       </div>
 
-      <div className="bg-card rounded-lg border shadow-sm divide-y">
-        {invoices.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">لا توجد فواتير</div>
-        ) : (
-          invoices.map((invoice: any) => (
+      <InvoicesFilters
+        projects={projects || []}
+        vendors={vendors || []}
+        selectedProjectId={project_id || ''}
+        selectedVendorId={vendor_id || ''}
+        selectedStatus={status || ''}
+        searchQuery={search || ''}
+        startDate={start_date || ''}
+        endDate={end_date || ''}
+      />
 
-            <div key={invoice.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2 mb-1">
-                  <h3 className="font-bold">{invoice.vendor?.name}</h3>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${invoice.status === 'approved' ? 'bg-primary text-primary-foreground' : invoice.status === 'rejected' ? 'bg-destructive text-destructive-foreground' : 'bg-secondary text-secondary-foreground'}`}>
-                    {invoice.status === 'approved' ? 'معتمد' : invoice.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
+      {/* Action Required Section */}
+      {actionRequiredInvoices.length > 0 && (
+        <div>
+          <h2 className="text-xl font-bold mb-4 text-destructive flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-destructive animate-pulse"></span>
+            فواتير تتطلب إجراء (قيد المراجعة أو غير مسددة بالكامل)
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {actionRequiredInvoices.map((invoice: any) => (
+              <InvoiceCard key={`action-${invoice.id}`} invoice={invoice} profile={profile} isActionRequired={true} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Normal Invoices Section */}
+      <div>
+        <h2 className="text-xl font-bold mb-4">قائمة الفواتير</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {invoices.map((invoice: any) => (
+            <InvoiceCard key={`normal-${invoice.id}`} invoice={invoice} profile={profile} />
+          ))}
+          {invoices.length === 0 && (
+            <div className="col-span-full p-8 text-center text-muted-foreground border rounded-lg border-dashed">
+              لا توجد فواتير تطابق خيارات البحث
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InvoiceCard({ invoice, profile, isActionRequired = false }: { invoice: any, profile: any, isActionRequired?: boolean }) {
+  return (
+    <div className={`bg-card rounded-lg border shadow-sm flex flex-col justify-between overflow-hidden ${isActionRequired ? 'border-destructive/30 shadow-destructive/10' : ''}`}>
+      <div className="p-4">
+        <div className="flex justify-between items-start mb-2">
+          <Link href={`/invoices/${invoice.id}`} className="font-bold text-lg hover:text-primary transition-colors">
+            {invoice.vendor?.name || 'مورد غير معروف'}
+          </Link>
+          <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${invoice.status === 'approved' ? 'bg-primary/10 text-primary' : invoice.status === 'rejected' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-secondary-foreground'}`}>
+            {invoice.status === 'approved' ? 'معتمد' : invoice.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
+          </span>
+        </div>
+        
+        <div className="text-sm text-muted-foreground mb-4">
+          <p>المشروع: {invoice.project?.name || 'غير محدد'}</p>
+          <p>التاريخ: {invoice.invoice_date}</p>
+          {invoice.vendor?.phone && <p>الهاتف: {invoice.vendor.phone}</p>}
+          {invoice.attachments && invoice.attachments.length > 0 && (
+            <p className="mt-1 text-primary font-medium text-xs flex items-center gap-1">
+              مرفقات ({invoice.attachments.length})
+            </p>
+          )}
+        </div>
+        
+        {/* Summary Box */}
+        <div className="bg-muted/30 rounded-md p-3 border mt-4 text-sm">
+          <div className="space-y-1">
+            <div className="flex justify-between">
+              <span>إجمالي الفاتورة:</span>
+              <span className="font-medium">{formatMoney(invoice.total)}</span>
+            </div>
+            {invoice.status === 'approved' && (
+              <>
+                <div className="flex justify-between">
+                  <span>المدفوع:</span>
+                  <span className="font-medium text-green-600">{formatMoney(invoice.paid_amount || 0)}</span>
+                </div>
+                <div className="flex justify-between border-t pt-1 mt-1 font-bold">
+                  <span>الرصيد المتبقي:</span>
+                  <span className={(invoice.balance || 0) > 0 ? 'text-red-500' : 'text-primary'}>
+                    {formatMoney(invoice.balance || 0)}
                   </span>
                 </div>
-                <p className="text-sm">{invoice.project?.name}</p>
-                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                  <span>التاريخ: {invoice.invoice_date}</span>
-                  {invoice.attachments && invoice.attachments.length > 0 && (
-                    <span className="text-primary font-medium">مرفق ({invoice.attachments.length})</span>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-col items-end gap-2">
-                <div className="text-xl font-bold whitespace-nowrap">
-                  {formatMoney(invoice.total)}
-                </div>
-                {invoice.status === 'pending' && (profile.can_approve || profile.is_super_admin) && (
-                  <InvoiceApproveRejectButtons invoiceId={invoice.id} />
-                )}
-              </div>
-            </div>
-          ))
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+      
+      <div className="bg-muted/20 border-t p-3 flex justify-between items-center min-h-[56px]">
+        <Link 
+          href={`/invoices/${invoice.id}`}
+          className="text-xs font-medium text-primary hover:underline"
+        >
+          عرض التفاصيل
+        </Link>
+        {invoice.status === 'pending' && (profile.can_approve || profile.is_super_admin) && (
+          <InvoiceApproveRejectButtons invoiceId={invoice.id} />
         )}
       </div>
     </div>

@@ -1,11 +1,14 @@
 import { createClient } from '@/lib/supabase/server';
 import { WarehouseForm } from './warehouse-form';
+import { getWarehousesWithValuation } from '@/lib/queries/inventory';
+import { formatMoney } from '@/lib/money';
+import Link from 'next/link';
 
 export const metadata = { title: 'إدارة المستودعات' };
 
 export default async function WarehousesPage() {
   const supabase = await createClient();
-  const { data: warehouses } = await supabase.from('warehouses').select('*, projects(name)').order('name');
+  const warehouses = await getWarehousesWithValuation();
   const { data: projects } = await supabase.from('projects').select('id, name').order('name');
 
   return (
@@ -13,20 +16,22 @@ export default async function WarehousesPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold">دليل المستودعات</h1>
-          <p className="text-muted-foreground mt-1">إضافة وإدارة المستودعات الرئيسية ومستودعات المشاريع</p>
+          <p className="text-muted-foreground mt-1">إضافة وإدارة المستودعات الرئيسية ومستودعات المشاريع والقيمة الإجمالية</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="md:col-span-1">
           <WarehouseForm projects={projects || []} />
         </div>
-        <div className="md:col-span-2 bg-card rounded-lg border shadow-sm overflow-hidden">
+        <div className="md:col-span-3 bg-card rounded-lg border shadow-sm overflow-hidden">
           <table className="w-full text-sm text-right">
             <thead className="bg-muted/50 border-b">
               <tr>
                 <th className="p-3 font-medium">اسم المستودع</th>
                 <th className="p-3 font-medium">النوع / المشروع التابع له</th>
+                <th className="p-3 font-medium text-left">قيمة المخزون</th>
+                <th className="p-3 font-medium text-center">الإجراءات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -39,6 +44,14 @@ export default async function WarehousesPage() {
                     ) : (
                       <span className="bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-bold">مستودع رئيسي (الشركة)</span>
                     )}
+                  </td>
+                  <td className="p-3 font-bold text-left text-primary" dir="ltr">
+                    {formatMoney(w.total_value)}
+                  </td>
+                  <td className="p-3 text-center">
+                    <Link href={`/inventory/warehouses/${w.id}/transactions`} className="text-xs bg-muted hover:bg-muted/80 text-foreground px-3 py-1.5 rounded border transition-colors inline-block">
+                      حركة المستودع
+                    </Link>
                   </td>
                 </tr>
               ))}

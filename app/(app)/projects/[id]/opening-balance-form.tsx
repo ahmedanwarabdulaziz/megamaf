@@ -9,7 +9,9 @@ import {
   saveOpeningStockEntry,
   deleteOpeningStockEntry,
 } from './opening-balance-actions';
-import { Trash2, Pencil, ChevronDown, ChevronUp, PackageOpen, Building2, Scale } from 'lucide-react';
+import { saveVendor } from '@/lib/actions/vendors';
+import { useRouter } from 'next/navigation';
+import { Trash2, Pencil, ChevronDown, ChevronUp, PackageOpen, Building2, Scale, X } from 'lucide-react';
 
 // ─────────────────────────────────────────────────
 // Types
@@ -54,6 +56,7 @@ interface OpeningBalanceFormProps {
   vendors: Vendor[];
   warehouses: Warehouse[];
   inventoryItems: InventoryItem[];
+  allProjects: any[];
 }
 
 // ─────────────────────────────────────────────────
@@ -119,7 +122,7 @@ function FinancialSection({ projectId, balance }: { projectId: string; balance: 
         <div>
           <label className="block text-sm font-medium mb-1.5">مصروفات سابقة (قبل التتبع)</label>
           <div className="relative">
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ر.س</span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ج.م</span>
             <input
               type="number" name="prior_expenses" min="0" step="0.01"
               defaultValue={balance?.prior_expenses || 0}
@@ -131,7 +134,7 @@ function FinancialSection({ projectId, balance }: { projectId: string; balance: 
         <div>
           <label className="block text-sm font-medium mb-1.5">إيرادات سابقة من المالك</label>
           <div className="relative">
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ر.س</span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ج.م</span>
             <input
               type="number" name="prior_owner_income" min="0" step="0.01"
               defaultValue={balance?.prior_owner_income || 0}
@@ -165,17 +168,51 @@ function FinancialSection({ projectId, balance }: { projectId: string; balance: 
 // Vendor Prior Claims Section
 // ─────────────────────────────────────────────────
 function VendorClaimsSection({
-  projectId, cutoffDate, existingClaims, vendors
+  projectId, cutoffDate, existingClaims, vendors, allProjects
 }: {
-  projectId: string; cutoffDate: string; existingClaims: VendorPriorClaim[]; vendors: Vendor[]
+  projectId: string; cutoffDate: string; existingClaims: VendorPriorClaim[]; vendors: Vendor[]; allProjects: any[]
 }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<VendorPriorClaim | null>(null);
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
+  
+  const [certifiedAmount, setCertifiedAmount] = useState<number>(0);
+  const [retentionPercent, setRetentionPercent] = useState<number>(5);
+
+  const [isAddingVendor, setIsAddingVendor] = useState(false);
+  const [vendorPending, startVendorTransition] = useTransition();
+  const [vendorError, setVendorError] = useState('');
+  const router = useRouter();
+
+  const [allowAllProjects, setAllowAllProjects] = useState(false);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([projectId]);
 
   const usedVendorIds = existingClaims.map(c => c.vendor_id);
   const availableVendors = vendors.filter(v => !usedVendorIds.includes(v.id) || editing?.vendor_id === v.id);
+
+  const toggleProject = (id: string) => {
+    setSelectedProjects(prev => 
+      prev.includes(id) ? prev.filter(p => p !== id) : [...prev, id]
+    );
+  };
+
+  async function handleAddVendor(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setVendorError('');
+    const fd = new FormData(e.currentTarget);
+    startVendorTransition(async () => {
+      try {
+        fd.set('all_projects', allowAllProjects.toString());
+        const res = await saveVendor(fd, selectedProjects);
+        if (res?.error) throw new Error(res.error);
+        setIsAddingVendor(false);
+        router.refresh();
+      } catch (err: any) {
+        setVendorError(err.message);
+      }
+    });
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -228,7 +265,13 @@ function VendorClaimsSection({
                   <td className="p-3 font-semibold text-amber-700">{formatMoney(outstanding(c))}</td>
                   <td className="p-3">
                     <div className="flex gap-1">
-                      <button onClick={() => { setEditing(c); setShowForm(false); }}
+                      <button onClick={() => { 
+                          setEditing(c); 
+                          setShowForm(false); 
+                          setCertifiedAmount(c.prior_certified_amount);
+                          const pct = c.prior_certified_amount > 0 ? (c.prior_retention_held / c.prior_certified_amount) * 100 : 0;
+                          setRetentionPercent(pct);
+                        }}
                         className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors">
                         <Pencil className="w-3.5 h-3.5" />
                       </button>
@@ -246,7 +289,12 @@ function VendorClaimsSection({
       )}
 
       {!showingForm && availableVendors.length > 0 && (
-        <button type="button" onClick={() => setShowForm(true)}
+        <button type="button" onClick={() => { 
+            setShowForm(true); 
+            setEditing(null); 
+            setCertifiedAmount(0); 
+            setRetentionPercent(5); 
+          }}
           className="inline-flex items-center gap-2 border rounded-lg px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-colors">
           + إضافة سجل مقاول
         </button>
@@ -258,17 +306,27 @@ function VendorClaimsSection({
             {editing ? `تعديل: ${editing.vendor_name}` : 'إضافة سجل مقاول سابق'}
           </h4>
           <input type="hidden" name="project_id" value={projectId} />
-          <input type="hidden" name="vendor_id" value={editing?.vendor_id || ''} />
+          {editing && <input type="hidden" name="vendor_id" value={editing.vendor_id} />}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             {!editing && (
               <div>
                 <label className="block text-sm font-medium mb-1">المقاول *</label>
-                <select name="vendor_id" required
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none">
-                  <option value="">-- اختر مقاولاً --</option>
-                  {availableVendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                </select>
+                <div className="flex gap-2 items-center">
+                  <select name="vendor_id" required
+                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none">
+                    <option value="">-- اختر مقاولاً --</option>
+                    {availableVendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
+                  </select>
+                  <button 
+                    type="button" 
+                    onClick={() => setIsAddingVendor(true)}
+                    className="flex-shrink-0 h-[38px] px-3 bg-muted border rounded-lg hover:bg-muted/80 transition-colors"
+                    title="إضافة مقاول جديد"
+                  >
+                    <span className="font-bold text-lg leading-none">+</span>
+                  </button>
+                </div>
               </div>
             )}
             <div>
@@ -280,18 +338,33 @@ function VendorClaimsSection({
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {[
-              { name: 'prior_certified_amount', label: 'إجمالي الأعمال المستخلصة (ر.س)', val: editing?.prior_certified_amount },
-              { name: 'prior_paid_amount', label: 'المدفوع منها (ر.س)', val: editing?.prior_paid_amount },
-              { name: 'prior_retention_held', label: 'المحتجز (ر.س)', val: editing?.prior_retention_held },
-            ].map(f => (
-              <div key={f.name}>
-                <label className="block text-sm font-medium mb-1">{f.label}</label>
-                <input type="number" name={f.name} min="0" step="0.01" required
-                  defaultValue={f.val ?? 0}
+            <div>
+              <label className="block text-sm font-medium mb-1">إجمالي الأعمال المستخلصة (ج.م)</label>
+              <input type="number" name="prior_certified_amount" min="0" step="0.01" required
+                value={certifiedAmount || ''}
+                onChange={e => setCertifiedAmount(parseFloat(e.target.value) || 0)}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">المدفوع منها (ج.م)</label>
+              <input type="number" name="prior_paid_amount" min="0" step="0.01" required
+                defaultValue={editing?.prior_paid_amount ?? 0}
+                className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">المحتجز (%)</label>
+              <div className="relative">
+                <input type="number" min="0" max="100" step="0.1" required
+                  value={retentionPercent || ''}
+                  onChange={e => setRetentionPercent(parseFloat(e.target.value) || 0)}
                   className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
               </div>
-            ))}
+              <p className="text-xs text-muted-foreground mt-1">
+                قيمة المحتجز: {formatMoney((certifiedAmount * retentionPercent) / 100)}
+              </p>
+              <input type="hidden" name="prior_retention_held" value={(certifiedAmount * retentionPercent) / 100} />
+            </div>
           </div>
 
           <div>
@@ -319,6 +392,85 @@ function VendorClaimsSection({
         <p className="text-sm text-muted-foreground text-center py-4">
           لا يوجد سجلات سابقة للمقاولين. اضغط &ldquo;إضافة&rdquo; لإدخال الأعمال السابقة.
         </p>
+      )}
+
+      {/* Add New Vendor Popup */}
+      {isAddingVendor && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setIsAddingVendor(false)} />
+          <div className="relative z-10 w-full max-w-sm bg-card border rounded-xl shadow-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">إضافة مقاول / مورد جديد</h3>
+              <button type="button" onClick={() => setIsAddingVendor(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAddVendor} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">الاسم <span className="text-destructive">*</span></label>
+                <input name="name" required placeholder="اسم الجهة" className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">النوع <span className="text-destructive">*</span></label>
+                <select name="kind" required className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none">
+                  <option value="contractor">مقاول (مصنعيات)</option>
+                  <option value="vendor">مورد (توريدات)</option>
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">رقم الهاتف</label>
+                <input name="phone" placeholder="05XXXXXXXX" dir="ltr" className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-right" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">ملاحظات</label>
+                <input name="notes" placeholder="معلومات إضافية..." className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none" />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">صلاحية المشاريع</label>
+                <div className="flex items-center gap-2 mb-2 mt-2">
+                  <input 
+                    type="checkbox" 
+                    id="all_projects" 
+                    checked={allowAllProjects} 
+                    onChange={(e) => setAllowAllProjects(e.target.checked)} 
+                    className="w-4 h-4" 
+                  />
+                  <label htmlFor="all_projects" className="text-sm">السماح بكل المشاريع (الحالية والمستقبلية)</label>
+                </div>
+                
+                {!allowAllProjects && (
+                  <div className="mt-2 border rounded-lg p-3 bg-muted/20 max-h-40 overflow-y-auto space-y-2">
+                    <p className="text-xs text-muted-foreground mb-2">اختر المشاريع المسموح له العمل بها:</p>
+                    {allProjects.filter(p => p.node_type === 'project').map(p => (
+                      <div key={p.id} className="flex items-center gap-2">
+                        <input 
+                          type="checkbox" 
+                          id={`proj_${p.id}`}
+                          checked={selectedProjects.includes(p.id)}
+                          onChange={() => toggleProject(p.id)}
+                          className="w-4 h-4"
+                        />
+                        <label htmlFor={`proj_${p.id}`} className="text-sm">{p.name}</label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {vendorError && <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{vendorError}</p>}
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setIsAddingVendor(false)} className="border px-4 py-2 rounded-lg text-sm hover:bg-muted/40 transition-colors">
+                  إلغاء
+                </button>
+                <button type="submit" disabled={vendorPending} className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                  {vendorPending ? "جاري الحفظ..." : "إضافة"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -445,7 +597,7 @@ function InventorySection({
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">سعر الوحدة (ر.س) *</label>
+              <label className="block text-sm font-medium mb-1">سعر الوحدة (ج.م) *</label>
               <input type="number" name="unit_price" min="0" step="0.01" required
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
             </div>
@@ -497,6 +649,7 @@ export function OpeningBalanceForm({
   vendors,
   warehouses,
   inventoryItems,
+  allProjects,
 }: OpeningBalanceFormProps) {
   return (
     <div className="space-y-4">
@@ -523,6 +676,7 @@ export function OpeningBalanceForm({
           cutoffDate={cutoffDate}
           existingClaims={vendorPriorClaims}
           vendors={vendors}
+          allProjects={allProjects}
         />
       </Section>
 

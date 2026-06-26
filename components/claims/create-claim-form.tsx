@@ -72,7 +72,7 @@ export function CreateClaimForm({
       setFetchingPrevious(true);
       const supabase = createClient();
 
-      const [allClaimsResult, lastClaimResult] = await Promise.all([
+      const [allClaimsResult, lastClaimResult, priorClaimResult] = await Promise.all([
         supabase.from('claims').select('id')
           .eq('party_id', partyId).eq('project_id', projectId)
           .eq('claim_type', claimType).eq('status', 'approved'),
@@ -80,6 +80,14 @@ export function CreateClaimForm({
           .eq('party_id', partyId).eq('project_id', projectId)
           .eq('claim_type', claimType).eq('status', 'approved')
           .order('claim_number', { ascending: false }).limit(1).single(),
+        // Claim #0 offset: certified amount recorded before the system
+        claimType === 'vendor'
+          ? supabase.from('vendor_prior_claims')
+              .select('prior_certified_amount')
+              .eq('vendor_id', partyId)
+              .eq('project_id', projectId)
+              .maybeSingle()
+          : Promise.resolve({ data: null }),
       ]);
 
       const allClaimIds = (allClaimsResult.data ?? []).map((c: any) => c.id);
@@ -89,7 +97,10 @@ export function CreateClaimForm({
           .from('v_claim_paid').select('paid_amount').in('claim_id', allClaimIds);
         totalActuallyPaid = (paidRows ?? []).reduce((s: number, r: any) => s + Number(r.paid_amount), 0);
       }
-      setPriorCumulativePayable(totalActuallyPaid);
+
+      // Add Claim #0 prior_certified_amount as an additional base offset
+      const priorCertifiedAmount = Number((priorClaimResult as any).data?.prior_certified_amount || 0);
+      setPriorCumulativePayable(totalActuallyPaid + priorCertifiedAmount);
 
       const lastClaim = lastClaimResult.data;
       if (lastClaim) {
@@ -117,6 +128,7 @@ export function CreateClaimForm({
     }
     fetchPreviousClaim();
   }, [partyId, projectId]);
+
 
   // ── Totals ──────────────────────────────────────────────────
   const currentCumulativePayable = items.reduce((sum, item) => {
