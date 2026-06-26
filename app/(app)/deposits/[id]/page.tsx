@@ -109,7 +109,8 @@ export default async function DepositDetailPage({ params }: { params: Promise<{ 
                       const dueDate = new Date(p.due_date + 'T00:00:00Z');
                       const isTooOld   = dueDate < lowerBound;   // past the 15-day grace window
                       const isTooEarly = dueDate > upperBound;    // more than 15 days in the future
-                      const isOutOfWindow = isTooOld || isTooEarly;
+                      // Only lock OLD payouts — future ones stay unlocked so they can be collected early
+                      const isOutOfWindow = isTooOld;
 
                       return (
                         <tr key={p.id} className={`hover:bg-muted/30 ${isOutOfWindow && !p.is_collected ? 'opacity-40' : ''}`}>
@@ -130,7 +131,7 @@ export default async function DepositDetailPage({ params }: { params: Promise<{ 
                           <td className="p-3">{p.collected_date ? new Date(p.collected_date).toLocaleDateString('en-GB', { timeZone: 'UTC' }) : '-'}</td>
                           <td className="p-3 font-bold text-green-600">{p.is_collected ? formatMoney(p.collected_amount) : '-'}</td>
                           <td className="p-3 text-left">
-                            {!p.is_collected && !isOutOfWindow && (
+                            {!p.is_collected && !isTooOld && (
                               <CollectModal
                                 payout={p}
                                 bankAccounts={bankAccounts || []}
