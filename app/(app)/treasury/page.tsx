@@ -79,11 +79,19 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     ownerHistoryQuery,
     supabase.from('projects').select('id, name').order('name'),
     supabase.from('v_latest_owner_claims').select('claim_id, claim_number, project_id, party_id'),
-    supabase.from('v_claim_totals').select('claim_id, total_due_this_claim'),
+    supabase.from('v_claim_totals').select('claim_id, total_due_this_claim, claim_cumulative_retained'),
     tab === 'emp_custodies' ? getAllCustodyBalances() : Promise.resolve([]),
     tab === 'owner_custodies' ? getAllOwnerCustodyBalances() : Promise.resolve([]),
     tab === 'emp_custodies' || tab === 'owner_custodies' ? getBanks() : Promise.resolve([])
   ]);
+
+  // Build retention map: owner_id → cumulative_retained (from latest approved owner claim)
+  const retentionByOwner = new Map<string, number>();
+  for (const lc of latestOwnerClaims || []) {
+    const t = (latestClaimTotals || []).find((t: any) => t.claim_id === lc.claim_id);
+    const existing = retentionByOwner.get(lc.party_id) || 0;
+    retentionByOwner.set(lc.party_id, existing + Number((t as any)?.claim_cumulative_retained || 0));
+  }
 
   // ── Invoices subtab: approved invoices with remaining balance ──
   let invoiceRows: any[] = [];
@@ -366,6 +374,7 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                 <tr>
                   <th className="p-4 font-medium">المالك</th>
                   <th className="p-4 font-medium text-amber-600">إجمالي المطلوب</th>
+                  <th className="p-4 font-medium text-orange-500">المحتجز</th>
                   <th className="p-4 font-medium text-green-600">إجمالي المحصل</th>
                   <th className="p-4 font-medium text-primary">المتبقي (الرصيد)</th>
                   <th className="p-4 font-medium w-32"></th>
@@ -376,7 +385,12 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                   <tr key={o.owner_id} className="hover:bg-muted/30 transition-colors">
                     <td className="p-4 font-semibold">{o.owner_name}</td>
                     <td className="p-4">{formatMoney(o.total_due)}</td>
-                    <td className="p-4">{formatMoney(o.total_paid)}</td>
+                    <td className="p-4 text-orange-600 font-medium">
+                      {retentionByOwner.get(o.owner_id)
+                        ? `- ${formatMoney(retentionByOwner.get(o.owner_id)!)}`
+                        : '-'}
+                    </td>
+                    <td className="p-4 text-green-700 font-medium">{formatMoney(o.total_paid)}</td>
                     <td className="p-4 font-bold text-primary">{formatMoney(o.balance)}</td>
                     <td className="p-4 flex gap-2">
                       <Link href={`/settings/owners/${o.owner_id}/statement`} className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md font-medium">كشف حساب</Link>

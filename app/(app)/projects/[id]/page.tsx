@@ -395,7 +395,11 @@ export default async function ProjectDetailPage({
                           const totalDue = netCumulative + tax;
 
                           // ── Actual collected amounts ──────────────────────────────
-                          const paidInSystem = Number((claim as any).v_claim_paid?.[0]?.paid_amount || 0);
+                          // Sum paid across ALL claims in this group (payments may
+                          // be allocated against any claim number, not just the latest)
+                          const paidInSystem = group.reduce((sum: number, gc: any) => {
+                            return sum + Number(gc.v_claim_paid?.[0]?.paid_amount || 0);
+                          }, 0);
                           const totalPaid    = paidInSystem + priorIncome;
                           const remaining    = Math.max(0, totalDue - totalPaid);
 
