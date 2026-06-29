@@ -33,27 +33,33 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
   const Icon = iconMap[nodeType] || Home
   
   const fin = project.v_project_financial_position?.[0] || {}
-  
-  // Extract financial data using the view's comprehensive totals
+
+  // ── Income ────────────────────────────────────────────────────────────────
+  // total_income = prior_owner_dues + in_system owner claims billed
   const ownerBilled = Number(fin.total_income || 0)
-  const ownerPaid = Number(fin.owner_paid || 0) + Number(fin.prior_owner_income || 0)
-  
-  const vendorClaimsBilled = Number(fin.vendor_claims_billed || 0)
-  const vendorClaimsPaid = Number(fin.vendor_claims_paid || 0)
-  
+  // owner_paid = cash actually received from owner (in-system allocations only)
+  const ownerPaid   = Number(fin.owner_paid || 0) + Number(fin.prior_owner_income || 0)
+
+  // ── Expense breakdown ─────────────────────────────────────────────────────
+  // These columns are now explicit in the view (0049 migration)
+  const vendorClaimsBilled = Number(fin.vendor_claims_billed || 0) + Number(fin.prior_vendor_certified || 0)
+  const vendorClaimsPaid   = Number(fin.vendor_claims_paid   || 0) + Number(fin.prior_vendor_paid      || 0)
+
   const invoicesBilled = Number(fin.invoices_billed || 0)
-  const invoicesPaid = Number(fin.invoices_paid || 0)
-  
+  const invoicesPaid   = Number(fin.invoices_paid   || 0)
+
   const empExpBilled = Number(fin.employee_expenses_billed || 0)
-  const empExpPaid = Number(fin.employee_expenses_paid || 0)
+  const empExpPaid   = Number(fin.employee_expenses_paid   || 0)
 
   const priorExpenses = Number(fin.prior_expenses || 0)
-  
-  const totalExpBilled = Number(fin.total_expenses || 0)
-  const inventoryValue = Number(fin.inventory_asset_value || 0)
-  
-  const netProfit = Number(fin.net_profit || 0)
+
+  // ── Totals ────────────────────────────────────────────────────────────────
+  const totalExpBilled  = priorExpenses + vendorClaimsBilled + invoicesBilled + empExpBilled
+  const inventoryValue  = Number(fin.inventory_asset_value || 0)
+
+  const netProfit    = ownerBilled - (totalExpBilled - inventoryValue)
   const profitMargin = ownerBilled > 0 ? (netProfit / ownerBilled) * 100 : 0
+
 
   const getPercentage = (paid: number, billed: number) => {
     if (billed === 0) return 0
@@ -176,6 +182,11 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
                 <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatMoney(vendorClaimsPaid)}</span>
               </div>
               <Progress value={getPercentage(vendorClaimsPaid, vendorClaimsBilled)} className="h-1 mt-2" indicatorColor="bg-amber-500" />
+              {Number(fin.prior_vendor_certified || 0) > 0 && (
+                <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded mt-1.5 inline-block">
+                  يتضمن {formatMoney(Number(fin.prior_vendor_certified))} رصيد افتتاحي
+                </p>
+              )}
             </div>
             
             {/* Vendor POs */}

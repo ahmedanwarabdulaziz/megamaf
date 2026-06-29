@@ -1,7 +1,23 @@
 import { Suspense } from "react"
 import { LoginForm } from "./login-form"
+import { createAdminClient } from "@/lib/supabase/admin"
 
-export default function LoginPage() {
+async function checkNoUsers(): Promise<boolean> {
+  try {
+    const admin = createAdminClient()
+    const { count, error } = await admin
+      .from("employees")
+      .select("id", { count: "exact", head: true })
+    if (error) return false
+    return (count ?? 0) === 0
+  } catch {
+    return false
+  }
+}
+
+export default async function LoginPage() {
+  const noUsers = await checkNoUsers()
+
   return (
     <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-background">
       <div className="w-full max-w-sm rounded-xl border border-border bg-card text-card-foreground shadow-sm">
@@ -15,7 +31,7 @@ export default function LoginPage() {
         </div>
         <div className="p-6 pt-0">
           <Suspense>
-            <LoginForm />
+            <LoginForm noUsers={noUsers} />
           </Suspense>
         </div>
       </div>

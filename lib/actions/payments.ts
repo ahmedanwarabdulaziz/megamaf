@@ -13,17 +13,35 @@ export async function payVendor(formData: FormData, allocations: any[]) {
   const memo = formData.get('memo') as string;
   const project_id = formData.get('project_id') as string || null;
 
+  // Split allocations: prior_claim must be handled separately (not in payment_allocations)
+  const priorClaimAllocations = allocations.filter(a => a.target_type === 'prior_claim');
+  const standardAllocations = allocations.filter(a => a.target_type !== 'prior_claim');
+
   const { data, error } = await supabase.rpc('record_vendor_payment', {
     p_bank_account_id: bank_account_id,
     p_vendor_id: vendor_id,
     p_amount: amount,
     p_memo: memo || '',
-    p_allocations: allocations,
+    p_allocations: standardAllocations,
     p_project_id: project_id
   });
 
   if (error) {
     return { error: error.message };
+  }
+
+  // Handle prior_claim allocations via the pay_prior_claim RPC (bypasses super-admin-only RLS)
+  for (const alloc of priorClaimAllocations) {
+    if (alloc.amount > 0) {
+      const { error: priorError } = await supabase.rpc('pay_prior_claim', {
+        p_prior_claim_id: alloc.target_id,
+        p_vendor_id: vendor_id,
+        p_amount: alloc.amount,
+      });
+      if (priorError) {
+        return { error: priorError.message };
+      }
+    }
   }
 
   // Notify admins

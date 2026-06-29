@@ -8,6 +8,7 @@ import { Plus } from 'lucide-react';
 export default async function EmployeesPage() {
   const supabase = await createClient();
   const { data: employees } = await supabase.from('employees').select('*').order('created_at', { ascending: false });
+  const { data: projects } = await supabase.from('projects').select('id, name, is_main').order('sort_order');
 
   return (
     <div className="space-y-4 p-4">
@@ -19,7 +20,7 @@ export default async function EmployeesPage() {
       </div>
       <EmployeeDataTable data={employees || []} />
       
-      <EmployeeModal />
+      <EmployeeModal projects={projects || []} />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { getVendors } from '@/lib/queries/vendors';
 import { getProjects } from '@/lib/queries/projects';
 import { CreateClaimForm } from '@/components/claims/create-claim-form';
 import { createClient } from '@/lib/supabase/server';
+import { getVendor } from '@/lib/queries/vendors';
 
 export const metadata = {
   title: 'تسجيل مستخلص',
@@ -15,6 +16,15 @@ export default async function CreateClaimPage({
   const { party_id, project_id } = await searchParams;
   const vendors = await getVendors();
   const projects = await getProjects();
+
+  // If a vendor is pre-selected via URL, resolve its name for the locked label
+  let fixedPartyName: string | undefined;
+  if (party_id) {
+    try {
+      const v = await getVendor(party_id);
+      fixedPartyName = v?.name;
+    } catch (_) {}
+  }
   const supabase = await createClient();
   const { data: warehouses } = await supabase.from('warehouses').select('id, name, project_id');
   const { data: inventoryItems } = await supabase.from('inventory_items').select('id, name, unit, code');
@@ -32,7 +42,8 @@ export default async function CreateClaimPage({
         warehouses={warehouses || []}
         inventoryItems={inventoryItems || []}
         stockLevels={stockLevels || []}
-        defaultPartyId={party_id}
+        fixedPartyId={party_id}
+        fixedPartyName={fixedPartyName}
         defaultProjectId={project_id}
       />
     </div>

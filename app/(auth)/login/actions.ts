@@ -26,7 +26,8 @@ export async function login(formData: FormData) {
     .from('employees')
     .select('id, auth_user_id')
     .eq('username', username)
-    .single()
+    .limit(1)
+    .maybeSingle()
 
   console.log('[LOGIN] Step 1 - employee lookup:', { found: !!employee, error: empError?.message })
 

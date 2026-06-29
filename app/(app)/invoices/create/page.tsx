@@ -8,7 +8,9 @@ export const metadata = {
 };
 
 export default async function CreateInvoicePage() {
-  const vendors = await getVendors();
+  const allVendors = await getVendors();
+  // ── Business rule: invoices are for suppliers (مورد) only ──
+  const vendors = allVendors.filter((v: any) => v.kind === 'vendor');
   const projects = await getProjects();
   const supabase = await createClient();
   const { data: warehouses } = await supabase.from('warehouses').select('id, name, project_id');

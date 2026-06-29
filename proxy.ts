@@ -38,7 +38,9 @@ export async function proxy(request: NextRequest) {
   const pathname = request.nextUrl.pathname
   const isLoginRoute = pathname.startsWith('/login')
   const isChangePasswordRoute = pathname === '/change-password'
-  const isProtectedRoute = !isLoginRoute
+  // Public API routes that must work without authentication
+  const isPublicApiRoute = pathname.startsWith('/api/seed-admin')
+  const isProtectedRoute = !isLoginRoute && !isPublicApiRoute
 
   // Not logged in → redirect to login
   if (isProtectedRoute && !user) {

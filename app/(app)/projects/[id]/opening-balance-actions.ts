@@ -9,6 +9,7 @@ export async function saveFinancialBalance(formData: FormData) {
   const cutoffDate = formData.get('cutoff_date') as string;
   const priorExpenses = parseFloat(formData.get('prior_expenses') as string) || 0;
   const priorOwnerIncome = parseFloat(formData.get('prior_owner_income') as string) || 0;
+  const priorOwnerDues = parseFloat(formData.get('prior_owner_dues') as string) || 0;
   const notes = (formData.get('notes') as string) || null;
 
   const { error } = await supabase.rpc('upsert_project_opening_balance', {
@@ -16,6 +17,7 @@ export async function saveFinancialBalance(formData: FormData) {
     p_cutoff_date: cutoffDate,
     p_prior_expenses: priorExpenses,
     p_prior_owner_income: priorOwnerIncome,
+    p_prior_owner_dues: priorOwnerDues,
     p_notes: notes,
   });
 
@@ -103,4 +105,43 @@ export async function deleteOpeningStockEntry(entryId: string, projectId: string
   const { error } = await supabase.rpc('delete_opening_stock_entry', { p_entry_id: entryId });
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
+}
+
+export async function saveWarehouse(formData: FormData) {
+  const supabase = await createClient();
+  const projectId = formData.get('project_id') as string;
+  const name      = (formData.get('name') as string)?.trim();
+
+  if (!name) throw new Error('اسم المستودع مطلوب');
+
+  const { data, error } = await supabase
+    .from('warehouses')
+    .insert({ name, project_id: projectId })
+    .select('id, name, project_id')
+    .single();
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/projects/${projectId}`);
+  return data as { id: string; name: string; project_id: string };
+}
+
+export async function saveInventoryItem(formData: FormData) {
+  const supabase = await createClient();
+  const projectId = formData.get('project_id') as string; // used only for revalidation
+  const name      = (formData.get('name') as string)?.trim();
+  const unit      = (formData.get('unit') as string)?.trim();
+  const code      = (formData.get('code') as string)?.trim() || null;
+
+  if (!name) throw new Error('اسم الصنف مطلوب');
+  if (!unit) throw new Error('وحدة القياس مطلوبة');
+
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .insert({ name, unit, code })
+    .select('id, name, unit, code')
+    .single();
+
+  if (error) throw new Error(error.message);
+  revalidatePath(`/projects/${projectId}`);
+  return data as { id: string; name: string; unit: string; code: string | null };
 }

@@ -8,10 +8,13 @@ import {
   deleteVendorPriorClaim,
   saveOpeningStockEntry,
   deleteOpeningStockEntry,
+  saveWarehouse,
+  saveInventoryItem,
 } from './opening-balance-actions';
 import { saveVendor } from '@/lib/actions/vendors';
 import { useRouter } from 'next/navigation';
 import { Trash2, Pencil, ChevronDown, ChevronUp, PackageOpen, Building2, Scale, X } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 // ─────────────────────────────────────────────────
 // Types
@@ -44,6 +47,7 @@ interface FinancialBalance {
   cutoff_date: string;
   prior_expenses: number;
   prior_owner_income: number;
+  prior_owner_dues: number;
   notes: string | null;
 }
 
@@ -90,6 +94,10 @@ function FinancialSection({ projectId, balance }: { projectId: string; balance: 
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
 
+  const [ownerDues, setOwnerDues] = useState<number>(balance?.prior_owner_dues || 0);
+  const [ownerIncome, setOwnerIncome] = useState<number>(balance?.prior_owner_income || 0);
+  const outstanding = Math.max(ownerDues - ownerIncome, 0);
+
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError(''); setSuccess(false);
@@ -118,6 +126,7 @@ function FinancialSection({ projectId, balance }: { projectId: string; balance: 
         </div>
       </div>
 
+      {/* Expenses */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1.5">مصروفات سابقة (قبل التتبع)</label>
@@ -131,18 +140,53 @@ function FinancialSection({ projectId, balance }: { projectId: string; balance: 
           </div>
           <p className="text-xs text-muted-foreground mt-1">إجمالي التكاليف قبل بدء التتبع (لا تشمل المخزون)</p>
         </div>
-        <div>
-          <label className="block text-sm font-medium mb-1.5">إيرادات سابقة من المالك</label>
-          <div className="relative">
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ج.م</span>
-            <input
-              type="number" name="prior_owner_income" min="0" step="0.01"
-              defaultValue={balance?.prior_owner_income || 0}
-              className="w-full border rounded-lg pl-3 pr-10 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left"
-            />
+      </div>
+
+      {/* Owner Prior Dues & Income — Owner Claim #0 */}
+      <div className="border rounded-xl p-4 bg-amber-50/40 dark:bg-amber-950/10 space-y-4">
+        <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
+          👤 مستحقات المالك السابقة (مستخلص #0)
+        </p>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium mb-1.5">إجمالي مستحقات سابقة على المالك</label>
+            <div className="relative">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ج.م</span>
+              <input
+                type="number" name="prior_owner_dues" min="0" step="0.01"
+                value={ownerDues || ''}
+                onChange={e => setOwnerDues(parseFloat(e.target.value) || 0)}
+                className="w-full border rounded-lg pl-3 pr-10 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">إجمالي المستخلصات المعتمدة للمالك قبل النظام</p>
           </div>
-          <p className="text-xs text-muted-foreground mt-1">إجمالي المستخلصات + الدفعات المقدمة من المالك</p>
+          <div>
+            <label className="block text-sm font-medium mb-1.5">إيرادات سابقة من المالك (المحصّل)</label>
+            <div className="relative">
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ج.م</span>
+              <input
+                type="number" name="prior_owner_income" min="0" step="0.01"
+                value={ownerIncome || ''}
+                onChange={e => setOwnerIncome(parseFloat(e.target.value) || 0)}
+                className="w-full border rounded-lg pl-3 pr-10 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">ما تم تحصيله فعلياً من المالك قبل النظام</p>
+          </div>
         </div>
+
+        {/* Live outstanding calculator */}
+        {ownerDues > 0 && (
+          <div className="flex items-center justify-between rounded-lg bg-amber-100/60 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3">
+            <div className="text-sm">
+              <span className="text-muted-foreground">المتبقي المستحق من المالك (سيظهر كمستخلص #0):</span>
+            </div>
+            <span className={`text-xl font-bold ${outstanding > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-green-600'}`}>
+              {formatMoney(outstanding)}
+            </span>
+          </div>
+        )}
       </div>
 
       <div>
@@ -288,7 +332,7 @@ function VendorClaimsSection({
         </div>
       )}
 
-      {!showingForm && availableVendors.length > 0 && (
+      {!showingForm && (
         <button type="button" onClick={() => { 
             setShowForm(true); 
             setEditing(null); 
@@ -327,6 +371,11 @@ function VendorClaimsSection({
                     <span className="font-bold text-lg leading-none">+</span>
                   </button>
                 </div>
+                {availableVendors.length === 0 && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded">
+                    كل المقاولين الحاليين لديهم سجل بالفعل. اضغط <strong>+</strong> لإضافة مقاول جديد.
+                  </p>
+                )}
               </div>
             )}
             <div>
@@ -341,7 +390,7 @@ function VendorClaimsSection({
             <div>
               <label className="block text-sm font-medium mb-1">إجمالي الأعمال المستخلصة (ج.م)</label>
               <input type="number" name="prior_certified_amount" min="0" step="0.01" required
-                value={certifiedAmount || ''}
+                value={certifiedAmount}
                 onChange={e => setCertifiedAmount(parseFloat(e.target.value) || 0)}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
             </div>
@@ -355,9 +404,9 @@ function VendorClaimsSection({
               <label className="block text-sm font-medium mb-1">المحتجز (%)</label>
               <div className="relative">
                 <input type="number" min="0" max="100" step="0.1" required
-                  value={retentionPercent || ''}
+                  value={retentionPercent}
                   onChange={e => setRetentionPercent(parseFloat(e.target.value) || 0)}
-                  className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
+                  className="w-full border rounded-lg px-3 pl-8 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
                 <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
               </div>
               <p className="text-xs text-muted-foreground mt-1">
@@ -480,7 +529,7 @@ function VendorClaimsSection({
 // Opening Inventory Section
 // ─────────────────────────────────────────────────
 function InventorySection({
-  projectId, cutoffDate, existingEntries, warehouses, inventoryItems
+  projectId, cutoffDate, existingEntries, warehouses: initialWarehouses, inventoryItems: initialInventoryItems
 }: {
   projectId: string; cutoffDate: string;
   existingEntries: OpeningStockEntry[];
@@ -490,16 +539,76 @@ function InventorySection({
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState('');
 
+  // Local warehouse list so newly-created ones appear without a page reload
+  const [warehouses, setWarehouses] = useState<Warehouse[]>(initialWarehouses);
+  const [showWarehouseForm, setShowWarehouseForm] = useState(false);
+  const [warehouseName, setWarehouseName] = useState('');
+  const [warehousePending, startWarehouseTransition] = useTransition();
+  const [warehouseError, setWarehouseError] = useState('');
+
+  // Local inventory item list — new items appear immediately in dropdown
+  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(initialInventoryItems);
+  const [showItemModal, setShowItemModal] = useState(false);
+  const [itemPending, startItemTransition] = useTransition();
+  const [itemError, setItemError] = useState('');
+  // Controlled value for the searchable item picker
+  const [selectedItemId, setSelectedItemId] = useState('');
+
+  const router = useRouter();
+
   const totalValue = existingEntries.reduce((s, e) => s + e.qty * e.unit_price, 0);
+
+  // Show project-specific warehouses first; fall back to ALL if none are linked to this project
+  const projectWarehouses = warehouses.filter(w => w.project_id === projectId || w.project_id === null);
+  const displayWarehouses = projectWarehouses.length > 0 ? projectWarehouses : warehouses;
+
+  async function handleAddWarehouseClick() {
+    if (!warehouseName.trim()) {
+      setWarehouseError('يرجى إدخال اسم المستودع');
+      return;
+    }
+    setWarehouseError('');
+    const fd = new FormData();
+    fd.append('project_id', projectId);
+    fd.append('name', warehouseName);
+
+    startWarehouseTransition(async () => {
+      try {
+        const newWh = await saveWarehouse(fd);
+        setWarehouses(prev => [...prev, newWh]);
+        setWarehouseName('');
+        setShowWarehouseForm(false);
+        router.refresh();
+      } catch (err: any) { setWarehouseError(err.message); }
+    });
+  }
+
+  async function handleAddItem(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setItemError('');
+    const fd = new FormData(e.currentTarget);
+    fd.set('project_id', projectId);
+    startItemTransition(async () => {
+      try {
+        const newItem = await saveInventoryItem(fd);
+        setInventoryItems(prev => [...prev, newItem]);
+        setSelectedItemId(newItem.id); // auto-select the newly created item
+        setShowItemModal(false);
+        (e.target as HTMLFormElement).reset();
+      } catch (err: any) { setItemError(err.message); }
+    });
+  }
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setError('');
     const fd = new FormData(e.currentTarget);
+    fd.set('item_id', selectedItemId); // inject controlled value
     startTransition(async () => {
       try {
         await saveOpeningStockEntry(fd);
         setShowForm(false);
+        setSelectedItemId('');
         (e.target as HTMLFormElement).reset();
       } catch (err: any) { setError(err.message); }
     });
@@ -513,7 +622,7 @@ function InventorySection({
     });
   }
 
-  const projectWarehouses = warehouses.filter(w => w.project_id === projectId || w.project_id === null);
+
 
   return (
     <div className="space-y-4">
@@ -573,23 +682,79 @@ function InventorySection({
           <input type="hidden" name="project_id" value={projectId} />
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {/* Warehouse picker + inline “+” creator */}
             <div>
               <label className="block text-sm font-medium mb-1">المستودع *</label>
-              <select name="warehouse_id" required
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none">
-                <option value="">-- اختر مستودعاً --</option>
-                {projectWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
-              </select>
+              <div className="flex gap-2">
+                <select name="warehouse_id" required
+                  className="flex-1 border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none">
+                  <option value="">-- اختر مستودعاً --</option>
+                  {displayWarehouses.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => { setShowWarehouseForm(v => !v); setWarehouseError(''); }}
+                  title="إضافة مستودع جديد"
+                  className="flex-shrink-0 h-[38px] w-[38px] flex items-center justify-center bg-muted border rounded-lg hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors text-lg font-bold"
+                >
+                  +
+                </button>
+              </div>
+
+              {/* Inline warehouse mini-form */}
+              {showWarehouseForm && (
+                <div className="mt-2 flex gap-2 items-end border rounded-lg p-2 bg-background">
+                  <div className="flex-1">
+                    <label className="block text-xs text-muted-foreground mb-1">اسم المستودع الجديد</label>
+                    <input
+                      name="name"
+                      required
+                      value={warehouseName}
+                      onChange={e => setWarehouseName(e.target.value)}
+                      placeholder="مثال: مخزن الموقع"
+                      className="w-full border rounded px-2 py-1.5 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
+                    />
+                    {warehouseError && <p className="text-xs text-destructive mt-0.5">{warehouseError}</p>}
+                  </div>
+                  <button type="button" onClick={handleAddWarehouseClick} disabled={warehousePending}
+                    className="h-[34px] px-3 bg-primary text-primary-foreground rounded text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors whitespace-nowrap">
+                    {warehousePending ? '...' : 'حفظ'}
+                  </button>
+                  <button type="button" onClick={() => setShowWarehouseForm(false)}
+                    className="h-[34px] px-2 border rounded text-sm hover:bg-muted/40 transition-colors">
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">الصنف *</label>
-              <select name="item_id" required
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none">
-                <option value="">-- اختر صنفاً --</option>
-                {inventoryItems.map(i => (
-                  <option key={i.id} value={i.id}>{i.name} {i.code ? `(${i.code})` : ''} — {i.unit}</option>
-                ))}
-              </select>
+              <div className="flex gap-2 items-start">
+                <div className="flex-1">
+                  <SearchableSelect
+                    options={inventoryItems.map(i => ({
+                      value: i.id,
+                      label: i.name,
+                      sub: i.code ? `كود: ${i.code}` : undefined,
+                      badge: i.unit,
+                    }))}
+                    value={selectedItemId}
+                    onChange={setSelectedItemId}
+                    placeholder="ابحث عن صنف..."
+                    required
+                  />
+                  {/* hidden input so HTML5 required validation fires correctly */}
+                  {!selectedItemId && <input type="hidden" name="_item_required" required />}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => { setShowItemModal(true); setItemError(''); }}
+                  title="إضافة صنف جديد"
+                  className="flex-shrink-0 h-[38px] w-[38px] flex items-center justify-center bg-muted border rounded-lg hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors text-lg font-bold"
+                >
+                  +
+                </button>
+              </div>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">الكمية *</label>
@@ -632,6 +797,97 @@ function InventorySection({
         <p className="text-sm text-muted-foreground text-center py-4">
           لا يوجد مخزون افتتاحي مسجل. اضغط &ldquo;إضافة صنف&rdquo; لتسجيل المواد الموجودة.
         </p>
+      )}
+
+      {/* ── New Inventory Item Modal ── */}
+      {showItemModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)' }}
+          onClick={e => { if (e.target === e.currentTarget) setShowItemModal(false); }}
+        >
+          <div className="bg-card border rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 animate-in fade-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold">إضافة صنف جديد</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  سيُضاف الصنف فوراً إلى القائمة بعد الحفظ
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowItemModal(false)}
+                className="h-8 w-8 flex items-center justify-center rounded-lg hover:bg-muted transition-colors text-muted-foreground"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddItem} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-1">
+                  اسم الصنف <span className="text-destructive">*</span>
+                </label>
+                <input
+                  name="name"
+                  required
+                  autoFocus
+                  placeholder="مثال: أسمنت، حديد تسليح، طوب"
+                  className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    وحدة القياس <span className="text-destructive">*</span>
+                  </label>
+                  <input
+                    name="unit"
+                    required
+                    placeholder="مثال: طن، م³، عدد"
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    الكود <span className="text-muted-foreground text-xs">(اختياري)</span>
+                  </label>
+                  <input
+                    name="code"
+                    placeholder="مثال: CEM-01"
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {itemError && (
+                <div className="flex items-start gap-2 bg-destructive/10 border border-destructive/30 text-destructive rounded-lg px-3 py-2 text-sm">
+                  <span className="mt-0.5">⚠</span>
+                  <span>{itemError}</span>
+                </div>
+              )}
+
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="submit"
+                  disabled={itemPending}
+                  className="flex-1 bg-primary text-primary-foreground py-2.5 rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                >
+                  {itemPending ? 'جاري الحفظ...' : 'حفظ الصنف'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowItemModal(false)}
+                  className="px-4 border rounded-lg text-sm hover:bg-muted/40 transition-colors"
+                >
+                  إلغاء
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

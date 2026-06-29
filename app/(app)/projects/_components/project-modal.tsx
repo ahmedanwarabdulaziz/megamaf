@@ -113,17 +113,27 @@ export function ProjectModal({ owners, projects }: { owners: any[], projects: an
 
             <div className="space-y-2">
               <label className="text-sm font-medium">التبعية (الأب)</label>
-              <Select
-                name="parent_id"
-                value={selectedParentId}
-                onChange={(e) => setSelectedParentId(e.target.value)}
-                required
-                disabled={isEdit && nodeType !== 'project'}
-              >
-                {possibleParents.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </Select>
+              {possibleParents.length === 0 ? (
+                <div className="w-full p-2 rounded border bg-muted/40 text-sm text-muted-foreground">
+                  {nodeType === 'project' && 'ℹ️ لا يوجد حاوي رئيسي — تأكد من وجود MAF Main Company'}
+                  {nodeType === 'branch' && 'ℹ️ أضف مشروعاً أولاً ثم أضف الفرع'}
+                  {nodeType === 'phase' && 'ℹ️ أضف فرعاً أولاً ثم أضف المرحلة'}
+                  <input type="hidden" name="parent_id" value="" />
+                </div>
+              ) : (
+                <Select
+                  name="parent_id"
+                  value={selectedParentId}
+                  onChange={(e) => setSelectedParentId(e.target.value)}
+                  required
+                  disabled={isEdit && nodeType !== 'project'}
+                >
+                  <option value="">— اختر المشروع الأب —</option>
+                  {possibleParents.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </Select>
+              )}
             </div>
 
             <div className="space-y-2">

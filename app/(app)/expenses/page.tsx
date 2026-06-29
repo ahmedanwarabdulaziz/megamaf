@@ -17,9 +17,9 @@ export const metadata = {
 export default async function EmployeeExpensesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ tab?: string, employee_id?: string, project_id?: string, category_id?: string, start_date?: string, end_date?: string, show_all?: string }>;
+  searchParams: Promise<{ tab?: string, employee_id?: string, project_id?: string, category_id?: string, start_date?: string, end_date?: string, show_all?: string, status?: string }>;
 }) {
-  const { tab = 'mine', employee_id, project_id, category_id, start_date, end_date, show_all } = await searchParams;
+  const { tab = 'mine', employee_id, project_id, category_id, start_date, end_date, show_all, status } = await searchParams;
   const { profile: employee } = await getProfile();
   if (!employee) return <div>Not authenticated</div>;
 
@@ -45,7 +45,15 @@ export default async function EmployeeExpensesPage({
   const activeCategories = categories.filter(c => c.is_active);
 
   // Load data based on tab
-  const myExpenses   = tab === 'mine'   ? await getEmployeeExpenses(employee.id) : [];
+  const myExpenses = tab === 'mine' ? await getAllExpenses({
+    employeeId: employee.id,
+    projectId: project_id,
+    categoryId: category_id,
+    startDate: isShowAll ? undefined : startDate,
+    endDate: isShowAll ? undefined : endDate,
+    status: status
+  }) : [];
+  
   const ownerExpenses = (tab === 'owners' && isApprover) ? await getOwnerExpenses() : [];
   
   let allExpensesData: any[] = [];
@@ -55,7 +63,8 @@ export default async function EmployeeExpensesPage({
       projectId: project_id,
       categoryId: category_id,
       startDate: isShowAll ? undefined : startDate,
-      endDate: isShowAll ? undefined : endDate
+      endDate: isShowAll ? undefined : endDate,
+      status: status
     });
   }
 
@@ -139,33 +148,49 @@ export default async function EmployeeExpensesPage({
 
       {/* My expenses list */}
       {tab === 'mine' && (
-        <div className="bg-card rounded-lg border shadow-sm divide-y">
-          {myExpenses.length === 0 ? (
-            <div className="p-8 text-center text-muted-foreground">لا توجد مصروفات</div>
-          ) : (
-            myExpenses.map((expense: any) => (
-              <div key={expense.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                <div>
-                  <p className="font-bold">{expense.project?.name} - {expense.category?.name}</p>
-                  <p className="text-sm text-muted-foreground">{expense.notes}</p>
-                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                    <span>{expense.expense_date}</span>
-                    <span>•</span>
-                    <StatusBadge status={expense.status} />
-                    {expense.status === 'approved' && (
-                      <>
-                        <span>•</span>
-                        <span className="text-primary">تمت التسوية: {formatMoney(expense.settled_amount)}</span>
-                      </>
-                    )}
+        <div className="space-y-4">
+          <AllExpensesFilters 
+            employees={allEmployees}
+            projects={projects || []}
+            categories={categories || []}
+            selectedEmployeeId=""
+            selectedProjectId={project_id || ''}
+            selectedCategoryId={category_id || ''}
+            selectedStatus={status || ''}
+            startDate={startDate}
+            endDate={endDate}
+            showAll={isShowAll}
+            activeTab="mine"
+            hideEmployeeFilter={true}
+          />
+          <div className="bg-card rounded-lg border shadow-sm divide-y">
+            {myExpenses.length === 0 ? (
+              <div className="p-8 text-center text-muted-foreground">لا توجد مصروفات</div>
+            ) : (
+              myExpenses.map((expense: any) => (
+                <div key={expense.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                  <div>
+                    <p className="font-bold">{expense.project?.name} - {expense.category?.name}</p>
+                    <p className="text-sm text-muted-foreground">{expense.notes}</p>
+                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                      <span>{expense.expense_date}</span>
+                      <span>•</span>
+                      <StatusBadge status={expense.status} />
+                      {expense.status === 'approved' && (
+                        <>
+                          <span>•</span>
+                          <span className="text-primary">تمت التسوية: {formatMoney(expense.settled_amount)}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold whitespace-nowrap">
+                    {formatMoney(expense.amount)}
                   </div>
                 </div>
-                <div className="text-xl font-bold whitespace-nowrap">
-                  {formatMoney(expense.amount)}
-                </div>
-              </div>
-            ))
-          )}
+              ))
+            )}
+          </div>
         </div>
       )}
 
@@ -205,7 +230,6 @@ export default async function EmployeeExpensesPage({
         </div>
       )}
 
-      {/* All expenses list */}
       {tab === 'all' && isSuperAdmin && (
         <div className="space-y-4">
           <AllExpensesFilters 
@@ -215,6 +239,7 @@ export default async function EmployeeExpensesPage({
             selectedEmployeeId={employee_id || ''}
             selectedProjectId={project_id || ''}
             selectedCategoryId={category_id || ''}
+            selectedStatus={status || ''}
             startDate={startDate}
             endDate={endDate}
             showAll={isShowAll}

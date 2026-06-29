@@ -53,16 +53,22 @@ export function OwnerReceiptCalculator({
       const allocAmount = Math.min(remaining, remainingDue);
       remaining -= allocAmount;
       return {
-        target_type: doc.document_type,
-        target_id: doc.document_id,
-        amount: allocAmount,
-        max: remainingDue,
-        description: doc.description,
-        project_name: doc.project_name,
+        target_type:   doc.document_type,
+        target_id:     doc.document_id,
+        amount:        allocAmount,
+        max:           remainingDue,
+        description:   doc.description,
+        project_name:  doc.project_name,
+        // Breakdown fields for display in the table
+        gross_total:    doc.gross_total    ?? 0,
+        retained:       doc.retained       ?? 0,
+        net_cumulative: doc.net_cumulative ?? 0,
+        total_paid:     doc.total_paid     ?? 0,
       };
     });
     setAllocations(newAllocations);
   }, [amount, projectDocs, projectId]);
+
 
   const updateAllocation = (index: number, val: number) => {
     const newAllocations = [...allocations];
@@ -137,7 +143,56 @@ export function OwnerReceiptCalculator({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
-      {/* ── Main fields ── */}
+
+      {/* ── Claim Summary Card (mirrors vendor pay) ── */}
+      {openDocs.filter(d => d.document_type === 'claim').length > 0 && (
+        <div className="bg-card rounded-lg border shadow-sm divide-y">
+          <div className="px-4 py-3 bg-muted/30">
+            <h3 className="font-bold text-sm">ملخص آخر مستخلص معتمد</h3>
+          </div>
+          {openDocs.filter(d => d.document_type === 'claim').map(doc => (
+            <div key={doc.document_id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-start gap-4">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{doc.project_name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">{doc.description}</p>
+              </div>
+              <div className="flex flex-col items-end gap-1.5 min-w-[280px]">
+                <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
+                  <span>إجمالي الأعمال التراكمي:</span>
+                  <span className="font-medium">{formatMoney(doc.gross_total || 0)}</span>
+                </div>
+                {(doc.retained || 0) > 0 && (
+                  <div className="flex justify-between w-full gap-4 text-xs text-amber-600">
+                    <span>المحتجز التراكمي:</span>
+                    <span className="font-medium">- {formatMoney(doc.retained)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground border-t border-muted/30 pt-1">
+                  <span>الصافي التراكمي (قابل للتحصيل):</span>
+                  <span className="font-medium">{formatMoney(doc.net_cumulative || 0)}</span>
+                </div>
+                {(doc.total_paid || 0) > 0 && (
+                  <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
+                    <span>المحصّل فعلياً:</span>
+                    <span>- {formatMoney(doc.total_paid)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center w-full gap-4 border-t border-primary/20 pt-1.5 mt-0.5">
+                  <span className="text-sm font-semibold">
+                    {doc.amount_due <= 0 ? '✓ تم التحصيل بالكامل' : 'المتبقي المستحق:'}
+                  </span>
+                  <span className={`text-xl font-bold whitespace-nowrap ${
+                    doc.amount_due <= 0 ? 'text-green-600' : 'text-primary'
+                  }`}>
+                    {formatMoney(doc.amount_due)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="bg-card p-6 rounded-lg border shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
         {/* Project — required, always first */}
         <div className="md:col-span-2">
@@ -279,8 +334,52 @@ export function OwnerReceiptCalculator({
                   key={alloc.target_id}
                   className={alloc.amount > 0 ? 'bg-primary/5' : ''}
                 >
-                  <td className="p-3 font-medium">{alloc.description}</td>
-                  <td className="p-3">{formatMoney(alloc.max)}</td>
+                  {/* Description + breakdown for claims */}
+                  <td className="p-3">
+                    <div className="font-semibold mb-1">{alloc.description}</div>
+                    {alloc.target_type === 'claim' && alloc.gross_total > 0 && (
+                      <div className="text-xs space-y-0.5 text-muted-foreground mt-1.5 border-t border-muted/30 pt-1.5">
+                        {/* Gross */}
+                        <div className="flex justify-between gap-6">
+                          <span>إجمالي الأعمال التراكمي:</span>
+                          <span className="font-medium text-foreground">{formatMoney(alloc.gross_total)}</span>
+                        </div>
+                        {/* Retention */}
+                        {alloc.retained > 0 && (
+                          <div className="flex justify-between gap-6 text-amber-600">
+                            <span>المحتجز التراكمي:</span>
+                            <span className="font-medium">- {formatMoney(alloc.retained)}</span>
+                          </div>
+                        )}
+                        {/* Net */}
+                        <div className="flex justify-between gap-6 border-t border-muted/20 pt-0.5">
+                          <span>الصافي التراكمي (قابل للتحصيل):</span>
+                          <span className="font-medium text-foreground">{formatMoney(alloc.net_cumulative)}</span>
+                        </div>
+                        {/* Already paid */}
+                        {alloc.total_paid > 0 && (
+                          <div className="flex justify-between gap-6 text-green-600">
+                            <span>المحصّل فعلياً:</span>
+                            <span className="font-medium">- {formatMoney(alloc.total_paid)}</span>
+                          </div>
+                        )}
+                        {/* المتبقي — highlighted */}
+                        <div className="flex justify-between gap-6 border-t border-primary/20 pt-1 mt-0.5 text-foreground font-semibold">
+                          <span>المتبقي للتحصيل:</span>
+                          <span className="text-primary">{formatMoney(alloc.max)}</span>
+                        </div>
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Remaining (= amount_due) */}
+                  <td className="p-3">
+                    <span className={`font-bold text-base ${alloc.max > 0 ? 'text-primary' : 'text-muted-foreground'}`}>
+                      {formatMoney(alloc.max)}
+                    </span>
+                  </td>
+
+                  {/* Input */}
                   <td className="p-3">
                     <input
                       type="number"
@@ -309,6 +408,7 @@ export function OwnerReceiptCalculator({
               )}
             </tbody>
           </table>
+
 
           {/* Totals summary bar */}
           {amount > 0 && (

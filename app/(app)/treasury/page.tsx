@@ -16,8 +16,8 @@ import { DisburseOwnerCustodyModal } from '@/components/treasury/disburse-owner-
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الخزينة والمدفوعات والعهد' };
 
-export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string, vendor_id?: string, owner_id?: string, project_id?: string, start_date?: string, end_date?: string, show_all?: string }> }) {
-  const { tab = 'payables', vendor_id, owner_id, project_id, start_date, end_date, show_all } = await searchParams;
+export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string, subtab?: string, vendor_id?: string, owner_id?: string, project_id?: string, start_date?: string, end_date?: string, show_all?: string }> }) {
+  const { tab = 'payables', subtab = 'claims', vendor_id, owner_id, project_id, start_date, end_date, show_all } = await searchParams;
   const supabase = await createClient();
 
   const now = new Date();
@@ -71,9 +71,9 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     ownerCustodyBalances,
     banks
   ] = await Promise.all([
-    supabase.from('v_vendor_balances').select('vendor_id, vendor_name, total_due, total_paid, balance').order('balance', { ascending: false }),
+    supabase.from('v_vendor_balances').select('vendor_id, vendor_name, gross_total, total_due, total_paid, balance, total_retention_held').order('balance', { ascending: false }),
     supabase.from('v_owner_balances').select('owner_id, owner_name, total_due, total_paid, balance').order('balance', { ascending: false }),
-    supabase.from('vendors').select('id, name').eq('kind', 'contractor').order('name'),
+    supabase.from('vendors').select('id, name').order('name'),
     supabase.from('project_owners').select('id, name').order('name'),
     vendorHistoryQuery,
     ownerHistoryQuery,
@@ -84,6 +84,32 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     tab === 'owner_custodies' ? getAllOwnerCustodyBalances() : Promise.resolve([]),
     tab === 'emp_custodies' || tab === 'owner_custodies' ? getBanks() : Promise.resolve([])
   ]);
+
+  // ── Invoices subtab: approved invoices with remaining balance ──
+  let invoiceRows: any[] = [];
+  if (tab === 'payables' && subtab === 'invoices') {
+    const { data: approvedInvoices } = await supabase
+      .from('invoices')
+      .select('id, invoice_date, status, total, vendor_id, project_id, vendor:vendors(id, name), project:projects(name)')
+      .eq('status', 'approved')
+      .order('invoice_date', { ascending: false });
+
+    if (approvedInvoices && approvedInvoices.length > 0) {
+      const invoiceIds = approvedInvoices.map((i: any) => i.id);
+      const { data: invoicePaid } = await supabase
+        .from('v_invoice_paid')
+        .select('invoice_id, paid_amount')
+        .in('invoice_id', invoiceIds);
+
+      invoiceRows = approvedInvoices
+        .map((inv: any) => ({
+          ...inv,
+          paid_amount: Number((invoicePaid || []).find((p: any) => p.invoice_id === inv.id)?.paid_amount || 0),
+          balance: inv.total - Number((invoicePaid || []).find((p: any) => p.invoice_id === inv.id)?.paid_amount || 0),
+        }))
+        .filter((inv: any) => inv.balance > 0);
+    }
+  }
 
   const totalsMap = new Map((latestClaimTotals ?? []).map(t => [t.claim_id, t.total_due_this_claim]));
   const openClaimsByOwner = new Map<string, { claim_id: string; claim_number: number; project_id: string; amount_due: number }[]>();
@@ -97,6 +123,8 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
 
   const contractorMap = new Map((allContractors ?? []).map(c => [c.id, c.name]));
   const ownerMap      = new Map((allOwners ?? []).map(o => [o.id, o.name]));
+
+  const adjustedVendors = vendors || [];
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -133,32 +161,79 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
 
       {tab === 'payables' && (
         <div className="space-y-4">
+
+          {/* ── Sub-tabs: المستخلصات / الفواتير ── */}
+          <div className="flex gap-1 bg-muted/40 p-1 rounded-lg w-fit">
+            <Link
+              href={`/treasury?tab=payables&subtab=claims`}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                subtab !== 'invoices'
+                  ? 'bg-card shadow text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              📋 مستخلصات المقاولين
+            </Link>
+            <Link
+              href={`/treasury?tab=payables&subtab=invoices`}
+              className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                subtab === 'invoices'
+                  ? 'bg-card shadow text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              🧾 فواتير الموردين
+            </Link>
+          </div>
+
+          {/* ── CLAIMS sub-tab ── */}
+          {subtab !== 'invoices' && (
+        <div className="space-y-4">
           <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
             <table className="w-full text-sm text-right">
               <thead className="bg-muted/50 border-b">
                 <tr>
                   <th className="p-4 font-medium">المقاول</th>
-                  <th className="p-4 font-medium text-amber-600">إجمالي المستحق</th>
-                  <th className="p-4 font-medium text-green-600">إجمالي المدفوع</th>
-                  <th className="p-4 font-medium text-primary">المتبقي (الرصيد)</th>
-                  <th className="p-4 font-medium w-40"></th>
+                  <th className="p-4 font-medium text-muted-foreground">إجمالي الأعمال التراكمي</th>
+                  <th className="p-4 font-medium text-amber-600">المحتجز التراكمي (تأمين)</th>
+                  <th className="p-4 font-medium">الصافي التراكمي (قابل للدفع)</th>
+                  <th className="p-4 font-medium text-green-600">المدفوع</th>
+                  <th className="p-4 font-medium text-primary">المتبقي المستحق</th>
+                  <th className="p-4 font-medium w-32"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {vendors?.map(v => (
-                  <tr key={v.vendor_id} className="hover:bg-muted/30 transition-colors">
-                    <td className="p-4 font-semibold">{v.vendor_name}</td>
-                    <td className="p-4">{formatMoney(v.total_due)}</td>
-                    <td className="p-4">{formatMoney(v.total_paid)}</td>
-                    <td className="p-4 font-bold text-primary">{formatMoney(v.balance)}</td>
-                    <td className="p-4">
-                      <Link href={`/vendors/${v.vendor_id}/statement`} className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md font-medium">كشف حساب</Link>
-                    </td>
-                  </tr>
-                ))}
-                {(!vendors || vendors.length === 0) && (
+                {adjustedVendors.map(v => {
+                  const grossTotal    = Number((v as any).gross_total          || 0);
+                  const retention     = Number((v as any).total_retention_held || 0);
+                  const netCumulative = Number(v.total_due                    || 0);
+                  const totalPaid     = Number(v.total_paid                   || 0);
+                  const remaining     = Number(v.balance                      || 0);
+                  return (
+                    <tr key={v.vendor_id} className="hover:bg-muted/30 transition-colors">
+                      <td className="p-4 font-semibold">{v.vendor_name}</td>
+                      <td className="p-4">{formatMoney(grossTotal)}</td>
+                      <td className="p-4 text-amber-600">
+                        {retention > 0 ? `- ${formatMoney(retention)}` : '-'}
+                      </td>
+                      <td className="p-4 font-medium">{formatMoney(netCumulative)}</td>
+                      <td className="p-4 text-green-700">
+                        {totalPaid > 0 ? `- ${formatMoney(totalPaid)}` : '-'}
+                      </td>
+                      <td className="p-4">
+                        <span className={`font-bold ${remaining <= 0 ? 'text-green-600' : 'text-primary'}`}>
+                          {remaining <= 0 ? '✓ مسدد' : formatMoney(remaining)}
+                        </span>
+                      </td>
+                      <td className="p-4">
+                        <Link href={`/vendors/${v.vendor_id}/statement`} className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md font-medium">كشف حساب</Link>
+                      </td>
+                    </tr>
+                  );
+                })}
+                {adjustedVendors.length === 0 && (
                   <tr>
-                    <td colSpan={5} className="p-8 text-center text-muted-foreground">لا يوجد مقاولون بأرصدة مستحقة</td>
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">لا يوجد مقاولون بأرصدة مستحقة</td>
                   </tr>
                 )}
               </tbody>
@@ -228,6 +303,58 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
               </table>
             </div>
           </div>
+        </div>
+          )}
+
+          {/* ── INVOICES sub-tab ── */}
+          {subtab === 'invoices' && (
+            <div className="space-y-4">
+              <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
+                <table className="w-full text-sm text-right">
+                  <thead className="bg-muted/50 border-b">
+                    <tr>
+                      <th className="p-4 font-medium">المورد</th>
+                      <th className="p-4 font-medium">المشروع</th>
+                      <th className="p-4 font-medium">تاريخ الفاتورة</th>
+                      <th className="p-4 font-medium">إجمالي الفاتورة</th>
+                      <th className="p-4 font-medium text-green-600">المدفوع</th>
+                      <th className="p-4 font-medium text-primary">المتبقي المستحق</th>
+                      <th className="p-4 font-medium w-28"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {invoiceRows.map((inv: any) => (
+                      <tr key={inv.id} className="hover:bg-muted/30 transition-colors">
+                        <td className="p-4 font-semibold">{inv.vendor?.name || 'غير معروف'}</td>
+                        <td className="p-4 text-muted-foreground">{inv.project?.name || '-'}</td>
+                        <td className="p-4 text-muted-foreground">{inv.invoice_date}</td>
+                        <td className="p-4">{formatMoney(inv.total)}</td>
+                        <td className="p-4 text-green-700">
+                          {inv.paid_amount > 0 ? `- ${formatMoney(inv.paid_amount)}` : '-'}
+                        </td>
+                        <td className="p-4">
+                          <span className="font-bold text-primary">{formatMoney(inv.balance)}</span>
+                        </td>
+                        <td className="p-4">
+                          <Link
+                            href={`/treasury/pay/${inv.vendor_id}`}
+                            className="text-xs bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-1.5 rounded-md font-medium whitespace-nowrap"
+                          >
+                            💸 دفع
+                          </Link>
+                        </td>
+                      </tr>
+                    ))}
+                    {invoiceRows.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-muted-foreground">لا توجد فواتير معتمدة برصيد متبقي</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
@@ -337,7 +464,14 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                   })}
                   {(!ownerHistory || ownerHistory.length === 0) && (
                     <tr>
-                      <td colSpan={6} className="p-8 text-center text-muted-foreground">لا توجد مقبوضات مسجلة</td>
+                      <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                        <div className="flex flex-col items-center gap-2">
+                          <span>لا توجد مقبوضات مسجلة في الفترة المحددة</span>
+                          <span className="text-xs">
+                            لتسجيل تحصيل جديد، اختر مالكاً من الجدول أعلاه واضغط &quot;تحصيل&quot;
+                          </span>
+                        </div>
+                      </td>
                     </tr>
                   )}
                 </tbody>

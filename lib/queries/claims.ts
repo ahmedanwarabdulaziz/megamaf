@@ -79,9 +79,20 @@ export async function getClaims(type: 'vendor' | 'owner' = 'vendor', filters?: {
   ]);
 
   // ── 4. Attach totals/paid to in-system claims ────────────────────────────
+  // Build a map: "party_id__project_id" → total paid across ALL claims in that group
+  // (payments may be allocated against older claims, not just the latest)
+  const paidByGroup = new Map<string, number>();
+  for (const c of allClaims) {
+    const key = `${c.party_id}__${c.project_id}`;
+    const paid = Number(claimPaid?.find((p: any) => p.claim_id === (c as any).id)?.paid_amount || 0);
+    paidByGroup.set(key, (paidByGroup.get(key) || 0) + paid);
+  }
+
   allClaims.forEach((c: any) => {
     c.v_claim_totals = claimTotals?.filter((t: any) => t.claim_id === c.id) ?? [];
-    c.v_claim_paid   = claimPaid?.filter((p: any) => p.claim_id === c.id) ?? [];
+    // Expose the group-total paid (sum across all claims for same party+project)
+    const groupPaid = paidByGroup.get(`${c.party_id}__${c.project_id}`) || 0;
+    c.v_claim_paid = [{ claim_id: c.id, paid_amount: groupPaid }];
   });
 
   const vendorMap  = new Map((partiesRaw ?? []).map((v: any) => [v.id, v.name]));

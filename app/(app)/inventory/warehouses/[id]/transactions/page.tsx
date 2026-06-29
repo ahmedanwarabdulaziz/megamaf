@@ -58,8 +58,22 @@ export default async function WarehouseTransactionsPage({ params }: { params: Pr
                         {t.movement_type === 'in_invoice' ? 'شراء (فاتورة)' : 
                          t.movement_type === 'transfer_in' ? 'تحويل وارد' : 
                          t.movement_type === 'transfer_out' ? 'تحويل صادر' : 
-                         t.movement_type === 'issue' ? 'صرف لمشروع' : 
-                         t.movement_type === 'opening_balance' ? 'رصيد افتتاحي' : 'تسوية'}
+                         t.movement_type === 'opening_balance' ? 'رصيد افتتاحي' : 
+                         t.movement_type === 'issue' ? (
+                           t.claim ? (
+                             <Link
+                               href={`/claims/${t.claim.id}`}
+                               className="text-destructive hover:underline font-semibold"
+                             >
+                               صرف — مستخلص #{t.claim.claim_number}
+                               {t.claim.party_name && (
+                                 <span className="text-xs font-normal text-muted-foreground mr-1">
+                                   ({t.claim.party_name})
+                                 </span>
+                               )}
+                             </Link>
+                           ) : 'صرف لمشروع'
+                         ) : 'تسوية'}
                       </div>
                     </td>
                     <td className="p-4 font-semibold">

@@ -42,7 +42,7 @@ export default async function ProjectDetailPage({
     supabase.from('projects').select('id, name, code, parent_id, node_type, sort_order, owner_id').order('sort_order'),
     supabase.from('v_project_financial_position').select('*').eq('project_id', id).single(),
     supabase.from('claims')
-      .select('id, claim_number, claim_date, status, party_id, project_id, claim_type')
+      .select('id, claim_number, claim_date, status, party_id, project_id, claim_type, tax_enabled, tax_rate')
       .eq('project_id', id)
       .eq('claim_type', 'owner')
       .order('claim_number', { ascending: false }),
@@ -179,7 +179,11 @@ export default async function ProjectDetailPage({
               </div>
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
                 <div className="bg-white dark:bg-card rounded-lg p-3 border border-amber-100">
-                  <p className="text-xs text-muted-foreground mb-0.5">إيرادات سابقة</p>
+                  <p className="text-xs text-muted-foreground mb-0.5">إجمالي مستحقات المالك</p>
+                  <p className="font-bold">{formatMoney(finances?.prior_owner_dues || 0)}</p>
+                </div>
+                <div className="bg-white dark:bg-card rounded-lg p-3 border border-amber-100">
+                  <p className="text-xs text-muted-foreground mb-0.5">إيرادات سابقة (محصّل)</p>
                   <p className="font-bold text-green-600">{formatMoney(finances?.prior_owner_income || 0)}</p>
                 </div>
                 <div className="bg-white dark:bg-card rounded-lg p-3 border border-amber-100">
@@ -189,13 +193,6 @@ export default async function ProjectDetailPage({
                 <div className="bg-white dark:bg-card rounded-lg p-3 border border-amber-100">
                   <p className="text-xs text-muted-foreground mb-0.5">مخزون افتتاحي (أصل)</p>
                   <p className="font-bold text-primary">{formatMoney(finances?.inventory_asset_value || 0)}</p>
-                </div>
-                <div className="bg-white dark:bg-card rounded-lg p-3 border border-amber-100">
-                  <p className="text-xs text-muted-foreground mb-0.5">مقاولون سابقون</p>
-                  <p className="font-bold">{finances?.prior_vendor_count || 0} مقاول</p>
-                  {(finances?.prior_vendor_certified || 0) > 0 && (
-                    <p className="text-xs text-muted-foreground">{formatMoney(finances?.prior_vendor_certified || 0)} إجمالي</p>
-                  )}
                 </div>
               </div>
             </div>
@@ -287,6 +284,54 @@ export default async function ProjectDetailPage({
           </div>
 
           <div className="bg-card rounded-lg border shadow-sm divide-y">
+            {/* ── Owner Claim #0 (prior opening balance) ── */}
+            {(finances?.prior_owner_dues || 0) > 0 && (() => {
+              const dues = finances?.prior_owner_dues || 0;
+              const income = finances?.prior_owner_income || 0;
+              const outstanding = Math.max(dues - income, 0);
+              if (outstanding <= 0) return null;
+              return (
+                <div className="p-4 flex flex-col sm:flex-row justify-between sm:items-start gap-6 bg-amber-50/40 dark:bg-amber-950/10">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-bold">رصيد افتتاحي — مستخلص #0</h3>
+                      <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200">
+                        تاريخي (قبل النظام)
+                      </span>
+                    </div>
+                    <p className="text-sm font-medium">{project.project_owners?.name}</p>
+                    <p className="text-xs text-muted-foreground mt-1">تاريخ القطع: {finances?.opening_cutoff_date}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-1.5 min-w-[260px]">
+                    <div className="flex justify-between w-full gap-6 text-xs text-muted-foreground">
+                      <span>إجمالي المستحقات السابقة على المالك:</span>
+                      <span className="font-medium">{formatMoney(dues)}</span>
+                    </div>
+                    <div className="flex justify-between w-full gap-6 text-xs text-green-600">
+                      <span>المحصّل قبل النظام:</span>
+                      <span className="font-medium">- {formatMoney(income)}</span>
+                    </div>
+                    <div className="flex justify-between items-center w-full gap-6 border-t border-amber-300/50 pt-1.5 mt-0.5">
+                      <span className="text-sm font-semibold">المتبقي المستحق (قبل النظام):</span>
+                      <span className="text-xl font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">
+                        {formatMoney(outstanding)}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap justify-end mt-1">
+                      {project.owner_id && (
+                        <Link
+                          href={`/treasury/receive/${project.owner_id}`}
+                          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
+                        >
+                          💰 تحصيل من الرصيد السابق
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+
             {(!ownerClaims || ownerClaims.length === 0) ? (
               <div className="text-center p-8 text-muted-foreground">
                 لا يوجد مستخلصات مالك مسجلة بعد.
@@ -327,40 +372,85 @@ export default async function ProjectDetailPage({
                         <p className="text-xs text-muted-foreground mt-1">التاريخ: {claim.claim_date}</p>
                       </div>
 
-                      {/* Right: financial breakdown + actions — identical to /claims */}
-                      <div className="flex flex-col items-end gap-1.5 min-w-[260px]">
+                    {/* Right: financial breakdown — matches /claims layout exactly */}
+                      <div className="flex flex-col items-end gap-1.5 min-w-[300px]">
+                        {(() => {
+                          // ── Opening balance Claim #0 ─────────────────────────────
+                          const priorDues = finances?.prior_owner_dues  || 0;
+                          const priorIncome = finances?.prior_owner_income || 0;
 
-                        {/* Gross cumulative total */}
-                        <div className="flex justify-between w-full gap-6 text-xs text-muted-foreground">
-                          <span>إجمالي الأعمال التراكمي:</span>
-                          <span className="font-medium">{formatMoney(totals?.claim_cumulative_total || 0)}</span>
-                        </div>
+                          // ── In-system claim data (from v_claim_totals) ────────────
+                          const grossInSystem    = totals?.claim_cumulative_total    || 0;
+                          const retainedInSystem = totals?.claim_cumulative_retained || 0;
 
-                        {/* Retention */}
-                        <div className="flex justify-between w-full gap-6 text-xs text-amber-600">
-                          <span>المحتجز التراكمي (تأمين):</span>
-                          <span className="font-medium">- {formatMoney(totals?.claim_cumulative_retained || 0)}</span>
-                        </div>
+                          // ── Merged cumulative totals (in-system + Claim #0) ───────
+                          const grossTotal    = grossInSystem + priorDues;
+                          const retained      = retainedInSystem; // owners have no retention
+                          const netCumulative = grossTotal - retained;
 
-                        {/* Net cumulative payable */}
-                        <div className="flex justify-between w-full gap-6 text-xs text-muted-foreground border-t border-muted/40 pt-1">
-                          <span>الصافي التراكمي:</span>
-                          <span className="font-medium">{formatMoney(totals?.claim_cumulative_payable || 0)}</span>
-                        </div>
+                          // ── Tax ───────────────────────────────────────────────────
+                          const tax = (claim as any).tax_enabled
+                            ? netCumulative * ((claim as any).tax_rate || 0)
+                            : 0;
+                          const totalDue = netCumulative + tax;
 
-                        {/* Already collected */}
-                        <div className="flex justify-between w-full gap-6 text-xs text-green-600">
-                          <span>المحصّل فعلياً:</span>
-                          <span className="font-medium">- {formatMoney(totals?.prior_cumulative_payable || 0)}</span>
-                        </div>
+                          // ── Actual collected amounts ──────────────────────────────
+                          const paidInSystem = Number((claim as any).v_claim_paid?.[0]?.paid_amount || 0);
+                          const totalPaid    = paidInSystem + priorIncome;
+                          const remaining    = Math.max(0, totalDue - totalPaid);
 
-                        {/* Net outstanding — headline */}
-                        <div className="flex justify-between items-center w-full gap-6 border-t border-primary/20 pt-1.5 mt-0.5">
-                          <span className="text-sm font-semibold">الصافي الحالي (المستحق):</span>
-                          <span className="text-xl font-bold text-primary whitespace-nowrap">
-                            {formatMoney(totals?.total_due_this_claim || 0)}
-                          </span>
-                        </div>
+                          return (
+                            <>
+                              {/* Gross */}
+                              <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
+                                <span>إجمالي الأعمال التراكمي:</span>
+                                <span className="font-medium">{formatMoney(grossTotal)}</span>
+                              </div>
+
+                              {/* Retention — owners usually don't have retention, only show if >0 */}
+                              {retained > 0 && (
+                                <div className="flex justify-between w-full gap-4 text-xs text-amber-600">
+                                  <span>المحتجز التراكمي (تأمين):</span>
+                                  <span className="font-medium">- {formatMoney(retained)}</span>
+                                </div>
+                              )}
+
+                              {/* Net cumulative */}
+                              <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground border-t border-muted/30 pt-1">
+                                <span>الصافي التراكمي (قابل للتحصيل):</span>
+                                <span className="font-medium">{formatMoney(netCumulative)}</span>
+                              </div>
+
+                              {/* Tax */}
+                              {tax > 0 && (
+                                <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
+                                  <span>الضريبة ({(((claim as any).tax_rate || 0) * 100).toFixed(1)}%):</span>
+                                  <span>+ {formatMoney(tax)}</span>
+                                </div>
+                              )}
+
+                              {/* Paid */}
+                              {totalPaid > 0 && (
+                                <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
+                                  <span>المحصّل فعلياً:</span>
+                                  <span>- {formatMoney(totalPaid)}</span>
+                                </div>
+                              )}
+
+                              {/* Remaining headline */}
+                              <div className="flex justify-between items-center w-full gap-4 border-t border-primary/20 pt-1.5 mt-0.5">
+                                <span className="text-sm font-semibold">
+                                  {remaining <= 0 ? '✓ تم التحصيل بالكامل' : 'المتبقي المستحق:'}
+                                </span>
+                                <span className={`text-xl font-bold whitespace-nowrap ${
+                                  remaining <= 0 ? 'text-green-600' : 'text-primary'
+                                }`}>
+                                  {formatMoney(remaining)}
+                                </span>
+                              </div>
+                            </>
+                          );
+                        })()}
 
                         {/* Action buttons */}
                         <div className="flex items-center gap-2 flex-wrap justify-end mt-1">

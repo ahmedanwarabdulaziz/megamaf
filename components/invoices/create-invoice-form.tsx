@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
@@ -92,11 +92,11 @@ export function CreateInvoiceForm({
       {/* ── Header fields ─────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium mb-1">المورد</label>
+          <label className="block text-sm font-medium mb-1">المورد (توريدات)</label>
           <select required name="vendor_id" className="w-full p-2 rounded border bg-background">
             <option value="">اختر المورد...</option>
             {vendors.map(v => (
-              <option key={v.id} value={v.id}>{v.name} - {v.kind === 'contractor' ? 'مقاول' : 'مورد'}</option>
+              <option key={v.id} value={v.id}>{v.name}</option>
             ))}
           </select>
         </div>
@@ -105,9 +105,35 @@ export function CreateInvoiceForm({
           <label className="block text-sm font-medium mb-1">المشروع</label>
           <select required name="project_id" className="w-full p-2 rounded border bg-background">
             <option value="">اختر المشروع...</option>
-            {projects.filter(p => p.node_type === 'project').map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
+            {(() => {
+              // Build a parent→children map for depth-first tree walk
+              const childrenOf = new Map<string | null, any[]>();
+              for (const p of projects) {
+                const key = p.parent_id ?? null;
+                if (!childrenOf.has(key)) childrenOf.set(key, []);
+                childrenOf.get(key)!.push(p);
+              }
+              const result: React.ReactElement[] = [];
+              function walk(parentId: string | null, depth: number) {
+                const children = childrenOf.get(parentId) || [];
+                for (const p of children) {
+                  const indent = '  '.repeat(depth);
+                  const arrow  = depth > 0 ? '↳ ' : '';
+                  const label  =
+                    p.node_type === 'main_company' ? 'الشركة الرئيسية' :
+                    p.node_type === 'branch'        ? 'فرع' :
+                    p.node_type === 'phase'         ? 'مرحلة' : 'مشروع';
+                  result.push(
+                    <option key={p.id} value={p.id}>
+                      {indent}{arrow}{p.name} ({label})
+                    </option>
+                  );
+                  walk(p.id, depth + 1);
+                }
+              }
+              walk(null, 0);
+              return result;
+            })()}
           </select>
         </div>
 

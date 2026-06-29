@@ -13,11 +13,13 @@ export function AllExpensesFilters({
   selectedEmployeeId,
   selectedProjectId,
   selectedCategoryId,
+  selectedStatus,
   startDate,
   endDate,
   showAll,
   basePath,
-  activeTab
+  activeTab,
+  hideEmployeeFilter
 }: {
   employees: any[];
   projects: any[];
@@ -25,16 +27,19 @@ export function AllExpensesFilters({
   selectedEmployeeId: string;
   selectedProjectId: string;
   selectedCategoryId: string;
+  selectedStatus?: string;
   startDate: string;
   endDate: string;
   showAll: boolean;
   basePath?: string;
   activeTab?: string;
+  hideEmployeeFilter?: boolean;
 }) {
   const router = useRouter();
   const [employee, setEmployee] = useState(selectedEmployeeId);
   const [project, setProject] = useState(selectedProjectId);
   const [category, setCategory] = useState(selectedCategoryId);
+  const [status, setStatus] = useState(selectedStatus || '');
   const [start, setStart] = useState(startDate);
   const [end, setEnd] = useState(endDate);
   const [isAll, setIsAll] = useState(showAll);
@@ -42,9 +47,11 @@ export function AllExpensesFilters({
   const handleSearch = () => {
     const params = new URLSearchParams();
     if (activeTab) params.set('tab', activeTab);
-    if (employee) params.set('employee_id', employee);
+    if (!hideEmployeeFilter && employee) params.set('employee_id', employee);
     if (project) params.set('project_id', project);
     if (category) params.set('category_id', category);
+    if (status) params.set('status', status);
+    
     if (isAll) {
       params.set('show_all', 'true');
     } else {
@@ -61,19 +68,21 @@ export function AllExpensesFilters({
 
   return (
     <div className="bg-muted/30 p-4 rounded-lg border shadow-sm flex flex-wrap gap-4 items-end mb-4">
-      <div className="flex-1 min-w-[200px]">
-        <label className="block text-sm font-medium mb-1">الموظف</label>
-        <select 
-          value={employee} 
-          onChange={e => setEmployee(e.target.value)} 
-          className="w-full p-2 rounded-md border bg-background"
-        >
-          <option value="">كل الموظفين</option>
-          {employees.map(e => (
-            <option key={e.id} value={e.id}>{e.full_name}</option>
-          ))}
-        </select>
-      </div>
+      {!hideEmployeeFilter && (
+        <div className="flex-1 min-w-[200px]">
+          <label className="block text-sm font-medium mb-1">الموظف</label>
+          <select 
+            value={employee} 
+            onChange={e => setEmployee(e.target.value)} 
+            className="w-full p-2 rounded-md border bg-background"
+          >
+            <option value="">كل الموظفين</option>
+            {employees.map(e => (
+              <option key={e.id} value={e.id}>{e.full_name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex-1 min-w-[150px]">
         <label className="block text-sm font-medium mb-1">المشروع</label>
@@ -100,6 +109,20 @@ export function AllExpensesFilters({
           {categories.map(c => (
             <option key={c.id} value={c.id}>{c.name}</option>
           ))}
+        </select>
+      </div>
+
+      <div className="flex-1 min-w-[150px]">
+        <label className="block text-sm font-medium mb-1">الحالة</label>
+        <select 
+          value={status} 
+          onChange={e => setStatus(e.target.value)} 
+          className="w-full p-2 rounded-md border bg-background"
+        >
+          <option value="">الكل</option>
+          <option value="pending">قيد المراجعة</option>
+          <option value="approved">معتمد</option>
+          <option value="rejected">مرفوض</option>
         </select>
       </div>
       

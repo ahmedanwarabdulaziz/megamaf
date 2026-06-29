@@ -42,15 +42,21 @@ export async function createInvoice(formData: FormData, items: any[], attachment
 
     const { data: vendorAccess } = await supabase
       .from('vendors')
-      .select('all_projects, vendor_project_access(project_id)')
+      .select('kind, all_projects, vendor_project_access(project_id)')
       .eq('id', parsed.data.vendor_id)
       .single();
     
     if (!vendorAccess) return { error: 'Vendor not found' };
+
+    // ── Business rule: invoices are for suppliers (مورد) only ──
+    if (vendorAccess.kind !== 'vendor') {
+      return { error: 'لا يمكن إنشاء فاتورة لمقاول — الفواتير مخصصة للموردين (توريدات) فقط' };
+    }
+
     if (!vendorAccess.all_projects) {
       const allowedProjects = vendorAccess.vendor_project_access?.map((p: any) => p.project_id) || [];
       if (!allowedProjects.includes(parsed.data.project_id)) {
-        return { error: 'هذا المقاول غير مصرح له بالعمل في هذا المشروع' };
+        return { error: 'هذا المورد غير مصرح له بالعمل في هذا المشروع' };
       }
     }
 

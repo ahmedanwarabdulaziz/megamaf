@@ -153,39 +153,90 @@ export default async function ClaimsPage({
                   </div>
 
                   {/* Right: financial summary + actions */}
-                  <div className="flex flex-col items-end gap-1.5 min-w-[260px]">
+                  <div className="flex flex-col items-end gap-1.5 min-w-[300px]">
+                    {(() => {
+                      // ── Claim #0 (pre-system) data ───────────────────────
+                      const vpc           = (claim as any).vendor_prior_claim;
+                      const priorCert     = Number(vpc?.prior_certified_amount || 0);
+                      const priorPaid     = Number(vpc?.prior_paid_amount      || 0);
+                      const priorRet      = Number(vpc?.prior_retention_held   || 0);
+                      const priorOutstanding = Math.max(0, priorCert - priorPaid - priorRet);
 
-                    {/* Gross total */}
-                    <div className="flex justify-between w-full gap-6 text-xs text-muted-foreground">
-                      <span>إجمالي الأعمال التراكمي:</span>
-                      <span className="font-medium">{formatMoney(totals?.claim_cumulative_total || 0)}</span>
-                    </div>
+                      // ── In-system claim data (from v_claim_totals) ────────
+                      const grossInSystem  = totals?.claim_cumulative_total    || 0;
+                      const retainedInSystem = totals?.claim_cumulative_retained || 0;
+                      const netInSystem    = totals?.claim_cumulative_payable   || 0;
 
-                    {/* Retention */}
-                    <div className="flex justify-between w-full gap-6 text-xs text-amber-600">
-                      <span>المحتجز التراكمي (تأمين):</span>
-                      <span className="font-medium">- {formatMoney(totals?.claim_cumulative_retained || 0)}</span>
-                    </div>
+                      // ── Merged totals (in-system + claim #0) ─────────────
+                      const grossTotal    = grossInSystem    + priorCert;
+                      const retained      = retainedInSystem + priorRet;
+                      const netCumulative = grossTotal - retained;
 
-                    {/* Net cumulative */}
-                    <div className="flex justify-between w-full gap-6 text-xs text-muted-foreground border-t border-muted/40 pt-1">
-                      <span>الصافي التراكمي:</span>
-                      <span className="font-medium">{formatMoney(totals?.claim_cumulative_payable || 0)}</span>
-                    </div>
+                      // ── In-system paid amount ─────────────────────────────
+                      const paidInSystem  = Number((claim as any).v_claim_paid?.[0]?.paid_amount || 0);
+                      const totalPaid     = paidInSystem + priorPaid;
 
-                    {/* Paid from ledger */}
-                    <div className="flex justify-between w-full gap-6 text-xs text-green-600">
-                      <span>المدفوع فعلياً:</span>
-                      <span className="font-medium">- {formatMoney(totals?.prior_cumulative_payable || 0)}</span>
-                    </div>
+                      // ── Tax on total net cumulative ───────────────────────
+                      const tax = (claim as any).tax_enabled
+                        ? netCumulative * ((claim as any).tax_rate || 0)
+                        : 0;
+                      const totalDue    = netCumulative + tax;
+                      const remaining   = Math.max(0, totalDue - totalPaid);
 
-                    {/* Net due — headline number */}
-                    <div className="flex justify-between items-center w-full gap-6 border-t border-primary/20 pt-1.5 mt-0.5">
-                      <span className="text-sm font-semibold">الصافي الحالي (المستحق):</span>
-                      <span className="text-xl font-bold text-primary whitespace-nowrap">
-                        {formatMoney(totals?.total_due_this_claim || 0)}
-                      </span>
-                    </div>
+                      return (
+                        <>
+                          {/* Gross */}
+                          <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
+                            <span>إجمالي الأعمال التراكمي:</span>
+                            <span className="font-medium">{formatMoney(grossTotal)}</span>
+                          </div>
+
+                          {/* Retention */}
+                          {retained > 0 && (
+                            <div className="flex justify-between w-full gap-4 text-xs text-amber-600">
+                              <span>المحتجز التراكمي (تأمين):</span>
+                              <span className="font-medium">- {formatMoney(retained)}</span>
+                            </div>
+                          )}
+
+                          {/* Net cumulative */}
+                          <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground border-t border-muted/30 pt-1">
+                            <span>الصافي التراكمي (قابل للدفع):</span>
+                            <span className="font-medium">{formatMoney(netCumulative)}</span>
+                          </div>
+
+                          {/* Tax */}
+                          {tax > 0 && (
+                            <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
+                              <span>الضريبة ({(((claim as any).tax_rate || 0) * 100).toFixed(1)}%):</span>
+                              <span>+ {formatMoney(tax)}</span>
+                            </div>
+                          )}
+
+
+
+                          {/* Paid */}
+                          {totalPaid > 0 && (
+                            <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
+                              <span>المدفوع:</span>
+                              <span>- {formatMoney(totalPaid)}</span>
+                            </div>
+                          )}
+
+                          {/* Remaining balance headline */}
+                          <div className="flex justify-between items-center w-full gap-4 border-t border-primary/20 pt-1.5 mt-0.5">
+                            <span className="text-sm font-semibold">
+                              {remaining <= 0 ? '✓ تم السداد بالكامل' : 'المتبقي المستحق:'}
+                            </span>
+                            <span className={`text-xl font-bold whitespace-nowrap ${
+                              remaining <= 0 ? 'text-green-600' : 'text-primary'
+                            }`}>
+                              {formatMoney(remaining)}
+                            </span>
+                          </div>
+                        </>
+                      );
+                    })()}
 
                     {/* Action buttons */}
                     <div className="flex items-center gap-2 flex-wrap justify-end mt-1">

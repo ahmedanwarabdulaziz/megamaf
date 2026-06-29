@@ -28,6 +28,8 @@ export const metadata: Metadata = {
 };
 
 
+import { GlobalFocus } from "@/components/global-focus";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -36,6 +38,7 @@ export default function RootLayout({
   return (
     <html lang="ar" dir="rtl" suppressHydrationWarning>
       <body className={`${cairo.variable} antialiased`} suppressHydrationWarning>
+        <GlobalFocus />
         {children}
       </body>
     </html>

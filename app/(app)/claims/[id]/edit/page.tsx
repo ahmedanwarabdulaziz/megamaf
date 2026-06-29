@@ -12,7 +12,7 @@ export default async function EditClaimPage({ params }: { params: Promise<{ id: 
 
   const { data: claim } = await supabase
     .from('claims')
-    .select('*, claim_items(*)')
+    .select('*, claim_items(*, claim_item_stock_bundles(*))')
     .eq('id', id)
     .single();
 

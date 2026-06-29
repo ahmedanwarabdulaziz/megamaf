@@ -45,8 +45,9 @@ begin
   end loop;
 end $$;
 
--- 4) Drop all functions in public (this also removes triggers on auth.users
---    such as handle_new_user via CASCADE)
+-- 4) Drop all functions in public that are NOT owned by an extension
+--    (extension-owned functions like citext's texticregexne must be dropped
+--    by dropping the extension itself, not individually)
 do $$
 declare r record;
 begin
@@ -55,6 +56,13 @@ begin
     from pg_proc p
     join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public'
+      -- exclude functions that are pinned to an extension via pg_depend
+      and not exists (
+        select 1 from pg_depend d
+        join pg_extension e on e.oid = d.refobjid
+        where d.objid = p.oid
+          and d.deptype = 'e'
+      )
   ) loop
     execute 'drop function if exists public.' || quote_ident(r.proname) || '(' || r.args || ') cascade';
   end loop;

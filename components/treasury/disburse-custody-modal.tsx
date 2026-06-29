@@ -11,11 +11,15 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
+  const [selectedEmp, setSelectedEmp] = useState<any>(null);
+  const [amountStr, setAmountStr] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   function handleClose() {
     setOpen(false);
     setFiles([]);
+    setSelectedEmp(null);
+    setAmountStr('');
   }
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
@@ -87,17 +91,49 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">الموظف (المستلم)</label>
-            <select name="employee_id" required className="w-full p-2 rounded-md border bg-background">
+            <select 
+              name="employee_id" 
+              required 
+              className="w-full p-2 rounded-md border bg-background"
+              onChange={(e) => {
+                const emp = employees.find(emp => emp.employee_id === e.target.value);
+                setSelectedEmp(emp);
+              }}
+            >
               <option value="">-- اختر الموظف --</option>
               {employees.map(e => (
                 <option key={e.employee_id} value={e.employee_id}>{e.full_name}</option>
               ))}
             </select>
+            {selectedEmp && (
+              <div className="mt-2 p-2 bg-muted/30 border rounded-md text-sm flex justify-between">
+                <span className="text-muted-foreground">الرصيد الحالي:</span>
+                <span className={`font-bold ${selectedEmp.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                  {formatMoney(selectedEmp.balance)}
+                </span>
+              </div>
+            )}
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium mb-1">المبلغ</label>
-              <input name="amount" type="number" step="0.01" min="0.01" required className="w-full p-2 rounded-md border bg-background" />
+              <input 
+                name="amount" 
+                type="number" 
+                step="0.01" 
+                min="0.01" 
+                required 
+                className="w-full p-2 rounded-md border bg-background" 
+                onChange={(e) => setAmountStr(e.target.value)}
+              />
+              {selectedEmp && amountStr && !isNaN(parseFloat(amountStr)) && (
+                <div className="mt-1 text-xs flex justify-between">
+                  <span className="text-muted-foreground">الرصيد المتوقع:</span>
+                  <span className="font-bold text-blue-600">
+                    {formatMoney(selectedEmp.balance + parseFloat(amountStr))}
+                  </span>
+                </div>
+              )}
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">التاريخ</label>

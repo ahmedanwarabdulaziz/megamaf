@@ -7,7 +7,21 @@ import { Loader2 } from 'lucide-react';
 import { payVendor } from '@/lib/actions/payments';
 import { formatMoney } from '@/lib/money';
 
-export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, projects }: { vendorId: string, openDocs: any[], bankAccounts: any[], projects: {id: string, name: string}[] }) {
+type ClaimSummary = {
+  project_id: string;
+  project_name: string;
+  claim_number: number;
+  grossTotal: number;
+  retained: number;
+  netCumulative: number;
+  tax: number;
+  tax_rate: number;
+  tax_enabled: boolean;
+  totalPaid: number;
+  remaining: number;
+};
+
+export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, projects, claimSummaries }: { vendorId: string, openDocs: any[], bankAccounts: any[], projects: {id: string, name: string}[], claimSummaries?: ClaimSummary[] }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState<number>(0);
@@ -20,22 +34,50 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, proj
 
   useEffect(() => {
     // Auto-allocate top-to-bottom
+    // Note: openDocs already arrives clean from the server:
+    // - prior_claim rows for projects with in-system claims are excluded
+    // - claim rows have amount_due patched to summary.remaining
     let remaining = amount;
-    const newAllocations = openDocs.map(doc => {
-      const remainingDue = doc.amount_due - doc.amount_paid;
+
+    const filteredDocs = projectId
+      ? openDocs.filter(d => d.project_id === projectId)
+      : openDocs;
+
+    const newAllocations = filteredDocs.map(doc => {
+      // For cumulative claims: use summary values so description and
+      // المتبقي للدفع match what's shown in ملخص آخر مستخلص معتمد
+      const summary = doc.document_type === 'claim'
+        ? claimSummaries?.find(s => s.project_id === doc.project_id)
+        : undefined;
+
+      const remainingDue = summary
+        ? summary.remaining
+        : doc.amount_due - doc.amount_paid;
+
+      const description = summary
+        ? `مستخلص رقم ${summary.claim_number}`
+        : doc.description;
+
       const allocAmount = Math.min(remaining, remainingDue);
       remaining -= allocAmount;
       return {
-        target_type: doc.document_type,
-        target_id: doc.document_id,
-        amount: allocAmount,
-        max: remainingDue,
-        description: doc.description,
-        project_name: doc.project_name
+        target_type:   doc.document_type,
+        target_id:     doc.document_id,
+        amount:        allocAmount,
+        max:           remainingDue,
+        description,
+        project_name:  projects.find(p => p.id === doc.project_id)?.name || doc.project_name || 'عام',
+        // Breakdown fields from summary (for claim rows)
+        grossTotal:    summary?.grossTotal    ?? 0,
+        retained:      summary?.retained      ?? 0,
+        netCumulative: summary?.netCumulative ?? 0,
+        tax:           summary?.tax           ?? 0,
+        tax_rate:      summary?.tax_rate      ?? 0,
+        totalPaid:     summary?.totalPaid     ?? 0,
       };
     });
     setAllocations(newAllocations);
-  }, [amount, openDocs]);
+  }, [amount, openDocs, projectId, projects, claimSummaries]);
 
   const updateAllocation = (index: number, val: number) => {
     const newAllocations = [...allocations];
@@ -77,6 +119,75 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, proj
 
   return (
     <form onSubmit={handleSubmit} className="space-y-6">
+
+      {/* ── Claim Totals Summary Card (mirrors /claims page) ── */}
+      {claimSummaries && claimSummaries.length > 0 && (
+        <div className="bg-card rounded-lg border shadow-sm divide-y">
+          <div className="px-4 py-3 bg-muted/30">
+            <h3 className="font-bold text-sm">ملخص آخر مستخلص معتمد</h3>
+          </div>
+          {claimSummaries.map(s => (
+            <div key={s.project_id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-start gap-4">
+              {/* Project + claim info */}
+              <div className="min-w-0">
+                <p className="text-sm font-medium">{s.project_name}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">مستخلص رقم {s.claim_number}</p>
+              </div>
+
+              {/* Financial breakdown (same as /claims page) */}
+              <div className="flex flex-col items-end gap-1.5 min-w-[280px]">
+                {/* Gross */}
+                <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
+                  <span>إجمالي الأعمال التراكمي:</span>
+                  <span className="font-medium">{formatMoney(s.grossTotal)}</span>
+                </div>
+
+                {/* Retention */}
+                {s.retained > 0 && (
+                  <div className="flex justify-between w-full gap-4 text-xs text-amber-600">
+                    <span>المحتجز التراكمي (تأمين):</span>
+                    <span className="font-medium">- {formatMoney(s.retained)}</span>
+                  </div>
+                )}
+
+                {/* Net cumulative — THE KEY LINE */}
+                <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground border-t border-muted/30 pt-1">
+                  <span>الصافي التراكمي (قابل للدفع):</span>
+                  <span className="font-medium">{formatMoney(s.netCumulative)}</span>
+                </div>
+
+                {/* Tax */}
+                {s.tax > 0 && (
+                  <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
+                    <span>الضريبة ({(s.tax_rate * 100).toFixed(1)}%):</span>
+                    <span>+ {formatMoney(s.tax)}</span>
+                  </div>
+                )}
+
+                {/* Paid */}
+                {s.totalPaid > 0 && (
+                  <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
+                    <span>المدفوع:</span>
+                    <span>- {formatMoney(s.totalPaid)}</span>
+                  </div>
+                )}
+
+                {/* Remaining */}
+                <div className="flex justify-between items-center w-full gap-4 border-t border-primary/20 pt-1.5 mt-0.5">
+                  <span className="text-sm font-semibold">
+                    {s.remaining <= 0 ? '✓ تم السداد بالكامل' : 'المتبقي المستحق:'}
+                  </span>
+                  <span className={`text-xl font-bold whitespace-nowrap ${
+                    s.remaining <= 0 ? 'text-green-600' : 'text-primary'
+                  }`}>
+                    {formatMoney(s.remaining)}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="bg-card p-6 rounded-lg border shadow-sm grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1">الخزينة / الحساب البنكي المسدد منه</label>
@@ -125,18 +236,61 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, proj
           <tbody className="divide-y divide-border">
             {allocations.map((alloc, idx) => (
               <tr key={alloc.target_id} className={alloc.amount > 0 ? 'bg-primary/5' : ''}>
-                <td className="p-3 font-medium">{alloc.description}</td>
-                <td className="p-3 text-muted-foreground">{alloc.project_name}</td>
-                <td className="p-3">{formatMoney(alloc.max)}</td>
+
+                {/* Description + breakdown for claim rows */}
                 <td className="p-3">
-                  <input 
-                    type="number" 
-                    step="0.01" 
-                    min="0" 
-                    max={alloc.max} 
-                    value={alloc.amount || ''} 
-                    onChange={e => updateAllocation(idx, parseFloat(e.target.value) || 0)} 
-                    className="w-full p-2 rounded border bg-background text-primary font-medium text-left" 
+                  <div className="font-semibold mb-1">{alloc.description}</div>
+                  {alloc.target_type === 'claim' && alloc.grossTotal > 0 && (
+                    <div className="text-xs space-y-0.5 text-muted-foreground mt-1.5 border-t border-muted/30 pt-1.5">
+                      <div className="flex justify-between gap-6">
+                        <span>إجمالي الأعمال التراكمي:</span>
+                        <span className="font-medium text-foreground">{formatMoney(alloc.grossTotal)}</span>
+                      </div>
+                      {alloc.retained > 0 && (
+                        <div className="flex justify-between gap-6 text-amber-600">
+                          <span>المحتجز التراكمي (تأمين):</span>
+                          <span className="font-medium">- {formatMoney(alloc.retained)}</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between gap-6 border-t border-primary/20 pt-1 mt-0.5 text-foreground font-semibold">
+                        <span>المتبقي للدفع:</span>
+                        <span className="text-primary">{formatMoney(alloc.netCumulative)}</span>
+                      </div>
+                      {alloc.tax > 0 && (
+                        <div className="flex justify-between gap-6">
+                          <span>الضريبة ({(alloc.tax_rate * 100).toFixed(1)}%):</span>
+                          <span className="font-medium">+ {formatMoney(alloc.tax)}</span>
+                        </div>
+                      )}
+                      {alloc.totalPaid > 0 && (
+                        <div className="flex justify-between gap-6 text-green-600">
+                          <span>المدفوع فعلياً:</span>
+                          <span className="font-medium">- {formatMoney(alloc.totalPaid)}</span>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </td>
+
+                <td className="p-3 text-muted-foreground align-top pt-4">{alloc.project_name}</td>
+
+                {/* Remaining */}
+                <td className="p-3 align-top pt-4">
+                  <span className={`font-bold text-base ${alloc.max > 0 ? 'text-primary' : 'text-muted-foreground'}`}>
+                    {formatMoney(alloc.max)}
+                  </span>
+                </td>
+
+                {/* Input */}
+                <td className="p-3 align-top pt-4">
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    max={alloc.max}
+                    value={alloc.amount || ''}
+                    onChange={e => updateAllocation(idx, parseFloat(e.target.value) || 0)}
+                    className="w-full p-2 rounded border bg-background text-primary font-medium text-left"
                   />
                 </td>
               </tr>

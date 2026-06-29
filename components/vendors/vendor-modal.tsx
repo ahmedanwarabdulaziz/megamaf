@@ -89,7 +89,7 @@ export function VendorModal({ vendor, projects }: { vendor?: any, projects: any[
             {!allProjects && (
               <div className="mt-2 border rounded p-3 bg-muted/20 max-h-40 overflow-y-auto space-y-2">
                 <p className="text-xs text-muted-foreground mb-2">اختر المشاريع المسموح له العمل بها:</p>
-                {projects.filter(p => p.node_type === 'project').map(p => (
+                {projects.map(p => (
                   <div key={p.id} className="flex items-center gap-2">
                     <input 
                       type="checkbox" 

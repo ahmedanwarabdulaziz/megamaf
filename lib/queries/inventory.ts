@@ -80,7 +80,41 @@ export async function getWarehouseTransactions(warehouseId: string) {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data || [];
+  const movements = data || [];
+
+  // Resolve reference_id → claim info for 'issue' movements
+  const claimIds = [...new Set(
+    movements
+      .filter(m => m.movement_type === 'issue' && m.reference_id)
+      .map(m => m.reference_id as string)
+  )];
+
+  if (claimIds.length > 0) {
+    const { data: claims } = await supabase
+      .from('claims')
+      .select('id, claim_number, party_id, claim_type')
+      .in('id', claimIds);
+
+    // Build vendor name map
+    const vendorIds = [...new Set((claims || []).filter(c => c.claim_type === 'vendor').map(c => c.party_id))];
+    const { data: vendors } = vendorIds.length > 0
+      ? await supabase.from('vendors').select('id, name').in('id', vendorIds)
+      : { data: [] };
+    const vendorMap = new Map((vendors || []).map(v => [v.id, v.name]));
+
+    const claimMap = new Map((claims || []).map(c => ({
+      ...c,
+      party_name: vendorMap.get(c.party_id) ?? null
+    })).map(c => [c.id, c]));
+
+    return movements.map(m =>
+      m.movement_type === 'issue' && m.reference_id && claimMap.has(m.reference_id)
+        ? { ...m, claim: claimMap.get(m.reference_id) }
+        : m
+    );
+  }
+
+  return movements;
 }
 
 export async function getItemTransactions(itemId: string) {
@@ -92,7 +126,40 @@ export async function getItemTransactions(itemId: string) {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return data || [];
+  const movements = data || [];
+
+  // Resolve reference_id → claim info for 'issue' movements
+  const claimIds = [...new Set(
+    movements
+      .filter(m => m.movement_type === 'issue' && m.reference_id)
+      .map(m => m.reference_id as string)
+  )];
+
+  if (claimIds.length > 0) {
+    const { data: claims } = await supabase
+      .from('claims')
+      .select('id, claim_number, party_id, claim_type')
+      .in('id', claimIds);
+
+    const vendorIds = [...new Set((claims || []).filter(c => c.claim_type === 'vendor').map(c => c.party_id))];
+    const { data: vendors } = vendorIds.length > 0
+      ? await supabase.from('vendors').select('id, name').in('id', vendorIds)
+      : { data: [] };
+    const vendorMap = new Map((vendors || []).map(v => [v.id, v.name]));
+
+    const claimMap = new Map((claims || []).map(c => ({
+      ...c,
+      party_name: vendorMap.get(c.party_id) ?? null
+    })).map(c => [c.id, c]));
+
+    return movements.map(m =>
+      m.movement_type === 'issue' && m.reference_id && claimMap.has(m.reference_id)
+        ? { ...m, claim: claimMap.get(m.reference_id) }
+        : m
+    );
+  }
+
+  return movements;
 }
 
 export async function getWarehouse(id: string) {

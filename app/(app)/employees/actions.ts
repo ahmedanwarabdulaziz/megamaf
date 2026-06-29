@@ -92,6 +92,17 @@ export async function saveEmployee(formData: FormData) {
         pin_hash
       })
       if (secretError) return { error: secretError.message }
+
+      // Assign projects
+      const project_ids_str = formData.get('project_ids') as string;
+      if (project_ids_str) {
+        const project_ids = project_ids_str.split(',');
+        if (project_ids.length > 0) {
+          await adminClient.from('employee_project_access').insert(
+            project_ids.map(pid => ({ employee_id: emp.id, project_id: pid }))
+          );
+        }
+      }
       
       // Get current employee ID for audit
       const { data: currentEmp } = await adminClient.from('employees').select('id').eq('auth_user_id', user.id).maybeSingle()

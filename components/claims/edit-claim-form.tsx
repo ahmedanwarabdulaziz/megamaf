@@ -4,9 +4,33 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { updateClaim } from '@/lib/actions/claims';
-import { Plus, Trash2 } from 'lucide-react';
+import { Plus, Trash2, Package, X } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+
+// ── Types ────────────────────────────────────────────────────
+interface BundleLine {
+  id: string;
+  item_id: string;
+  qty_per_unit: number;
+}
+
+interface ClaimItem {
+  id: string;
+  item_ref: string;
+  description: string;
+  previous_qty: number;
+  current_qty: number;
+  unit_price: number;
+  disbursement_pct: number;
+  is_stock_issue: boolean;
+  warehouse_id: string;
+  stock_bundle: BundleLine[];
+}
+
+function emptyBundleLine(): BundleLine {
+  return { id: crypto.randomUUID(), item_id: '', qty_per_unit: 0 };
+}
 
 interface Props {
   claimId: string;
@@ -38,8 +62,8 @@ export function EditClaimForm({
   const [taxRate, setTaxRate] = useState(initTaxRate || 0.14);
   const [files, setFiles] = useState<File[]>([]);
 
-  // Pre-populate items from DB
-  const [items, setItems] = useState<any[]>(
+  // Pre-populate items from DB — map existing bundles or legacy single-item fields
+  const [items, setItems] = useState<ClaimItem[]>(
     existingItems.map(i => ({
       id: crypto.randomUUID(),
       item_ref: i.item_ref || '',
@@ -49,11 +73,22 @@ export function EditClaimForm({
       unit_price: Number(i.unit_price),
       disbursement_pct: Number(i.disbursement_pct),
       is_stock_issue: i.is_stock_issue || false,
-      warehouse_id: i.warehouse_id || '',
-      item_id: i.item_id || '',
+      // If the row came with bundle data attached (fetched via select with bundles), use it;
+      // otherwise fall back to legacy warehouse_id / item_id (left as-is per Q2).
+      warehouse_id: i.claim_item_stock_bundles?.[0]?.warehouse_id || i.warehouse_id || '',
+      stock_bundle: i.claim_item_stock_bundles && i.claim_item_stock_bundles.length > 0
+        ? i.claim_item_stock_bundles.map((b: any) => ({
+            id: crypto.randomUUID(),
+            item_id: b.item_id,
+            qty_per_unit: Number(b.qty_per_unit),
+          }))
+        : (i.item_id
+            ? [{ id: crypto.randomUUID(), item_id: i.item_id, qty_per_unit: Number(i.current_qty) }]
+            : []),
     }))
   );
 
+  // ── Item helpers ─────────────────────────────────────────────
   const updateItem = (id: string, field: string, value: any) =>
     setItems(items.map(item => item.id === id ? { ...item, [field]: value } : item));
 
@@ -62,11 +97,49 @@ export function EditClaimForm({
     setItems([...items, {
       id: crypto.randomUUID(), item_ref: '', description: '',
       previous_qty: 0, current_qty: 0, unit_price: 0,
-      disbursement_pct: lastPct, is_stock_issue: false, warehouse_id: '', item_id: '',
+      disbursement_pct: lastPct, is_stock_issue: false, warehouse_id: '', stock_bundle: [],
     }]);
   };
 
-  // Totals
+  const addBundleLine = (itemId: string) =>
+    setItems(items.map(item =>
+      item.id === itemId
+        ? { ...item, stock_bundle: [...item.stock_bundle, emptyBundleLine()] }
+        : item
+    ));
+
+  const updateBundleLine = (itemId: string, lineId: string, field: string, value: any) =>
+    setItems(items.map(item =>
+      item.id === itemId
+        ? {
+            ...item,
+            stock_bundle: item.stock_bundle.map(bl =>
+              bl.id === lineId ? { ...bl, [field]: value } : bl
+            ),
+          }
+        : item
+    ));
+
+  const removeBundleLine = (itemId: string, lineId: string) =>
+    setItems(items.map(item =>
+      item.id === itemId
+        ? { ...item, stock_bundle: item.stock_bundle.filter(bl => bl.id !== lineId) }
+        : item
+    ));
+
+  const toggleStockIssue = (itemId: string, checked: boolean) =>
+    setItems(items.map(item =>
+      item.id === itemId
+        ? {
+            ...item,
+            is_stock_issue: checked,
+            warehouse_id: checked ? item.warehouse_id : '',
+            stock_bundle: checked ? (item.stock_bundle.length > 0 ? item.stock_bundle : [emptyBundleLine()]) : [],
+          }
+        : item
+    ));
+
+  // ── Totals ───────────────────────────────────────────────────
   const currentCumulativePayable = items.reduce((sum, item) => {
     const cumQty = (item.previous_qty || 0) + (item.current_qty || 0);
     return sum + cumQty * (item.unit_price || 0) * (item.disbursement_pct || 1.0);
@@ -79,6 +152,7 @@ export function EditClaimForm({
   const taxAmount = taxEnabled ? netPayable * taxRate : 0;
   const totalDue = netPayable + taxAmount;
 
+  // ── Submit ───────────────────────────────────────────────────
   async function handleSubmit(formData: FormData) {
     try {
       setLoading(true);
@@ -103,6 +177,7 @@ export function EditClaimForm({
     }
   }
 
+  // ── Render ───────────────────────────────────────────────────
   return (
     <form action={handleSubmit} className="space-y-6 bg-card p-6 rounded-lg border shadow-sm">
 
@@ -145,7 +220,27 @@ export function EditClaimForm({
                 <th className="pb-2 px-2 font-medium text-right w-24">الحالي</th>
                 <th className="pb-2 px-2 font-medium text-right w-16">الإجمالي</th>
                 <th className="pb-2 px-2 font-medium text-right w-28">الفئة</th>
-                <th className="pb-2 px-2 font-medium text-right w-28">نسبة الصرف</th>
+                <th className="pb-2 px-2 font-medium text-right w-36">
+                  <div className="flex items-center gap-2">
+                    <span>نسبة الصرف</span>
+                    <button
+                      type="button"
+                      title="تطبيق نسبة موحدة على جميع البنود"
+                      onClick={() => {
+                        const res = window.prompt('أدخل النسبة المئوية لتطبيقها على جميع البنود (مثال: 100):', '100');
+                        if (res !== null) {
+                          const val = parseFloat(res);
+                          if (!isNaN(val) && val >= 0) {
+                            setItems(prev => prev.map(i => ({ ...i, disbursement_pct: val / 100 })));
+                          }
+                        }
+                      }}
+                      className="text-[10px] bg-primary/10 text-primary hover:bg-primary/20 px-1.5 py-0.5 rounded font-normal"
+                    >
+                      تطبيق للكل
+                    </button>
+                  </div>
+                </th>
                 <th className="pb-2 px-2 font-medium text-left w-32">الإجمالي (ج.م)</th>
                 <th className="w-8"></th>
               </tr>
@@ -185,8 +280,18 @@ export function EditClaimForm({
                           className="w-full p-2 rounded border bg-muted text-sm text-center" />
                       </td>
                       <td className="py-2 px-2 w-24">
-                        <input required type="number" step="any" value={item.current_qty}
-                          onChange={e => updateItem(item.id, 'current_qty', parseFloat(e.target.value) || 0)}
+                        <input
+                          key={`qty-${item.id}`}
+                          required
+                          type="number"
+                          step="any"
+                          defaultValue={item.current_qty}
+                          onChange={e => {
+                            const raw = e.target.value;
+                            if (raw === '') { updateItem(item.id, 'current_qty', 0); return; }
+                            const parsed = parseFloat(raw);
+                            if (!isNaN(parsed)) updateItem(item.id, 'current_qty', parsed);
+                          }}
                           className="w-full p-2 rounded border bg-background text-sm text-center" />
                       </td>
                       <td className="py-2 px-2 w-16 font-medium text-center">{cumQty}</td>
@@ -216,31 +321,140 @@ export function EditClaimForm({
                       </td>
                     </tr>
 
-                    {/* Warehouse sub-row */}
+                    {/* ── Stock-issue sub-row ── */}
                     {warehouses.length > 0 && (
                       <tr className="border-b border-muted/20 bg-muted/5">
-                        <td colSpan={8} className="px-2 py-1.5">
-                          <div className="flex flex-wrap gap-3 items-center">
-                            <div className="flex items-center gap-2">
-                              <input type="checkbox" id={`stock_${item.id}`}
-                                checked={item.is_stock_issue}
-                                onChange={e => updateItem(item.id, 'is_stock_issue', e.target.checked)}
-                                className="w-4 h-4" />
-                              <label htmlFor={`stock_${item.id}`} className="text-xs font-medium text-muted-foreground">
-                                خصم كمية البند من مستودع
-                              </label>
-                            </div>
-                            {item.is_stock_issue && (
-                              <>
-                                <SearchableSelect options={warehouseOptions} value={item.warehouse_id}
-                                  onChange={v => updateItem(item.id, 'warehouse_id', v)}
-                                  placeholder="اختر المستودع..." required className="w-44" />
-                                <SearchableSelect options={itemOptions} value={item.item_id}
-                                  onChange={v => updateItem(item.id, 'item_id', v)}
-                                  placeholder="اختر الصنف..." required className="w-52" />
-                              </>
-                            )}
+                        <td colSpan={8} className="px-3 py-2">
+                          {/* Toggle */}
+                          <div className="flex items-center gap-2 mb-2">
+                            <input type="checkbox" id={`stock_${item.id}`}
+                              checked={item.is_stock_issue}
+                              onChange={e => toggleStockIssue(item.id, e.target.checked)}
+                              className="w-4 h-4 accent-primary" />
+                            <label htmlFor={`stock_${item.id}`} className="text-xs font-semibold text-muted-foreground flex items-center gap-1">
+                              <Package className="w-3.5 h-3.5" />
+                              خصم كمية البند من مستودع
+                            </label>
                           </div>
+
+                          {/* Bundle panel */}
+                          {item.is_stock_issue && (
+                            <div className="border border-dashed border-primary/30 rounded-lg p-3 bg-primary/5 space-y-3">
+
+                              {/* Warehouse picker */}
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-medium text-muted-foreground whitespace-nowrap">المستودع:</span>
+                                <SearchableSelect
+                                  options={warehouseOptions}
+                                  value={item.warehouse_id}
+                                  onChange={v => updateItem(item.id, 'warehouse_id', v)}
+                                  placeholder="اختر المستودع..."
+                                  required
+                                  className="w-52"
+                                />
+                              </div>
+
+                              {/* Bundle lines table */}
+                              {item.stock_bundle.length > 0 && (
+                                <table className="w-full text-xs border-collapse">
+                                  <thead>
+                                    <tr className="border-b border-primary/20">
+                                      <th className="pb-1 px-1 text-right font-medium text-muted-foreground">الصنف</th>
+                                      <th className="pb-1 px-1 text-center font-medium text-muted-foreground w-32">
+                                        كمية / وحدة
+                                      </th>
+                                      <th className="pb-1 px-1 text-center font-medium text-muted-foreground w-32">
+                                        {item.current_qty < 0 ? `يُرجع (${item.current_qty} وحدة)` : `يُخصم (${item.current_qty} وحدة)`}
+                                      </th>
+                                      <th className="w-6"></th>
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {item.stock_bundle.map((bl) => {
+                                      const stock = item.warehouse_id
+                                        ? stockLevels.find(s => s.warehouse_id === item.warehouse_id && s.item_id === bl.item_id)
+                                        : null;
+                                      const onHand = stock ? Number(stock.qty_on_hand) : null;
+                                      const willDeduct = bl.qty_per_unit * (item.current_qty || 0);
+                                      const insufficient = onHand !== null && willDeduct > onHand;
+
+                                      return (
+                                        <tr key={bl.id} className="border-b border-primary/10">
+                                          <td className="py-1 px-1">
+                                            <SearchableSelect
+                                              options={itemOptions}
+                                              value={bl.item_id}
+                                              onChange={v => updateBundleLine(item.id, bl.id, 'item_id', v)}
+                                              placeholder="اختر الصنف..."
+                                              required
+                                              className="w-full min-w-[160px]"
+                                            />
+                                          </td>
+                                          <td className="py-1 px-1 w-32">
+                                            <input
+                                              type="number"
+                                              step="any"
+                                              min="0.0001"
+                                              value={bl.qty_per_unit || ''}
+                                              onChange={e => updateBundleLine(item.id, bl.id, 'qty_per_unit', parseFloat(e.target.value) || 0)}
+                                              placeholder="0"
+                                              required
+                                              className="w-full p-1 rounded border bg-background text-center"
+                                            />
+                                          </td>
+                                          <td className={`py-1 px-1 w-32 text-center font-medium ${
+                                            willDeduct === 0 ? 'text-muted-foreground'
+                                            : willDeduct < 0 ? 'text-blue-600'
+                                            : insufficient ? 'text-destructive'
+                                            : 'text-green-700'
+                                          }`}>
+                                            {willDeduct === 0 ? '—'
+                                              : willDeduct < 0
+                                                ? <span className="flex flex-col items-center gap-0.5">
+                                                    <span>+{Math.abs(willDeduct).toLocaleString('en')}</span>
+                                                    <span className="text-[10px] bg-blue-100 text-blue-700 rounded px-1">إرجاع للمستودع</span>
+                                                  </span>
+                                                : willDeduct.toLocaleString('en')
+                                            }
+                                            {onHand !== null && (
+                                              <span className={`block text-[10px] ${
+                                                willDeduct < 0 ? 'text-blue-500'
+                                                : insufficient ? 'text-destructive'
+                                                : 'text-muted-foreground'
+                                              }`}>
+                                                متاح: {onHand.toLocaleString('en')}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="py-1 px-1 w-6">
+                                            <button
+                                              type="button"
+                                              onClick={() => removeBundleLine(item.id, bl.id)}
+                                              className="text-muted-foreground hover:text-destructive transition-colors"
+                                            >
+                                              <X className="w-3.5 h-3.5" />
+                                            </button>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                  </tbody>
+                                </table>
+                              )}
+
+                              {/* Add line button */}
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                onClick={() => addBundleLine(item.id)}
+                                className="h-7 text-xs border-primary/40 text-primary hover:bg-primary/10"
+                              >
+                                <Plus className="w-3 h-3 mr-1" />
+                                إضافة صنف للحزمة
+                              </Button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     )}

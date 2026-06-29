@@ -5,12 +5,14 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Select } from "@/components/ui/select"
 import { saveEmployee } from "@/app/(app)/employees/actions"
-import { useTransition } from "react"
+import { useTransition, useState } from "react"
 import { useRouter } from "next/navigation"
 
-export function EmployeeModal() {
+export function EmployeeModal({ projects }: { projects?: any[] }) {
   const [isPending, startTransition] = useTransition()
   const router = useRouter()
+  const [projectSelection, setProjectSelection] = useState<"all" | "specific">("all")
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([])
 
   const action = (formData: FormData) => {
     startTransition(async () => {
@@ -30,6 +32,12 @@ export function EmployeeModal() {
   return (
     <Modal name="add-employee" title="إضافة موظف">
       <form action={action} className="space-y-4">
+        <input 
+          type="hidden" 
+          name="project_ids" 
+          value={projectSelection === "all" ? (projects?.map(p => p.id).join(',') || '') : selectedProjects.join(',')} 
+        />
+        
         <div className="space-y-2">
           <label className="text-sm font-medium">الاسم الكامل</label>
           <Input name="full_name" required />
@@ -72,6 +80,39 @@ export function EmployeeModal() {
         <div className="flex items-center gap-2">
           <input type="checkbox" name="is_super_admin" value="true" id="is_super_admin" className="h-4 w-4 rounded border-primary" />
           <label htmlFor="is_super_admin" className="text-sm font-bold text-destructive">مدير نظام (صلاحيات كاملة)</label>
+        </div>
+
+        <div className="space-y-2 border-t pt-4">
+          <label className="text-sm font-medium">صلاحيات المشاريع</label>
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="proj_mode" value="all" checked={projectSelection === 'all'} onChange={() => setProjectSelection('all')} />
+              كل المشاريع
+            </label>
+            <label className="flex items-center gap-2 text-sm">
+              <input type="radio" name="proj_mode" value="specific" checked={projectSelection === 'specific'} onChange={() => setProjectSelection('specific')} />
+              مشاريع محددة
+            </label>
+          </div>
+          
+          {projectSelection === 'specific' && (
+            <div className="mt-2 max-h-40 overflow-y-auto border rounded p-2 space-y-2 bg-muted/20">
+              {projects?.map(p => (
+                <label key={p.id} className="flex items-center gap-2 text-sm">
+                  <input 
+                    type="checkbox" 
+                    checked={selectedProjects.includes(p.id)}
+                    onChange={(e) => {
+                      if (e.target.checked) setSelectedProjects([...selectedProjects, p.id])
+                      else setSelectedProjects(selectedProjects.filter(id => id !== p.id))
+                    }}
+                    className="rounded border-primary"
+                  />
+                  {p.name} {p.is_main ? '(الشركة الرئيسية)' : ''}
+                </label>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="pt-4 flex justify-end gap-2">
