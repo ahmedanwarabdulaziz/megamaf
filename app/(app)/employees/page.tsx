@@ -4,11 +4,25 @@ import { EmployeeModal } from '@/components/employees/EmployeeModal';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 import { Plus } from 'lucide-react';
+import { requirePageAccess } from '@/lib/require-page-access';
+
+export const dynamic = 'force-dynamic';
 
 export default async function EmployeesPage() {
+  await requirePageAccess('employees');
   const supabase = await createClient();
-  const { data: employees } = await supabase.from('employees').select('*').order('created_at', { ascending: false });
-  const { data: projects } = await supabase.from('projects').select('id, name, is_main').order('sort_order');
+
+  // Both queries are independent — run in parallel
+  const [{ data: employees }, { data: projects }] = await Promise.all([
+    supabase
+      .from('employees')
+      .select('id, full_name, username, role, is_active, is_super_admin, can_approve')
+      .order('created_at', { ascending: false }),
+    supabase
+      .from('projects')
+      .select('id, name, is_main')
+      .order('sort_order'),
+  ]);
 
   return (
     <div className="space-y-4 p-4">

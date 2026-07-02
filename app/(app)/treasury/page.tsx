@@ -7,6 +7,7 @@ import { AdvanceReceiveButton } from './advance-receive-button';
 import { AssignPaymentButton } from '../settings/owners/[id]/statement/assign-payment-button';
 import { TreasuryHistoryFilters } from '@/components/treasury/treasury-history-filters';
 import { OwnerHistoryFilters } from '@/components/treasury/owner-history-filters';
+import { requirePageAccess } from '@/lib/require-page-access';
 
 import { getAllCustodyBalances, getAllOwnerCustodyBalances } from '@/lib/queries/expenses';
 import { getBanks } from '@/lib/queries/banks';
@@ -17,6 +18,7 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الخزينة والمدفوعات والعهد' };
 
 export default async function TreasuryPage({ searchParams }: { searchParams: Promise<{ tab?: string, subtab?: string, vendor_id?: string, owner_id?: string, project_id?: string, start_date?: string, end_date?: string, show_all?: string }> }) {
+  await requirePageAccess('treasury/custody');
   const { tab = 'payables', subtab = 'claims', vendor_id, owner_id, project_id, start_date, end_date, show_all } = await searchParams;
   const supabase = await createClient();
 
@@ -84,6 +86,7 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     tab === 'owner_custodies' ? getAllOwnerCustodyBalances() : Promise.resolve([]),
     tab === 'emp_custodies' || tab === 'owner_custodies' ? getBanks() : Promise.resolve([])
   ]);
+  // vendorPaidMap and ownerPaidMap logic has been removed since v_vendor_balances and v_owner_balances provide accurate total_paid values directly.
 
   // Build retention map: owner_id → cumulative_retained (from latest approved owner claim)
   const retentionByOwner = new Map<string, number>();
@@ -216,7 +219,7 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                   const retention     = Number((v as any).total_retention_held || 0);
                   const netCumulative = Number(v.total_due                    || 0);
                   const totalPaid     = Number(v.total_paid                   || 0);
-                  const remaining     = Number(v.balance                      || 0);
+                  const remaining     = Math.max(0, netCumulative - totalPaid);
                   return (
                     <tr key={v.vendor_id} className="hover:bg-muted/30 transition-colors">
                       <td className="p-4 font-semibold">{v.vendor_name}</td>
@@ -381,23 +384,27 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
-                {owners?.map(o => (
+                {owners?.map(o => {
+                  const totalDue = Number(o.total_due || 0);
+                  const totalPaid = Number(o.total_paid || 0);
+                  const balance = Math.max(0, totalDue - totalPaid);
+                  return (
                   <tr key={o.owner_id} className="hover:bg-muted/30 transition-colors">
                     <td className="p-4 font-semibold">{o.owner_name}</td>
-                    <td className="p-4">{formatMoney(o.total_due)}</td>
+                    <td className="p-4">{formatMoney(totalDue)}</td>
                     <td className="p-4 text-orange-600 font-medium">
                       {retentionByOwner.get(o.owner_id)
                         ? `- ${formatMoney(retentionByOwner.get(o.owner_id)!)}`
                         : '-'}
                     </td>
-                    <td className="p-4 text-green-700 font-medium">{formatMoney(o.total_paid)}</td>
-                    <td className="p-4 font-bold text-primary">{formatMoney(o.balance)}</td>
+                    <td className="p-4 text-green-700 font-medium">{formatMoney(totalPaid)}</td>
+                    <td className="p-4 font-bold text-primary">{formatMoney(balance)}</td>
                     <td className="p-4 flex gap-2">
                       <Link href={`/settings/owners/${o.owner_id}/statement`} className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md font-medium">كشف حساب</Link>
                       <Link href={`/treasury/receive/${o.owner_id}`} className="text-xs bg-primary text-primary-foreground hover:bg-primary/90 px-3 py-1.5 rounded-md font-medium">تحصيل</Link>
                     </td>
                   </tr>
-                ))}
+                )})}
               </tbody>
             </table>
           </div>

@@ -26,6 +26,7 @@ interface ClaimItem {
   is_stock_issue: boolean;
   warehouse_id: string;
   stock_bundle: BundleLine[];
+  notes: string;
 }
 
 function emptyBundleLine(): BundleLine {
@@ -85,6 +86,7 @@ export function EditClaimForm({
         : (i.item_id
             ? [{ id: crypto.randomUUID(), item_id: i.item_id, qty_per_unit: Number(i.current_qty) }]
             : []),
+      notes: i.notes || '',
     }))
   );
 
@@ -98,6 +100,7 @@ export function EditClaimForm({
       id: crypto.randomUUID(), item_ref: '', description: '',
       previous_qty: 0, current_qty: 0, unit_price: 0,
       disbursement_pct: lastPct, is_stock_issue: false, warehouse_id: '', stock_bundle: [],
+      notes: '',
     }]);
   };
 
@@ -242,6 +245,7 @@ export function EditClaimForm({
                   </div>
                 </th>
                 <th className="pb-2 px-2 font-medium text-left w-32">الإجمالي (ج.م)</th>
+                <th className="pb-2 px-2 font-medium text-right">ملاحظة البند</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
@@ -313,6 +317,15 @@ export function EditClaimForm({
                       <td className="py-2 px-2 w-32 font-bold text-left text-primary whitespace-nowrap">
                         {formatMoney(lineTotal * item.disbursement_pct)}
                       </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          placeholder="ملاحظة (اختياري)"
+                          value={item.notes}
+                          onChange={e => updateItem(item.id, 'notes', e.target.value)}
+                          className="w-full min-w-[140px] p-2 rounded border bg-background text-sm"
+                        />
+                      </td>
                       <td className="py-2 px-1 w-8">
                         <Button type="button" variant="ghost" size="icon"
                           onClick={() => setItems(items.filter(i => i.id !== item.id))}>
@@ -324,7 +337,7 @@ export function EditClaimForm({
                     {/* ── Stock-issue sub-row ── */}
                     {warehouses.length > 0 && (
                       <tr className="border-b border-muted/20 bg-muted/5">
-                        <td colSpan={8} className="px-3 py-2">
+                        <td colSpan={9} className="px-3 py-2">
                           {/* Toggle */}
                           <div className="flex items-center gap-2 mb-2">
                             <input type="checkbox" id={`stock_${item.id}`}
@@ -396,7 +409,7 @@ export function EditClaimForm({
                                               step="any"
                                               min="0.0001"
                                               value={bl.qty_per_unit || ''}
-                                              onChange={e => updateBundleLine(item.id, bl.id, 'qty_per_unit', parseFloat(e.target.value) || 0)}
+                                              onChange={e => updateBundleLine(item.id, bl.id, 'qty_per_unit', e.target.value)}
                                               placeholder="0"
                                               required
                                               className="w-full p-1 rounded border bg-background text-center"
@@ -463,7 +476,7 @@ export function EditClaimForm({
               })}
               {items.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="py-8 text-center text-muted-foreground">لا توجد بنود</td>
+                  <td colSpan={9} className="py-8 text-center text-muted-foreground">لا توجد بنود</td>
                 </tr>
               )}
             </tbody>

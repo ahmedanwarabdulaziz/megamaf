@@ -6,10 +6,12 @@ import { CreateBankModal } from '@/components/banks/create-bank-modal';
 import { CreateAccountModal } from '@/components/banks/create-account-modal';
 import { Building2, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Landmark } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { requirePageAccess } from '@/lib/require-page-access';
 
 export const dynamic = 'force-dynamic';
 
 export default async function BanksPage() {
+  await requirePageAccess('banks');
   const banks = await getBanks();
 
   return (

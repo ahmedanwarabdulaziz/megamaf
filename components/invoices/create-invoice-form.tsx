@@ -1,11 +1,12 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { createInvoice } from '@/lib/actions/invoices';
-import { Plus, Trash2 } from 'lucide-react';
+import { saveVendor } from '@/lib/actions/vendors';
+import { Plus, Trash2, X } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { QuickAddItemModal } from './quick-add-item-modal';
 import { SearchableItemSelect } from './searchable-item-select';
@@ -37,6 +38,39 @@ export function CreateInvoiceForm({
 
   // ► Inventory items held in state so newly created items appear instantly
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(initialItems);
+
+  const [selectedVendorNav, setSelectedVendorNav] = useState('');
+  const [isAddingVendor, setIsAddingVendor] = useState(false);
+  const [vendorPending, startVendorTransition] = useTransition();
+  const [vendorError, setVendorError] = useState('');
+  const [allowAllProjects, setAllowAllProjects] = useState(false);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
+
+  async function handleAddVendor(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setVendorError('');
+    const fd = new FormData(e.currentTarget);
+    
+    // Invoices are exclusively for vendors
+    fd.set('kind', 'vendor');
+
+    startVendorTransition(async () => {
+      try {
+        fd.set('all_projects', allowAllProjects.toString());
+        const res = await saveVendor(fd, selectedProjects);
+        if (res?.error) throw new Error(res.error);
+        
+        if (res?.vendorId) {
+          setSelectedVendorNav(res.vendorId);
+        }
+        
+        setIsAddingVendor(false);
+        router.refresh();
+      } catch (err: any) {
+        setVendorError(err.message);
+      }
+    });
+  }
 
   const subtotal      = lineItems.reduce((sum, item) => sum + item.qty * item.unit_price, 0);
   const discountAmount = subtotal * discountRate;
@@ -88,17 +122,34 @@ export function CreateInvoiceForm({
   }
 
   return (
+    <>
     <form action={handleSubmit} className="space-y-6 bg-card p-6 rounded-lg border shadow-sm">
       {/* ── Header fields ─────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1">المورد (توريدات)</label>
-          <select required name="vendor_id" className="w-full p-2 rounded border bg-background">
-            <option value="">اختر المورد...</option>
-            {vendors.map(v => (
-              <option key={v.id} value={v.id}>{v.name}</option>
-            ))}
-          </select>
+          <div className="flex gap-2 items-center">
+            <select 
+              required 
+              name="vendor_id" 
+              value={selectedVendorNav}
+              onChange={(e) => setSelectedVendorNav(e.target.value)}
+              className="flex-1 p-2 rounded border bg-background"
+            >
+              <option value="">اختر المورد...</option>
+              {vendors.map(v => (
+                <option key={v.id} value={v.id}>{v.name}</option>
+              ))}
+            </select>
+            <button 
+              type="button" 
+              onClick={() => setIsAddingVendor(true)}
+              title="إضافة مورد جديد"
+              className="flex-shrink-0 h-[38px] w-[38px] flex items-center justify-center bg-muted border rounded-lg hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors text-lg font-bold"
+            >
+              +
+            </button>
+          </div>
         </div>
 
         <div>
@@ -319,5 +370,84 @@ export function CreateInvoiceForm({
         </Button>
       </div>
     </form>
+
+      {/* Add New Vendor Popup */}
+      {isAddingVendor && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm" onClick={() => setIsAddingVendor(false)} />
+          <div className="relative z-10 w-full max-w-sm bg-card border rounded-xl shadow-2xl p-6">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-bold">إضافة مورد جديد</h3>
+              <button type="button" onClick={() => setIsAddingVendor(false)} className="text-muted-foreground hover:text-foreground">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <form onSubmit={handleAddVendor} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium">الاسم <span className="text-destructive">*</span></label>
+                <input name="name" required placeholder="اسم الجهة" className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">رقم الهاتف</label>
+                <input name="phone" placeholder="05XXXXXXXX" dir="ltr" className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-right" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">ملاحظات</label>
+                <input name="notes" placeholder="معلومات إضافية..." className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none" />
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium">صلاحية المشاريع</label>
+                <div className="flex items-center gap-2 mb-2 mt-2">
+                  <input 
+                    type="checkbox" 
+                    id="all_projects" 
+                    checked={allowAllProjects} 
+                    onChange={(e) => setAllowAllProjects(e.target.checked)} 
+                    className="w-4 h-4" 
+                  />
+                  <label htmlFor="all_projects" className="text-sm">السماح بكل المشاريع (الحالية والمستقبلية)</label>
+                </div>
+                
+                {!allowAllProjects && (
+                  <div className="mt-2 border rounded-lg p-3 bg-muted/20 max-h-40 overflow-y-auto space-y-2">
+                    <p className="text-xs text-muted-foreground mb-2">اختر المشاريع المسموح له العمل بها:</p>
+                    {projects.map(p => (
+                      <div key={p.id} className="flex items-center gap-2">
+                        <input 
+                          type="checkbox" 
+                          id={`proj_${p.id}`}
+                          checked={selectedProjects.includes(p.id)}
+                          onChange={() => {
+                            if (selectedProjects.includes(p.id)) {
+                              setSelectedProjects(selectedProjects.filter(id => id !== p.id));
+                            } else {
+                              setSelectedProjects([...selectedProjects, p.id]);
+                            }
+                          }}
+                          className="w-4 h-4"
+                        />
+                        <label htmlFor={`proj_${p.id}`} className="text-sm">{p.name}</label>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {vendorError && <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{vendorError}</p>}
+
+              <div className="pt-2 flex justify-end gap-2">
+                <button type="button" onClick={() => setIsAddingVendor(false)} className="border px-4 py-2 rounded-lg text-sm hover:bg-muted/40 transition-colors">
+                  إلغاء
+                </button>
+                <button type="submit" disabled={vendorPending} className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
+                  {vendorPending ? "جاري الحفظ..." : "إضافة"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </>
   );
 }

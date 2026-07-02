@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 
 const CLAIM_COLUMNS = `
   id, claim_type, party_id, project_id, claim_number, claim_date, status,
-  tax_enabled, tax_rate, notes,
+  tax_enabled, tax_rate, notes, opening_paid_amount,
   project:projects(name)
 `;
 

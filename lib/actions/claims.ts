@@ -171,6 +171,7 @@ export async function createClaim(formData: FormData, items: any[], attachmentUr
         unit_price: server_unit_price,
         disbursement_pct: Number(item.disbursement_pct || 1.0),
         line_total: line_total,
+        notes: item.notes || null,
         is_stock_issue: isStockIssue,
         warehouse_id: isStockIssue ? stockWarehouseId : null,
         item_id:      isStockIssue ? stockItemId      : null,
@@ -401,6 +402,7 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
         unit_price: server_unit_price,
         disbursement_pct: Number(item.disbursement_pct || 1.0),
         line_total: cumulative_qty * server_unit_price,
+        notes: item.notes || null,
         is_stock_issue: isStockIssue,
         warehouse_id: isStockIssue ? stockWarehouseId : null,
         item_id:      isStockIssue ? stockItemId      : null,
@@ -455,5 +457,153 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
     return { success: true };
   } catch (e: any) {
     return { error: e.message || 'حدث خطأ' };
+  }
+}
+
+export async function createZeroClaim(formData: FormData, items: any[], attachmentUrls: string[]) {
+  try {
+    const supabase = await createClient();
+
+    const claim_type = formData.get('claim_type') as string;
+    const party_id = formData.get('party_id') as string;
+    const project_id = formData.get('project_id') as string;
+    const claim_date = formData.get('claim_date') as string;
+    const tax_enabled = formData.get('tax_enabled') === 'true';
+    const tax_rate = parseFloat(formData.get('tax_rate') as string) || 0;
+    const notes = formData.get('notes') as string;
+    const opening_paid_amount = parseFloat(formData.get('opening_paid_amount') as string) || 0;
+
+    if (!items || items.length === 0) return { error: 'At least one item is required' };
+
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id, is_super_admin').eq('auth_user_id', userData.user?.id).single();
+    if (!emp) return { error: 'Employee not found' };
+
+    if (!emp.is_super_admin) return { error: 'لا تملك صلاحية إنشاء رصيد افتتاحي. يجب أن تكون مدير نظام.' };
+
+    // Check if Claim #0 already exists
+    const { data: existingZero } = await supabase
+      .from('claims')
+      .select('id')
+      .eq('party_id', party_id)
+      .eq('project_id', project_id)
+      .eq('claim_type', claim_type)
+      .eq('claim_number', 0)
+      .maybeSingle();
+
+    if (existingZero) return { error: 'مستخلص #0 موجود بالفعل لهذا الحساب والمشروع.' };
+
+    // Insert Claim Header (Auto-approved)
+    const { data: claimData, error: claimError } = await supabase
+      .from('claims')
+      .insert({
+        claim_type,
+        party_id,
+        project_id,
+        claim_date,
+        tax_enabled,
+        tax_rate,
+        notes,
+        opening_paid_amount,
+        claim_number: 0,
+        status: 'approved',
+        approved_at: new Date().toISOString(),
+        approved_by: emp.id,
+      })
+      .select('id')
+      .single();
+
+    if (claimError) return { error: claimError.message };
+
+    // Prepare Items - ALL previous_qty = 0
+    const dbItems = items.map(item => {
+      const server_previous_qty = 0;
+      const server_unit_price = Number(item.unit_price);
+      const cumulative_qty = server_previous_qty + Number(item.current_qty);
+      const line_total = cumulative_qty * server_unit_price;
+
+      const bundle: any[] = item.stock_bundle || [];
+      const firstBundleItem = bundle.find((b: any) => b.item_id && b.qty_per_unit > 0);
+      const stockWarehouseId = (item.is_stock_issue && item.warehouse_id) ? item.warehouse_id : null;
+      const stockItemId      = (item.is_stock_issue && firstBundleItem?.item_id) ? firstBundleItem.item_id : null;
+      const isStockIssue = !!(item.is_stock_issue && stockWarehouseId && stockItemId);
+
+      return {
+        claim_id: claimData.id,
+        item_ref: item.item_ref || crypto.randomUUID(),
+        description: item.description,
+        previous_qty: server_previous_qty,
+        current_qty: Number(item.current_qty),
+        unit_price: server_unit_price,
+        disbursement_pct: Number(item.disbursement_pct || 1.0),
+        line_total: line_total,
+        notes: item.notes || null,
+        is_stock_issue: isStockIssue,
+        warehouse_id: isStockIssue ? stockWarehouseId : null,
+        item_id:      isStockIssue ? stockItemId      : null,
+        _client_id:    item.id,
+        _warehouse_id: isStockIssue ? stockWarehouseId : null,
+        _bundle:       isStockIssue ? bundle : [],
+      };
+    });
+
+    const dbItemsClean = dbItems.map(({ _client_id: _c, _bundle: _b, _warehouse_id: _w, ...rest }) => rest);
+
+    const { data: insertedItems, error: itemsError } = await supabase
+      .from('claim_items')
+      .insert(dbItemsClean)
+      .select('id, item_ref');
+
+    if (itemsError) {
+      await supabase.from('claims').delete().eq('id', claimData.id);
+      return { error: itemsError.message };
+    }
+
+    const bundleRows: any[] = [];
+    for (const dbItem of dbItems) {
+      if (!dbItem.is_stock_issue || !dbItem._bundle || dbItem._bundle.length === 0) continue;
+      const inserted = insertedItems?.find((r: any) => r.item_ref === dbItem.item_ref);
+      if (!inserted) continue;
+      for (const bl of dbItem._bundle) {
+        if (!bl.item_id || !bl.qty_per_unit) continue;
+        bundleRows.push({
+          claim_item_id: inserted.id,
+          warehouse_id:  dbItem._warehouse_id,
+          item_id:       bl.item_id,
+          qty_per_unit:  Number(bl.qty_per_unit),
+        });
+      }
+    }
+    if (bundleRows.length > 0) {
+      const { error: bundleError } = await supabase.from('claim_item_stock_bundles').insert(bundleRows);
+      if (bundleError) {
+        await supabase.from('claims').delete().eq('id', claimData.id);
+        return { error: bundleError.message };
+      }
+    }
+
+    if (attachmentUrls && attachmentUrls.length > 0) {
+      const attachRows = attachmentUrls.map(url => ({
+        entity_type: 'claim',
+        entity_id: claimData.id,
+        r2_key: url,
+        uploaded_by: emp.id,
+      }));
+      await supabase.from('attachments').insert(attachRows);
+    }
+
+    await logAudit({
+      employee_id: emp.id,
+      action: 'create',
+      entity_type: 'claim',
+      entity_id: claimData.id,
+      after: { claim_number: 0, status: 'approved', opening_paid_amount, items: dbItems },
+    });
+
+    revalidatePath('/claims');
+    revalidatePath('/projects', 'layout');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'An error occurred' };
   }
 }

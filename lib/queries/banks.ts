@@ -5,26 +5,24 @@ import { createClient } from '@/lib/supabase/server';
 export async function getBanks() {
   const supabase = await createClient();
   
-  // Fetch banks
-  const { data: banks, error: banksError } = await supabase
-    .from('banks')
-    .select('*')
-    .order('name');
-    
+  // Run both queries in parallel — was sequential before
+  const [{ data: banks, error: banksError }, { data: accounts, error: accountsError }] = await Promise.all([
+    supabase
+      .from('banks')
+      .select('id, name')
+      .order('name'),
+    supabase
+      .from('v_bank_account_balances')
+      .select('bank_account_id, bank_id, account_name, account_number, currency, current_balance, current_month_in, current_month_out')
+      .order('account_name'),
+  ]);
+
   if (banksError) throw banksError;
-
-  // Fetch balances view
-  const { data: accounts, error: accountsError } = await supabase
-    .from('v_bank_account_balances')
-    .select('*')
-    .order('account_name');
-
   if (accountsError) throw accountsError;
 
-  // Group accounts by bank
-  return banks.map(bank => ({
+  return (banks ?? []).map(bank => ({
     ...bank,
-    accounts: accounts.filter(acc => acc.bank_id === bank.id),
+    accounts: (accounts ?? []).filter(acc => acc.bank_id === bank.id),
   }));
 }
 

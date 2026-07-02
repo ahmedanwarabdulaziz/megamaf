@@ -7,6 +7,9 @@ import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
 import { InvoiceApproveRejectButtons } from '@/components/invoices/approve-reject-buttons';
 import { InvoicesFilters } from '@/components/invoices/invoices-filters';
+import { requirePageAccess } from '@/lib/require-page-access';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'فواتير الموردين',
@@ -18,6 +21,7 @@ export default async function InvoicesPage({
   searchParams: Promise<{ project_id?: string, vendor_id?: string, search?: string, start_date?: string, end_date?: string, status?: string }>;
 }) {
   const { project_id, vendor_id, search, start_date, end_date, status } = await searchParams;
+  await requirePageAccess('vendors'); // invoices are under vendors access
   const { profile } = await getProfile();
   if (!profile) return null;
 
@@ -94,7 +98,7 @@ function InvoiceCard({ invoice, profile, isActionRequired = false }: { invoice: 
       <div className="p-4">
         <div className="flex justify-between items-start mb-2">
           <Link href={`/invoices/${invoice.id}`} className="font-bold text-lg hover:text-primary transition-colors">
-            {invoice.vendor?.name || 'مورد غير معروف'}
+            {invoice.vendor?.name || 'مورد غير معروف'} - فاتورة رقم {invoice.invoice_number}
           </Link>
           <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${invoice.status === 'approved' ? 'bg-primary/10 text-primary' : invoice.status === 'rejected' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-secondary-foreground'}`}>
             {invoice.status === 'approved' ? 'معتمد' : invoice.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}

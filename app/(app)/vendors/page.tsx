@@ -6,6 +6,9 @@ import { VendorModal } from '@/components/vendors/vendor-modal';
 import { VendorsFilters } from '@/components/vendors/vendors-filters';
 import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
+import { requirePageAccess } from '@/lib/require-page-access';
+
+export const dynamic = 'force-dynamic';
 
 export const metadata = {
   title: 'المقاولين والموردين',
@@ -17,6 +20,7 @@ export default async function VendorsPage({
   searchParams: Promise<{ project_id?: string, kind?: string, search?: string, start_date?: string, end_date?: string, show_all?: string, subtab?: string }>;
 }) {
   const { project_id, kind, search, start_date, end_date, show_all, subtab = 'claims' } = await searchParams;
+  await requirePageAccess('vendors');
   const { profile } = await getProfile();
   if (!profile) return null;
 

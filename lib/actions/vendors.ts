@@ -80,7 +80,7 @@ export async function saveVendor(formData: FormData, projectIds: string[]) {
     }
 
     revalidatePath('/vendors');
-    return { success: true };
+    return { success: true, vendorId };
   } catch (e: any) {
     return { error: e.message || 'An error occurred' };
   }

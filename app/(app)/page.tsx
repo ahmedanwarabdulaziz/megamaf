@@ -3,7 +3,7 @@ import { getProfile } from '@/lib/supabase/get-profile';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
-import { Landmark, ArrowRightLeft, Clock, Wallet, AlertCircle } from 'lucide-react';
+import { Landmark, ArrowRightLeft, Clock, Wallet, AlertCircle, ShieldOff } from 'lucide-react';
 import { FAB } from '@/components/ui/fab';
 import { PWAInstallPrompt } from '@/components/ui/pwa-install-prompt';
 
@@ -11,7 +11,12 @@ export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الرئيسية' };
 
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ access_denied?: string }>
+}) {
+  const { access_denied } = await searchParams;
   const { profile } = await getProfile();
   const supabase = await createClient();
 
@@ -61,6 +66,17 @@ export default async function HomePage() {
 
   return (
     <div className="max-w-6xl mx-auto flex flex-col gap-6">
+      {/* Access-denied banner */}
+      {access_denied === '1' && (
+        <div className="flex items-start gap-3 bg-destructive/10 border border-destructive/30 text-destructive rounded-xl px-4 py-3 text-sm font-medium">
+          <ShieldOff className="w-5 h-5 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-semibold">لا تملك صلاحية الوصول لهذه الصفحة.</p>
+            <p className="text-xs text-destructive/80 mt-0.5">يرجى التواصل مع مدير النظام لمنحك الوصول المطلوب.</p>
+          </div>
+        </div>
+      )}
+
       <div>
         <h1 className="text-3xl font-bold tracking-tight">اللوحة الرئيسية</h1>
         <p className="text-muted-foreground mt-1">

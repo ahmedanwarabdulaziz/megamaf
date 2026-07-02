@@ -75,7 +75,7 @@ export async function saveOwner(formData: FormData) {
 
   if (id) {
     const { data: oldData } = await supabase.from('project_owners').select('*').eq('id', id).single()
-    const { error } = await supabase.from('project_owners').update(payload).eq('id', id)
+    const { data, error } = await supabase.from('project_owners').update(payload).eq('id', id).select().single()
     if (error) throw error
     
     await logAudit({
@@ -87,6 +87,10 @@ export async function saveOwner(formData: FormData) {
       after: payload,
       ip
     })
+    
+    revalidatePath('/settings/owners')
+    revalidatePath('/projects')
+    return data
   } else {
     const { data, error } = await supabase.from('project_owners').insert(payload).select().single()
     if (error) throw error
@@ -99,8 +103,9 @@ export async function saveOwner(formData: FormData) {
       after: data,
       ip
     })
+    
+    revalidatePath('/settings/owners')
+    revalidatePath('/projects')
+    return data
   }
-  
-  revalidatePath('/settings/owners')
-  revalidatePath('/projects')
 }

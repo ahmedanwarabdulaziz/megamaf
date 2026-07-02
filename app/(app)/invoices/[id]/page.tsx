@@ -39,7 +39,7 @@ export default async function InvoiceDetailsPage({ params }: { params: Promise<{
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
               <Receipt className="w-6 h-6 text-primary" />
-              تفاصيل الفاتورة
+              تفاصيل فاتورة رقم {invoice.invoice_number}
             </h1>
             <p className="text-muted-foreground text-sm mt-1 font-mono">{invoice.id}</p>
           </div>

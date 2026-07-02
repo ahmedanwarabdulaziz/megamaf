@@ -32,7 +32,11 @@ export function ProjectModal({ owners, projects }: { owners: any[], projects: an
 
   const handleAddOwner = (formData: FormData) => {
     startOwnerTransition(async () => {
-      await saveOwner(formData)
+      const newOwner = await saveOwner(formData)
+      if (newOwner?.id) {
+        setSelectedOwnerId(newOwner.id)
+        setOwnerInherited(false)
+      }
       setIsAddingOwner(false)
     })
   }
@@ -223,8 +227,8 @@ export function ProjectModal({ owners, projects }: { owners: any[], projects: an
                 <Input name="name" required placeholder="اسم الجهة المالكة" />
               </div>
               <div className="space-y-2">
-                <label className="text-sm font-medium">رقم الهاتف <span className="text-destructive">*</span></label>
-                <Input name="phone" required placeholder="05XXXXXXXX" dir="ltr" className="text-right" />
+                <label className="text-sm font-medium">رقم الهاتف</label>
+                <Input name="phone" pattern="^01[0125][0-9]{8}$" title="رقم هاتف مصري صحيح (مثال: 01012345678)" placeholder="01XXXXXXXXX" dir="ltr" className="text-right" />
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">ملاحظات</label>

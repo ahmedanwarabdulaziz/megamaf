@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { getClaims } from '@/lib/queries/claims';
 import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
+import { requirePageAccess } from '@/lib/require-page-access';
 
 export const dynamic = 'force-dynamic';
 
@@ -21,13 +22,26 @@ export default async function ClaimsPage({
   searchParams: Promise<{ project_id?: string }>;
 }) {
   const { project_id } = await searchParams;
+  await requirePageAccess('claims');
   const { profile } = await getProfile();
   if (!profile) return null;
 
-  const [allClaims, projects] = await Promise.all([
+  const { createClient } = await import('@/lib/supabase/server');
+  const supabase = await createClient();
+
+  const [allClaims, projects, { data: accountData }] = await Promise.all([
     getClaims('vendor', { projectId: project_id }),
-    getProjects()
+    getProjects(),
+    supabase
+      .from('v_vendor_account')
+      .select('party_id, project_id, amount_paid')
   ]);
+
+  const vendorProjectPaid = new Map<string, number>();
+  for (const row of (accountData || [])) {
+    const k = `${row.party_id}__${row.project_id}`;
+    vendorProjectPaid.set(k, (vendorProjectPaid.get(k) || 0) + Number(row.amount_paid || 0));
+  }
 
   // Group by party_id + project_id; query is already DESC by claim_number
   const groupMap = new Map<string, typeof allClaims>();
@@ -136,7 +150,9 @@ export default async function ClaimsPage({
                   {/* Left: identity */}
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold">مستخلص رقم {claim.claim_number}</h3>
+                      <h3 className="font-bold">
+                        {claim.claim_number === 0 ? 'مستخلص #0 — رصيد افتتاحي' : `مستخلص رقم ${claim.claim_number}`}
+                      </h3>
                       <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                         claim.status === 'approved'
                           ? 'bg-primary text-primary-foreground'
@@ -173,8 +189,8 @@ export default async function ClaimsPage({
                       const netCumulative = grossTotal - retained;
 
                       // ── In-system paid amount ─────────────────────────────
-                      const paidInSystem  = Number((claim as any).v_claim_paid?.[0]?.paid_amount || 0);
-                      const totalPaid     = paidInSystem + priorPaid;
+                      const totalPaid     = vendorProjectPaid.get(`${claim.party_id}__${claim.project_id}`) || 0;
+                      const openingPaid   = Number((claim as any).opening_paid_amount || 0);
 
                       // ── Tax on total net cumulative ───────────────────────
                       const tax = (claim as any).tax_enabled
@@ -213,7 +229,13 @@ export default async function ClaimsPage({
                             </div>
                           )}
 
-
+                          {/* Opening Paid */}
+                          {openingPaid > 0 && (
+                            <div className="flex justify-between w-full gap-4 text-xs text-amber-600 dark:text-amber-500">
+                              <span>المدفوع قبل النظام:</span>
+                              <span className="font-medium">- {formatMoney(openingPaid)}</span>
+                            </div>
+                          )}
 
                           {/* Paid */}
                           {totalPaid > 0 && (

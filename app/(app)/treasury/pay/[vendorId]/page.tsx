@@ -118,16 +118,14 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
           .select('claim_id, claim_cumulative_total, claim_cumulative_retained, claim_cumulative_payable')
           .in('claim_id', latestClaimIds)
       : { data: [] as any[] },
-    allClaimIds.length > 0
-      ? supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', allClaimIds)
-      : { data: [] as any[] },
+    supabase.from('v_vendor_account').select('project_id, amount_paid').eq('party_id', vendorId)
   ]);
 
-  // Sum paid_amount across ALL claims per project
+  // Sum paid_amount across ALL entries per project
   const paidByProject = new Map<string, number>();
-  for (const c of latestClaims || []) {
-    const paid = Number((allClaimPaidData || []).find((p: any) => p.claim_id === c.id)?.paid_amount || 0);
-    paidByProject.set(c.project_id, (paidByProject.get(c.project_id) || 0) + paid);
+  for (const row of allClaimPaidData || []) {
+    if (!row.project_id) continue;
+    paidByProject.set(row.project_id, (paidByProject.get(row.project_id) || 0) + Number(row.amount_paid || 0));
   }
 
   // Build per-project claim summaries (same logic as /claims page)
@@ -147,8 +145,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     const retained         = retainedInSystem + priorRet;
     const netCumulative    = grossTotal - retained;
 
-    const paidInSystem = paidByProject.get(c.project_id) || 0;
-    const totalPaid    = paidInSystem + priorPaid;
+    const totalPaid = paidByProject.get(c.project_id) || 0;
 
     const tax = c.tax_enabled ? netCumulative * (c.tax_rate || 0) : 0;
     const totalDue  = netCumulative + tax;

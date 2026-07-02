@@ -62,7 +62,8 @@ export function VendorModal({ vendor, projects }: { vendor?: any, projects: any[
 
           <div>
             <label className="block text-sm font-medium mb-1">النوع</label>
-            <select required name="kind" defaultValue={vendor?.kind || 'vendor'} className="w-full p-2 rounded border bg-background">
+            <select required name="kind" defaultValue={vendor?.kind || ''} className="w-full p-2 rounded border bg-background">
+              <option value="" disabled>اختر النوع...</option>
               <option value="vendor">مورد (توريدات)</option>
               <option value="contractor">مقاول (مصنعيات)</option>
             </select>

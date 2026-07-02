@@ -15,7 +15,7 @@ export default async function ReceiveOwnerPage({ params }: { params: Promise<{ o
   // Order DESC so that when we dedupe by project, the FIRST one is always the latest.
   const { data: ownerClaims } = await supabase
     .from('claims')
-    .select('id, claim_number, claim_date, project_id, projects(name)')
+    .select('id, claim_number, claim_date, project_id, tax_enabled, tax_rate, projects(name)')
     .eq('party_id', ownerId)
     .eq('claim_type', 'owner')
     .eq('status', 'approved')
@@ -47,13 +47,17 @@ export default async function ReceiveOwnerPage({ params }: { params: Promise<{ o
           .select('claim_id, claim_cumulative_total, claim_cumulative_payable, claim_cumulative_retained, prior_cumulative_payable, total_due_this_claim')
           .in('claim_id', claimIds)
       : { data: [] as any[] },
-    claimIds.length > 0
-      ? supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', claimIds)
-      : { data: [] as any[] },
+    supabase.from('v_owner_account').select('project_id, amount_paid').eq('party_id', ownerId)
   ]);
 
   const claimTotals = claimTotalsResult.data || [];
-  const claimPaid   = claimPaidResult.data   || [];
+  // Build a map projectId → total paid
+  const paidByProject = new Map<string, number>();
+  for (const row of (claimPaidResult.data || [])) {
+    if (!row.project_id) continue;
+    paidByProject.set(row.project_id, (paidByProject.get(row.project_id) || 0) + Number(row.amount_paid || 0));
+  }
+
   // Build a map projectId → opening balance
   const obByProject = new Map<string, { prior_owner_dues: number; prior_owner_income: number }>();
   for (const ob of (allOpeningBalances || [])) {
@@ -64,7 +68,6 @@ export default async function ReceiveOwnerPage({ params }: { params: Promise<{ o
   const openDocs: any[] = latestClaims
     .map((claim) => {
       const totals  = claimTotals.find((t) => t.claim_id === claim.id);
-      const paid    = claimPaid.find((p) => p.claim_id === claim.id);
       const ob      = obByProject.get(claim.project_id);
 
       // Gross cumulative = in-system gross + Claim #0 prior dues
@@ -77,10 +80,12 @@ export default async function ReceiveOwnerPage({ params }: { params: Promise<{ o
       const retained      = retainedInSystem;
       const netCumulative = grossTotal - retained;
 
+      const tax = claim.tax_enabled ? netCumulative * (claim.tax_rate || 0) : 0;
+      const totalDue = netCumulative + tax;
+
       // Paid = in-system payments + prior income already collected
-      const paidInSystem  = Number(paid?.paid_amount || 0);
-      const totalPaid     = paidInSystem + priorIncome;
-      const remaining     = Math.max(0, netCumulative - totalPaid);
+      const totalPaid     = paidByProject.get(claim.project_id) || 0;
+      const remaining     = Math.max(0, totalDue - totalPaid);
 
       return {
         document_type:  'claim',
@@ -95,6 +100,9 @@ export default async function ReceiveOwnerPage({ params }: { params: Promise<{ o
         gross_total:     grossTotal,
         retained:        retained,
         net_cumulative:  netCumulative,
+        tax:             tax,
+        tax_enabled:     claim.tax_enabled,
+        tax_rate:        claim.tax_rate,
         total_paid:      totalPaid,
         prior_dues:      priorDues,
         prior_income:    priorIncome,

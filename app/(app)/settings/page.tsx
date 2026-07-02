@@ -1,7 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { requirePageAccess } from '@/lib/require-page-access';
 
 export default async function SettingsPage() {
+  await requirePageAccess('settings');
   const supabase = await createClient();
   const { data: settings } = await supabase.from('app_settings').select('*');
 

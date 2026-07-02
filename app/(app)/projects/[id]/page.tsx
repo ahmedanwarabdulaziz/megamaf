@@ -57,13 +57,20 @@ export default async function ProjectDetailPage({
   // Batch 2: claim totals+paid (depends on ownerClaims from batch 1)
   if (ownerClaims && ownerClaims.length > 0) {
     const claimIds = ownerClaims.map((c: any) => c.id)
-    const [{ data: claimTotals }, { data: claimPaid }] = await Promise.all([
+    const partyIds = Array.from(new Set(ownerClaims.map((c: any) => c.party_id)))
+    const [{ data: claimTotals }, { data: accountPaid }] = await Promise.all([
       supabase.from('v_claim_totals').select('claim_id, claim_cumulative_total, claim_cumulative_retained, claim_cumulative_payable, prior_cumulative_payable, total_due_this_claim').in('claim_id', claimIds),
-      supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', claimIds),
+      supabase.from('v_owner_account').select('party_id, amount_paid').eq('project_id', id).in('party_id', partyIds),
     ])
+
+    const paidByParty = new Map<string, number>();
+    accountPaid?.forEach(row => {
+      paidByParty.set(row.party_id, (paidByParty.get(row.party_id) || 0) + Number(row.amount_paid || 0));
+    });
+
     ownerClaims.forEach((c: any) => {
       c.v_claim_totals = claimTotals?.filter((t: any) => t.claim_id === c.id) || []
-      c.v_claim_paid  = claimPaid?.filter((p: any)  => p.claim_id  === c.id) || []
+      c.total_paid_in_system = paidByParty.get(c.party_id) || 0;
     })
   }
 
@@ -78,6 +85,8 @@ export default async function ProjectDetailPage({
   let warehouses: any[] = []
   let inventoryItems: any[] = []
 
+  let zeroClaims: any[] = []
+
   if (!isMainCompany && canEdit) {
     const [
       { data: ob },
@@ -86,6 +95,7 @@ export default async function ProjectDetailPage({
       { data: v },
       { data: wh },
       { data: items },
+      { data: zc }
     ] = await Promise.all([
       supabase.from('project_opening_balances').select('*').eq('project_id', id).maybeSingle(),
       supabase.from('vendor_prior_claims').select('*, vendors(name)').eq('project_id', id).order('created_at'),
@@ -93,6 +103,7 @@ export default async function ProjectDetailPage({
       supabase.from('vendors').select('id, name').order('name'),
       supabase.from('warehouses').select('id, name, project_id'),
       supabase.from('inventory_items').select('id, name, unit, code').order('name'),
+      supabase.from('claims').select('id, party_id, claim_type').eq('project_id', id).eq('claim_number', 0).eq('status', 'approved'),
     ])
     financialBalance = ob || null
     vendorPriorClaims = (vpc || []).map((c: any) => ({
@@ -108,6 +119,7 @@ export default async function ProjectDetailPage({
     vendors = v || []
     warehouses = wh || []
     inventoryItems = items || []
+    zeroClaims = zc || []
   }
 
   const hasOpeningBalance = finances?.has_opening_balance
@@ -285,7 +297,7 @@ export default async function ProjectDetailPage({
 
           <div className="bg-card rounded-lg border shadow-sm divide-y">
             {/* ── Owner Claim #0 (prior opening balance) ── */}
-            {(finances?.prior_owner_dues || 0) > 0 && (() => {
+            {(finances?.prior_owner_dues || 0) > 0 && !ownerClaims?.some(c => c.claim_number === 0) && (() => {
               const dues = finances?.prior_owner_dues || 0;
               const income = finances?.prior_owner_income || 0;
               const outstanding = Math.max(dues - income, 0);
@@ -357,7 +369,9 @@ export default async function ProjectDetailPage({
                       {/* Left: identity */}
                       <div className="min-w-0">
                         <div className="flex items-center gap-2 mb-1">
-                          <h3 className="font-bold">مستخلص رقم {claim.claim_number}</h3>
+                          <h3 className="font-bold">
+                            {claim.claim_number === 0 ? 'مستخلص مالك #0 — رصيد افتتاحي' : `مستخلص رقم ${claim.claim_number}`}
+                          </h3>
                           <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
                             claim.status === 'approved'
                               ? 'bg-primary text-primary-foreground'
@@ -395,12 +409,8 @@ export default async function ProjectDetailPage({
                           const totalDue = netCumulative + tax;
 
                           // ── Actual collected amounts ──────────────────────────────
-                          // Sum paid across ALL claims in this group (payments may
-                          // be allocated against any claim number, not just the latest)
-                          const paidInSystem = group.reduce((sum: number, gc: any) => {
-                            return sum + Number(gc.v_claim_paid?.[0]?.paid_amount || 0);
-                          }, 0);
-                          const totalPaid    = paidInSystem + priorIncome;
+                          const totalPaid    = (claim as any).total_paid_in_system || 0;
+                          const openingPaid  = Number((claim as any).opening_paid_amount || 0);
                           const remaining    = Math.max(0, totalDue - totalPaid);
 
                           return (
@@ -430,6 +440,14 @@ export default async function ProjectDetailPage({
                                 <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
                                   <span>الضريبة ({(((claim as any).tax_rate || 0) * 100).toFixed(1)}%):</span>
                                   <span>+ {formatMoney(tax)}</span>
+                                </div>
+                              )}
+
+                              {/* Opening Paid */}
+                              {openingPaid > 0 && (
+                                <div className="flex justify-between w-full gap-4 text-xs text-amber-600 dark:text-amber-500">
+                                  <span>المحصّل قبل النظام:</span>
+                                  <span className="font-medium">- {formatMoney(openingPaid)}</span>
                                 </div>
                               )}
 
@@ -581,6 +599,7 @@ export default async function ProjectDetailPage({
             warehouses={warehouses}
             inventoryItems={inventoryItems}
             allProjects={allProjects || []}
+            zeroClaims={zeroClaims}
           />
         </div>
       )}

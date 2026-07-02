@@ -63,6 +63,9 @@ export function OwnerReceiptCalculator({
         gross_total:    doc.gross_total    ?? 0,
         retained:       doc.retained       ?? 0,
         net_cumulative: doc.net_cumulative ?? 0,
+        tax:            doc.tax            ?? 0,
+        tax_enabled:    doc.tax_enabled    ?? false,
+        tax_rate:       doc.tax_rate       ?? 0,
         total_paid:     doc.total_paid     ?? 0,
       };
     });
@@ -168,11 +171,17 @@ export function OwnerReceiptCalculator({
                   </div>
                 )}
                 <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground border-t border-muted/30 pt-1">
-                  <span>الصافي التراكمي (قابل للتحصيل):</span>
+                  <span>الصافي التراكمي:</span>
                   <span className="font-medium">{formatMoney(doc.net_cumulative || 0)}</span>
                 </div>
+                {doc.tax_enabled && (
+                  <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
+                    <span>الضريبة ({(doc.tax_rate * 100).toFixed(0)}%):</span>
+                    <span className="font-medium">{formatMoney(doc.tax)}</span>
+                  </div>
+                )}
                 {(doc.total_paid || 0) > 0 && (
-                  <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
+                  <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium border-t border-muted/30 pt-1">
                     <span>المحصّل فعلياً:</span>
                     <span>- {formatMoney(doc.total_paid)}</span>
                   </div>
@@ -353,12 +362,19 @@ export function OwnerReceiptCalculator({
                         )}
                         {/* Net */}
                         <div className="flex justify-between gap-6 border-t border-muted/20 pt-0.5">
-                          <span>الصافي التراكمي (قابل للتحصيل):</span>
+                          <span>الصافي التراكمي:</span>
                           <span className="font-medium text-foreground">{formatMoney(alloc.net_cumulative)}</span>
                         </div>
+                        {/* Tax */}
+                        {alloc.tax_enabled && (
+                          <div className="flex justify-between gap-6">
+                            <span>الضريبة ({(alloc.tax_rate * 100).toFixed(0)}%):</span>
+                            <span className="font-medium text-foreground">{formatMoney(alloc.tax)}</span>
+                          </div>
+                        )}
                         {/* Already paid */}
                         {alloc.total_paid > 0 && (
-                          <div className="flex justify-between gap-6 text-green-600">
+                          <div className="flex justify-between gap-6 text-green-600 border-t border-muted/20 pt-0.5">
                             <span>المحصّل فعلياً:</span>
                             <span className="font-medium">- {formatMoney(alloc.total_paid)}</span>
                           </div>

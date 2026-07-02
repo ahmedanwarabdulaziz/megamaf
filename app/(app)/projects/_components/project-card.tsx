@@ -36,14 +36,22 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
 
   // ── Income ────────────────────────────────────────────────────────────────
   // total_income = prior_owner_dues + in_system owner claims billed
-  const ownerBilled = Number(fin.total_income || 0)
-  // owner_paid = cash actually received from owner (in-system allocations only)
-  const ownerPaid   = Number(fin.owner_paid || 0) + Number(fin.prior_owner_income || 0)
+  const ownerGross = Number(fin.owner_claims_gross || 0) + Number(fin.prior_owner_dues || 0)
+  const ownerBilled = ownerGross > 0 ? ownerGross : Number(fin.total_income || 0)
+  const ownerPaid   = Number(fin.owner_total_collected || 0)
+  const ownerTax    = Number(fin.owner_claims_tax || 0)
+  const ownerPayable = Number(fin.owner_claims_payable || fin.total_income || 0) + ownerTax
 
   // ── Expense breakdown ─────────────────────────────────────────────────────
-  // These columns are now explicit in the view (0049 migration)
-  const vendorClaimsBilled = Number(fin.vendor_claims_billed || 0) + Number(fin.prior_vendor_certified || 0)
-  const vendorClaimsPaid   = Number(fin.vendor_claims_paid   || 0) + Number(fin.prior_vendor_paid      || 0)
+  const vendorGross = Number(fin.vendor_claims_gross || fin.vendor_claims_billed || 0) + Number(fin.prior_vendor_certified || 0)
+  const vendorRetained = Number(fin.vendor_claims_retained || 0) + Number(fin.prior_vendor_retention || 0)
+  
+  // Prior payable is gross - retained
+  const priorPayable = Number(fin.prior_vendor_certified || 0) - Number(fin.prior_vendor_retention || 0)
+  const vendorTax = Number(fin.vendor_claims_tax || 0)
+  const vendorPayable = Number(fin.vendor_claims_payable || 0) + priorPayable + vendorTax
+  
+  const vendorPaid = Number(fin.vendor_claims_paid || 0) + Number(fin.prior_vendor_paid || 0)
 
   const invoicesBilled = Number(fin.invoices_billed || 0)
   const invoicesPaid   = Number(fin.invoices_paid   || 0)
@@ -54,7 +62,7 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
   const priorExpenses = Number(fin.prior_expenses || 0)
 
   // ── Totals ────────────────────────────────────────────────────────────────
-  const totalExpBilled  = priorExpenses + vendorClaimsBilled + invoicesBilled + empExpBilled
+  const totalExpBilled  = priorExpenses + vendorGross + invoicesBilled + empExpBilled
   const inventoryValue  = Number(fin.inventory_asset_value || 0)
 
   const netProfit    = ownerBilled - (totalExpBilled - inventoryValue)
@@ -130,20 +138,35 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
             <div className="w-2 h-2 rounded-full bg-blue-500" />
             مستخلصات المالك (الإيرادات)
           </h3>
-          <div className="p-4 rounded-xl bg-background border border-border/50 shadow-sm">
-            <div className="flex justify-between items-end mb-2">
-              <div>
-                <p className="text-xs text-muted-foreground mb-1">المعتمد</p>
-                <p className="font-bold text-lg">{formatMoney(ownerBilled)}</p>
-              </div>
+          <div className="p-4 rounded-xl bg-background border border-border/50 shadow-sm space-y-1.5">
+            <div className="flex justify-between items-baseline">
+              <span className="text-[10px] text-muted-foreground">معتمد:</span>
+              <span className="text-sm font-semibold">{formatMoney(Number(fin.owner_claims_gross || 0) + Number(fin.prior_owner_dues || 0))}</span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-[10px] text-amber-600 dark:text-amber-500">محتجز:</span>
+              <span className="text-sm font-medium text-amber-600 dark:text-amber-500">{formatMoney(Number(fin.owner_claims_retained || 0))}</span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-[10px] text-muted-foreground">قابل للدفع:</span>
               <div className="text-left">
-                <p className="text-xs text-muted-foreground mb-1">المدفوع فعلياً</p>
-                <p className="font-bold text-blue-600 dark:text-blue-400">{formatMoney(ownerPaid)}</p>
+                <span className="text-sm font-bold block">{formatMoney(ownerPayable)}</span>
+                {ownerTax > 0 && <span className="text-[10px] text-muted-foreground block text-right mt-0.5">شاملاً ضريبة: {formatMoney(ownerTax)}</span>}
               </div>
             </div>
-            <Progress value={getPercentage(ownerPaid, ownerBilled)} className="h-1.5" indicatorColor="bg-blue-500" />
+            <div className="flex justify-between items-baseline border-t border-border/50 pt-1.5 mt-1">
+              <span className="text-[10px] text-muted-foreground">مدفوع:</span>
+              <span className="text-sm font-bold text-blue-600 dark:text-blue-400">{formatMoney(ownerPaid)}</span>
+            </div>
+            <div className="flex justify-between items-baseline">
+              <span className="text-[10px] text-muted-foreground">متبقي للتحصيل:</span>
+              <span className="text-sm font-semibold text-emerald-600 dark:text-emerald-500">
+                {formatMoney(Math.max(0, ownerPayable - ownerPaid))}
+              </span>
+            </div>
+            <Progress value={getPercentage(ownerPaid, ownerPayable)} className="h-1.5 mt-2" indicatorColor="bg-blue-500" />
             <div className="flex justify-between items-center mt-1.5">
-              <p className="text-[10px] text-muted-foreground">{getPercentage(ownerPaid, ownerBilled)}% محصل</p>
+              <p className="text-[10px] text-muted-foreground">{getPercentage(ownerPaid, ownerPayable)}% محصل</p>
               {Number(fin.prior_owner_income || 0) > 0 && (
                 <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">
                   يتضمن {formatMoney(Number(fin.prior_owner_income))} رصيد افتتاحي
@@ -171,22 +194,41 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
             )}
             
             {/* Vendor Claims */}
-            <div className="p-3 rounded-xl bg-background border border-border/50 shadow-sm">
-              <p className="text-xs font-medium mb-2">مستخلصات المقاولين</p>
-              <div className="flex justify-between items-baseline mb-1">
-                <span className="text-[10px] text-muted-foreground">معتمد:</span>
-                <span className="text-sm font-semibold">{formatMoney(vendorClaimsBilled)}</span>
+            <div className="p-3 rounded-xl bg-background border border-border/50 shadow-sm hover:border-amber-200 transition-colors">
+              <p className="text-xs font-medium mb-3">مستخلصات المقاولين</p>
+              <div className="space-y-1.5">
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-muted-foreground">معتمد:</span>
+                  <span className="text-sm font-semibold">{formatMoney(vendorGross)}</span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-amber-600 dark:text-amber-500">محتجز:</span>
+                  <span className="text-sm font-medium text-amber-600 dark:text-amber-500">{formatMoney(vendorRetained)}</span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-muted-foreground">قابل للدفع:</span>
+                  <div className="text-left">
+                    <span className="text-sm font-bold block">{formatMoney(vendorPayable)}</span>
+                    {vendorTax > 0 && <span className="text-[10px] text-muted-foreground block text-right mt-0.5">شاملاً ضريبة: {formatMoney(vendorTax)}</span>}
+                  </div>
+                </div>
+                <div className="flex justify-between items-baseline border-t border-border/50 pt-1.5 mt-1">
+                  <span className="text-[10px] text-muted-foreground">مدفوع:</span>
+                  <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatMoney(vendorPaid)}</span>
+                </div>
+                <div className="flex justify-between items-baseline">
+                  <span className="text-[10px] text-muted-foreground">متبقي للدفع:</span>
+                  <span className="text-sm font-semibold text-red-600 dark:text-red-500">
+                    {formatMoney(Math.max(0, vendorPayable - vendorPaid))}
+                  </span>
+                </div>
+                <Progress value={getPercentage(vendorPaid, vendorPayable)} className="h-1 mt-2" indicatorColor="bg-amber-500" />
+                {Number(fin.prior_vendor_certified || 0) > 0 && (
+                  <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded mt-1.5 inline-block">
+                    يتضمن {formatMoney(Number(fin.prior_vendor_certified))} رصيد افتتاحي
+                  </p>
+                )}
               </div>
-              <div className="flex justify-between items-baseline">
-                <span className="text-[10px] text-muted-foreground">مدفوع:</span>
-                <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatMoney(vendorClaimsPaid)}</span>
-              </div>
-              <Progress value={getPercentage(vendorClaimsPaid, vendorClaimsBilled)} className="h-1 mt-2" indicatorColor="bg-amber-500" />
-              {Number(fin.prior_vendor_certified || 0) > 0 && (
-                <p className="text-[10px] text-amber-600 dark:text-amber-400 font-medium bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded mt-1.5 inline-block">
-                  يتضمن {formatMoney(Number(fin.prior_vendor_certified))} رصيد افتتاحي
-                </p>
-              )}
             </div>
             
             {/* Vendor POs */}
@@ -196,9 +238,15 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
                 <span className="text-[10px] text-muted-foreground">معتمد:</span>
                 <span className="text-sm font-semibold">{formatMoney(invoicesBilled)}</span>
               </div>
-              <div className="flex justify-between items-baseline">
+              <div className="flex justify-between items-baseline border-t border-border/50 pt-1.5 mt-1">
                 <span className="text-[10px] text-muted-foreground">مدفوع:</span>
                 <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatMoney(invoicesPaid)}</span>
+              </div>
+              <div className="flex justify-between items-baseline mt-1">
+                <span className="text-[10px] text-muted-foreground">متبقي للدفع:</span>
+                <span className="text-sm font-semibold text-red-600 dark:text-red-500">
+                  {formatMoney(Math.max(0, invoicesBilled - invoicesPaid))}
+                </span>
               </div>
               <Progress value={getPercentage(invoicesPaid, invoicesBilled)} className="h-1 mt-2" indicatorColor="bg-amber-500" />
             </div>
@@ -210,9 +258,15 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
                 <span className="text-[10px] text-muted-foreground">معتمد:</span>
                 <span className="text-sm font-semibold">{formatMoney(empExpBilled)}</span>
               </div>
-              <div className="flex justify-between items-baseline">
+              <div className="flex justify-between items-baseline border-t border-border/50 pt-1.5 mt-1">
                 <span className="text-[10px] text-muted-foreground">مدفوع:</span>
                 <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatMoney(empExpPaid)}</span>
+              </div>
+              <div className="flex justify-between items-baseline mt-1">
+                <span className="text-[10px] text-muted-foreground">متبقي للدفع:</span>
+                <span className="text-sm font-semibold text-red-600 dark:text-red-500">
+                  {formatMoney(Math.max(0, empExpBilled - empExpPaid))}
+                </span>
               </div>
               <Progress value={getPercentage(empExpPaid, empExpBilled)} className="h-1 mt-2" indicatorColor="bg-amber-500" />
             </div>

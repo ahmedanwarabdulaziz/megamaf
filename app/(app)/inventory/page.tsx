@@ -3,7 +3,9 @@ import Link from 'next/link';
 import { Package } from 'lucide-react';
 import { getInventoryStock } from '@/lib/queries/inventory';
 import { InventoryFilters } from '@/components/inventory/inventory-filters';
+import { requirePageAccess } from '@/lib/require-page-access';
 
+export const dynamic = 'force-dynamic';
 export const metadata = { title: 'المخزون' };
 
 export default async function InventoryPage({
@@ -11,6 +13,7 @@ export default async function InventoryPage({
 }: {
   searchParams: Promise<{ warehouse_id?: string; search?: string }>;
 }) {
+  await requirePageAccess('inventory');
   const { warehouse_id, search } = await searchParams;
   const supabase = await createClient();
 

@@ -94,24 +94,32 @@ export async function getVendorsWithSummary(filters?: { startDate?: string, endD
   // 4. Fetch totals and paid in parallel
   const [
     { data: claimTotals },
-    { data: claimPaidAll },
+    { data: ledgerVendorPayments },
+    { data: claimZeroVendorPaid },
   ] = await Promise.all([
     latestClaimIds.length > 0
       ? supabase.from('v_claim_totals')
           .select('claim_id, claim_cumulative_total, claim_cumulative_retained, claim_cumulative_payable')
           .in('claim_id', latestClaimIds)
       : { data: [] as any[] },
-    allClaimIds.length > 0
-      ? supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', allClaimIds)
+    vendorIds.length > 0
+      ? supabase.from('ledger_entries').select('counterparty_id, project_id, amount').eq('counterparty_type', 'vendor').eq('direction', 'out').in('counterparty_id', vendorIds)
       : { data: [] as any[] },
+    vendorIds.length > 0
+      ? supabase.from('claims').select('party_id, project_id, opening_paid_amount').eq('claim_type', 'vendor').eq('claim_number', 0).eq('status', 'approved').in('party_id', vendorIds)
+      : { data: [] as any[] }
   ]);
 
   // Build a map: "party_id__project_id" → total paid across ALL claims in that group
   const paidByGroup = new Map<string, number>();
-  for (const c of allApprovedClaims || []) {
-    const key = `${c.party_id}__${c.project_id}`;
-    const paid = Number((claimPaidAll || []).find((p: any) => p.claim_id === c.id)?.paid_amount || 0);
-    paidByGroup.set(key, (paidByGroup.get(key) || 0) + paid);
+  for (const r of (ledgerVendorPayments || [])) {
+    if (!r.project_id) continue;
+    const key = `${r.counterparty_id}__${r.project_id}`;
+    paidByGroup.set(key, (paidByGroup.get(key) || 0) + Number(r.amount));
+  }
+  for (const r of (claimZeroVendorPaid || [])) {
+    const key = `${r.party_id}__${r.project_id}`;
+    paidByGroup.set(key, (paidByGroup.get(key) || 0) + Number(r.opening_paid_amount));
   }
 
   // 5. Build per-vendor summary using the exact same logic as /claims page

@@ -2,10 +2,13 @@ import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { Wallet, Plus } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
+import { requirePageAccess } from '@/lib/require-page-access';
 
+export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الودائع والشهادات' };
 
 export default async function DepositsPage() {
+  await requirePageAccess('deposits');
   const supabase = await createClient();
 
   const { data: deposits } = await supabase

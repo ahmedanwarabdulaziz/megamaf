@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
-import { createClaim } from '@/lib/actions/claims';
+import { createZeroClaim } from '@/lib/actions/claims';
 import { Plus, Trash2, Loader2, Package, X } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -28,7 +28,6 @@ interface ClaimItem {
   is_stock_issue: boolean;
   warehouse_id: string;        // one warehouse for the whole bundle
   stock_bundle: BundleLine[];  // list of inventory items + qty-per-unit
-  notes: string;               // per-item note/remark
 }
 
 function emptyItem(lastPct = 1.0): ClaimItem {
@@ -43,7 +42,6 @@ function emptyItem(lastPct = 1.0): ClaimItem {
     is_stock_issue: false,
     warehouse_id: '',
     stock_bundle: [],
-    notes: '',
   };
 }
 
@@ -51,11 +49,12 @@ function emptyBundleLine(): BundleLine {
   return { id: crypto.randomUUID(), item_id: '', qty_per_unit: 0 };
 }
 
-export function CreateClaimForm({
+export function CreateZeroClaimForm({
   vendors,
   projects,
   claimType = 'vendor',
   fixedProjectId,
+  fixedProjectName: _fixedProjectName,
   fixedPartyId,
   fixedPartyName,
   defaultPartyId,
@@ -68,6 +67,7 @@ export function CreateClaimForm({
   projects: any[];
   claimType?: 'vendor' | 'owner';
   fixedProjectId?: string;
+  fixedProjectName?: string;
   fixedPartyId?: string;
   fixedPartyName?: string;
   defaultPartyId?: string;
@@ -89,8 +89,6 @@ export function CreateClaimForm({
   const [items, setItems] = useState<ClaimItem[]>([]);
   const [files, setFiles] = useState<File[]>([]);
 
-  // Paid amount across all previous claims
-  const [alreadyPaidAmount, setAlreadyPaidAmount] = useState(0);
   const [openingPaidAmount, setOpeningPaidAmount] = useState(0);
 
   // ── Pending-claim warning ────────────────────────────────────
@@ -109,128 +107,30 @@ export function CreateClaimForm({
       });
   }, [partyId, projectId, claimType]);
 
-  // ── Fetch previous claim ─────────────────────────────────────
+  // ── Initialize Empty Item ────────────────────────────────────
   useEffect(() => {
-    const controller = new AbortController();
-
-    async function fetchPreviousClaim() {
-      if (!partyId || !projectId) {
-        setItems([emptyItem()]);
-        setAlreadyPaidAmount(0);
-        setOpeningPaidAmount(0);
-        return;
-      }
-      setFetchingPrevious(true);
-      const supabase = createClient();
-
-      const [lastClaimResult, allApprovedResult] = await Promise.all([
-        supabase.from('claims').select('id, claim_number')
-          .eq('party_id', partyId).eq('project_id', projectId)
-          .eq('claim_type', claimType).eq('status', 'approved')
-          .order('claim_number', { ascending: false }).limit(1)
-          .maybeSingle(),
-        supabase.from('claims').select('id, opening_paid_amount')
-          .eq('party_id', partyId).eq('project_id', projectId)
-          .eq('claim_type', claimType).eq('status', 'approved')
-          .then(r => r),
-      ]);
-
-      if (controller.signal.aborted) return;
-
-      let totalOpeningPaid = 0;
-      let inSystemPaid = 0;
-
-      if (allApprovedResult.data && allApprovedResult.data.length > 0) {
-        totalOpeningPaid = allApprovedResult.data.reduce((sum: number, c: any) => sum + Number(c.opening_paid_amount || 0), 0);
-      }
-
-      // Fetch the unified total paid for this party and project from the account statement views
-      const accountView = claimType === 'owner' ? 'v_owner_account' : 'v_vendor_account';
-      const { data: accData } = await supabase
-        .from(accountView)
-        .select('amount_paid')
-        .eq('party_id', partyId)
-        .eq('project_id', projectId);
-
-      inSystemPaid = (accData || []).reduce((sum: number, row: any) => sum + Number(row.amount_paid || 0), 0);
-
-      setAlreadyPaidAmount(inSystemPaid);
-      setOpeningPaidAmount(totalOpeningPaid);
-
-      const lastClaim = lastClaimResult.data;
-      if (lastClaim) {
-        const { data: prevItems } = await supabase
-          .from('claim_items').select('*').eq('claim_id', lastClaim.id);
-
-        if (controller.signal.aborted) return;
-
-        // Load bundle rows for stock items
-        let bundleMap = new Map<string, any[]>();
-        if (prevItems && prevItems.length > 0) {
-          try {
-            const { data: bundles } = await supabase
-              .from('claim_item_stock_bundles').select('*')
-              .in('claim_item_id', prevItems.map((p: any) => p.id));
-            (bundles || []).forEach((b: any) => {
-              if (!bundleMap.has(b.claim_item_id)) bundleMap.set(b.claim_item_id, []);
-              bundleMap.get(b.claim_item_id)!.push(b);
-            });
-          } catch (_) { /* bundle table may not exist in older DB */ }
-        }
-
-        if (controller.signal.aborted) return;
-
-        if (prevItems && prevItems.length > 0) {
-          setItems(prevItems.map((pi: any) => {
-            const bundles = bundleMap.get(pi.id) || [];
-            return {
-              id: crypto.randomUUID(),
-              item_ref: pi.item_ref,
-              description: pi.description,
-              previous_qty: Number(pi.previous_qty) + Number(pi.current_qty),
-              current_qty: 0,
-              unit_price: Number(pi.unit_price),
-              disbursement_pct: Number(pi.disbursement_pct),
-              is_stock_issue: pi.is_stock_issue || false,
-              warehouse_id: bundles[0]?.warehouse_id || pi.warehouse_id || '',
-              stock_bundle: bundles.length > 0
-                ? bundles.map((b: any) => ({ id: crypto.randomUUID(), item_id: b.item_id, qty_per_unit: Number(b.qty_per_unit) }))
-                : (pi.item_id ? [{ id: crypto.randomUUID(), item_id: pi.item_id, qty_per_unit: Number(pi.current_qty) }] : []),
-              notes: '',  // notes are not carried over from previous claim
-            };
-          }));
-        } else {
-          setItems([emptyItem()]);
-        }
-      } else {
-        setItems([emptyItem()]);
-      }
-      setFetchingPrevious(false);
-    }
-
-    fetchPreviousClaim();
-    return () => controller.abort();
+    setItems([emptyItem()]);
   }, [partyId, projectId, claimType]);
 
   // ── Totals ──────────────────────────────────────────────────
-  const inSystemPayable = items.reduce((sum, item) => {
-    const cumQty = (item.previous_qty || 0) + (item.current_qty || 0);
-    return sum + cumQty * (item.unit_price || 0) * (item.disbursement_pct || 1.0);
+  const grossTotal = items.reduce((sum, item) => {
+    const cumQty = Number(item.current_qty || 0); // previous is always 0
+    return sum + cumQty * Number(item.unit_price || 0);
   }, 0);
 
-  const inSystemRetained = items.reduce((sum, item) => {
-    const cumQty = (item.previous_qty || 0) + (item.current_qty || 0);
-    return sum + cumQty * (item.unit_price || 0) * (1 - (item.disbursement_pct || 1.0));
+  const retained = items.reduce((sum, item) => {
+    const cumQty = Number(item.current_qty || 0);
+    return sum + cumQty * Number(item.unit_price || 0) * (1 - Number(item.disbursement_pct || 1.0));
   }, 0);
 
-  const grossTotal    = inSystemPayable + inSystemRetained;
-  const retained      = inSystemRetained;
-  const netCumulative = grossTotal - retained;
+  const netCumulative = items.reduce((sum, item) => {
+    const cumQty = Number(item.current_qty || 0);
+    return sum + cumQty * Number(item.unit_price || 0) * Number(item.disbursement_pct || 1.0);
+  }, 0);
 
   const taxAmount = taxEnabled ? netCumulative * taxRate : 0;
   const totalDue  = netCumulative + taxAmount;
-  const alreadyPaid = alreadyPaidAmount;
-  const remaining   = Math.max(0, totalDue - alreadyPaid);
+  const remaining = Math.max(0, totalDue - openingPaidAmount);
 
   // ── Submit ───────────────────────────────────────────────────
   async function handleSubmit(formData: FormData) {
@@ -248,9 +148,10 @@ export function CreateClaimForm({
       formData.append('claim_type', claimType);
       formData.append('tax_enabled', taxEnabled.toString());
       formData.append('tax_rate', taxRate.toString());
-      const result = await createClaim(formData, items, attachmentUrls);
+      formData.append('opening_paid_amount', openingPaidAmount.toString());
+      const result = await createZeroClaim(formData, items, attachmentUrls);
       if (result?.error) { alert(result.error); return; }
-      router.push('/claims');
+      router.push(`/projects/${projectId}?tab=opening-balance`);
     } catch (e: any) {
       alert(e.message || 'حدث خطأ');
     } finally {
@@ -308,6 +209,12 @@ export function CreateClaimForm({
   // ── Render ───────────────────────────────────────────────────
   return (
     <form action={handleSubmit} className="space-y-6 bg-card p-6 rounded-lg border shadow-sm">
+      <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-400 p-4 rounded-lg flex items-start gap-3">
+        <div className="mt-0.5">⚠️</div>
+        <div className="text-sm font-medium leading-relaxed">
+          هذا المستخلص يمثل الأعمال المنجزة قبل بدء التتبع في النظام. سيتم اعتماده تلقائياً ولن يتم سحب كمياته من المستودع أو خصم مدفوعاته من حساب البنك.
+        </div>
+      </div>
 
       {/* ── Header fields ── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -374,6 +281,17 @@ export function CreateClaimForm({
           <label className="block text-sm font-medium mb-1">تاريخ المستخلص</label>
           <input required type="date" name="claim_date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
         </div>
+
+        <div>
+          <label className="block text-sm font-medium mb-1">المدفوع للمقاول قبل النظام (إن وجد)</label>
+          <input 
+            type="number" 
+            step="0.01" 
+            value={openingPaidAmount} 
+            onChange={e => setOpeningPaidAmount(parseFloat(e.target.value) || 0)} 
+            className="w-full p-2 rounded border bg-background text-amber-600 font-semibold focus:border-amber-500 focus:ring-amber-500" 
+          />
+        </div>
       </div>
 
       {/* ── Pending claim warning ── */}
@@ -429,7 +347,6 @@ export function CreateClaimForm({
                   </div>
                 </th>
                 <th className="pb-2 px-2 font-medium text-left w-32">الإجمالي (ج.م)</th>
-                <th className="pb-2 px-2 font-medium text-right">ملاحظة البند</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
@@ -505,15 +422,6 @@ export function CreateClaimForm({
                       <td className="py-2 px-2 w-32 font-bold text-left text-primary whitespace-nowrap">
                         {formatMoney(lineTotal * item.disbursement_pct)}
                       </td>
-                      <td className="py-2 px-2">
-                        <input
-                          type="text"
-                          placeholder="ملاحظة (اختياري)"
-                          value={item.notes}
-                          onChange={e => updateItem(item.id, 'notes', e.target.value)}
-                          className="w-full min-w-[140px] p-2 rounded border bg-background text-sm"
-                        />
-                      </td>
                       <td className="py-2 px-1 w-8">
                         {!isReadOnlyItem && (
                           <Button type="button" variant="ghost" size="icon"
@@ -525,9 +433,9 @@ export function CreateClaimForm({
                     </tr>
 
                     {/* ── Stock-issue sub-row ── */}
-                    {warehouses.length > 0 && (
+                    {true && (
                       <tr key={`${item.id}-wh`} className="border-b border-muted/20 bg-muted/5">
-                        <td colSpan={9} className="px-3 py-2">
+                        <td colSpan={8} className="px-3 py-2">
                           {/* Toggle */}
                           <div className="flex items-center gap-2 mb-2">
                             <input type="checkbox" id={`stock_${item.id}`}
@@ -674,7 +582,7 @@ export function CreateClaimForm({
               })}
               {items.length === 0 && !fetchingPrevious && (
                 <tr>
-                  <td colSpan={9} className="py-8 text-center text-muted-foreground">
+                  <td colSpan={8} className="py-8 text-center text-muted-foreground">
                     يرجى اختيار المقاول والمشروع لبدء المستخلص
                   </td>
                 </tr>
@@ -717,22 +625,11 @@ export function CreateClaimForm({
         </div>
 
         <div className="bg-muted/30 p-4 rounded-lg space-y-2.5">
-
-          {/* ── Claim #0 Paid Amount (reference) ── */}
-          {openingPaidAmount > 0 && (
-            <div className="flex justify-between text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
-              <span>المدفوع قبل النظام (مرجع):</span>
-              <span className="font-semibold">- {formatMoney(openingPaidAmount)}</span>
-            </div>
-          )}
-
-          {/* Gross */}
           <div className="flex justify-between text-sm text-muted-foreground">
-            <span>إجمالي الأعمال التراكمي:</span>
+            <span>إجمالي الأعمال التراكمي (مستخلص #0):</span>
             <span className="font-medium">{formatMoney(grossTotal)}</span>
           </div>
 
-          {/* Retention */}
           {retained > 0 && (
             <div className="flex justify-between text-sm text-amber-600">
               <span>المحتجز التراكمي (تأمين):</span>
@@ -740,13 +637,11 @@ export function CreateClaimForm({
             </div>
           )}
 
-          {/* Net cumulative */}
           <div className="flex justify-between text-sm text-muted-foreground border-t border-muted/30 pt-1">
-            <span>الصافي التراكمي (قابل للدفع):</span>
+            <span>الصافي التراكمي:</span>
             <span className="font-medium">{formatMoney(netCumulative)}</span>
           </div>
 
-          {/* Tax */}
           {taxEnabled && (
             <div className="flex justify-between text-sm text-muted-foreground">
               <span>الضريبة ({(taxRate * 100).toFixed(1)}%):</span>
@@ -754,20 +649,18 @@ export function CreateClaimForm({
             </div>
           )}
 
-          {/* Collected (prior paid) */}
-          {alreadyPaid > 0 && (
-            <div className="flex justify-between text-sm text-green-700 dark:text-green-400 font-medium">
-              <span>المحصّل فعلياً (جميع المستخلصات السابقة):</span>
-              <span>- {formatMoney(alreadyPaid)}</span>
+          {openingPaidAmount > 0 && (
+            <div className="flex justify-between text-sm text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 px-2 py-1.5 rounded mt-2">
+              <span>المدفوع قبل النظام (لن يُخصم من البنك):</span>
+              <span className="font-medium">- {formatMoney(openingPaidAmount)}</span>
             </div>
           )}
 
-          {/* Remaining headline */}
           <div className="border-t border-primary/20 pt-3 flex justify-between items-center font-bold text-xl">
             <span className="text-sm font-semibold">
-              {remaining <= 0 ? '✓ تم السداد بالكامل' : 'المتبقي المستحق:'}
+              المتبقي المستحق:
             </span>
-            <span className={remaining <= 0 ? 'text-green-600' : ''}>
+            <span className={remaining <= 0 ? 'text-green-600' : 'text-primary'}>
               {formatMoney(remaining)}
             </span>
           </div>
@@ -775,8 +668,8 @@ export function CreateClaimForm({
       </div>
 
       <div className="flex justify-end border-t pt-6">
-        <Button type="submit" disabled={loading || items.length === 0 || !!pendingWarning} className="w-full md:w-auto">
-          {loading ? 'جاري الحفظ...' : 'حفظ المستخلص'}
+        <Button type="submit" disabled={loading || items.length === 0 || !!pendingWarning} className="w-full md:w-auto bg-amber-600 hover:bg-amber-700 text-white">
+          {loading ? 'جاري الحفظ...' : 'حفظ المستخلص كرصيد افتتاحي (معتمد)'}
         </Button>
       </div>
     </form>

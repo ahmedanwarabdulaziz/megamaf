@@ -39,3 +39,13 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local test / debug scripts (never commit to repo)
+test_*.js
+check_*.js
+fix_*.js
+create_test.js
+run-migration-*.js
+run_*.js
+full_view*.sql
+*.local.sql

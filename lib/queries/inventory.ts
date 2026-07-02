@@ -8,22 +8,17 @@ export async function getInventoryStock(filters?: { warehouseId?: string; search
     query = query.eq('warehouse_id', filters.warehouseId);
   }
 
+  // Push text search to DB — avoids fetching all rows then filtering in JS memory
+  if (filters?.search) {
+    query = query.or(`item_name.ilike.%${filters.search}%,item_code.ilike.%${filters.search}%`);
+  }
+
   const { data: stock, error } = await query;
   if (error) throw error;
 
-  if (!stock || stock.length === 0) return [];
-
-  let filtered = stock;
-  if (filters?.search) {
-    const s = filters.search.toLowerCase();
-    filtered = stock.filter(item => 
-      item.item_name?.toLowerCase().includes(s) || 
-      item.item_code?.toLowerCase().includes(s)
-    );
-  }
-
-  return filtered;
+  return stock || [];
 }
+
 
 export async function getWarehousesWithValuation() {
   const supabase = await createClient();

@@ -11,7 +11,7 @@ export async function getInvoicesWithFilters(filters?: {
   const supabase = await createClient();
   let query = supabase
     .from('invoices')
-    .select('id, invoice_date, status, total, vendor_id, project_id, vendor:vendors(name, kind, phone), project:projects(name)')
+    .select('id, invoice_number, invoice_date, status, total, vendor_id, project_id, vendor:vendors(name, kind, phone), project:projects(name)')
     .order('invoice_date', { ascending: false });
 
   if (filters?.projectId) query = query.eq('project_id', filters.projectId);
@@ -67,9 +67,10 @@ export async function getActionRequiredInvoices() {
   
   const { data: invoices, error } = await supabase
     .from('invoices')
-    .select('id, invoice_date, status, total, vendor_id, project_id, vendor:vendors(name, kind, phone), project:projects(name)')
+    .select('id, invoice_number, invoice_date, status, total, vendor_id, project_id, vendor:vendors(name, kind, phone), project:projects(name)')
     .in('status', ['pending', 'approved'])
-    .order('invoice_date', { ascending: false });
+    .order('invoice_date', { ascending: false })
+    .limit(200);
 
   if (error) throw error;
   if (!invoices || invoices.length === 0) return [];

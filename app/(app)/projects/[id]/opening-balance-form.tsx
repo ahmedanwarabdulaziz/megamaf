@@ -13,6 +13,7 @@ import {
 } from './opening-balance-actions';
 import { saveVendor } from '@/lib/actions/vendors';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { Trash2, Pencil, ChevronDown, ChevronUp, PackageOpen, Building2, Scale, X } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 
@@ -61,6 +62,7 @@ interface OpeningBalanceFormProps {
   warehouses: Warehouse[];
   inventoryItems: InventoryItem[];
   allProjects: any[];
+  zeroClaims?: { id: string, party_id: string, claim_type: string }[];
 }
 
 // ─────────────────────────────────────────────────
@@ -89,14 +91,11 @@ function Section({ title, icon, children, defaultOpen = true }: {
 // ─────────────────────────────────────────────────
 // Financial Balance Section
 // ─────────────────────────────────────────────────
-function FinancialSection({ projectId, balance }: { projectId: string; balance: FinancialBalance | null }) {
+function FinancialSection({ projectId, balance, ownerZeroClaimExists }: { projectId: string; balance: FinancialBalance | null, ownerZeroClaimExists?: boolean }) {
+  const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-
-  const [ownerDues, setOwnerDues] = useState<number>(balance?.prior_owner_dues || 0);
-  const [ownerIncome, setOwnerIncome] = useState<number>(balance?.prior_owner_income || 0);
-  const outstanding = Math.max(ownerDues - ownerIncome, 0);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -114,77 +113,64 @@ function FinancialSection({ projectId, balance }: { projectId: string; balance: 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
       <input type="hidden" name="project_id" value={projectId} />
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-4">
         <div>
-          <label className="block text-sm font-medium mb-1.5">تاريخ بداية التتبع (التاريخ المرجعي) *</label>
+          <label className="block text-sm font-medium mb-1.5 text-foreground/90">تاريخ بداية التتبع (التاريخ المرجعي) <span className="text-destructive">*</span></label>
           <input
             type="date" name="cutoff_date" required
             defaultValue={balance?.cutoff_date || new Date().toISOString().split('T')[0]}
-            className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
+            className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none shadow-sm transition-shadow"
           />
-          <p className="text-xs text-muted-foreground mt-1">التاريخ الذي بدأ فيه التتبع في النظام</p>
+          <p className="text-xs text-muted-foreground mt-1.5">التاريخ الذي بدأ فيه التتبع في النظام</p>
         </div>
-      </div>
-
-      {/* Expenses */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        
         <div>
-          <label className="block text-sm font-medium mb-1.5">مصروفات سابقة (قبل التتبع)</label>
+          <label className="block text-sm font-medium mb-1.5 text-foreground/90">مصروفات سابقة (قبل التتبع)</label>
           <div className="relative">
-            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ج.م</span>
+            <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm font-medium">ج.م</span>
             <input
               type="number" name="prior_expenses" min="0" step="0.01"
               defaultValue={balance?.prior_expenses || 0}
-              className="w-full border rounded-lg pl-3 pr-10 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left"
+              className="w-full border rounded-lg pl-3 pr-10 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left shadow-sm transition-shadow font-mono"
             />
           </div>
-          <p className="text-xs text-muted-foreground mt-1">إجمالي التكاليف قبل بدء التتبع (لا تشمل المخزون)</p>
+          <p className="text-xs text-muted-foreground mt-1.5">إجمالي التكاليف قبل بدء التتبع (لا تشمل المخزون)</p>
         </div>
       </div>
 
       {/* Owner Prior Dues & Income — Owner Claim #0 */}
       <div className="border rounded-xl p-4 bg-amber-50/40 dark:bg-amber-950/10 space-y-4">
-        <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
-          👤 مستحقات المالك السابقة (مستخلص #0)
-        </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium mb-1.5">إجمالي مستحقات سابقة على المالك</label>
-            <div className="relative">
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ج.م</span>
-              <input
-                type="number" name="prior_owner_dues" min="0" step="0.01"
-                value={ownerDues || ''}
-                onChange={e => setOwnerDues(parseFloat(e.target.value) || 0)}
-                className="w-full border rounded-lg pl-3 pr-10 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">إجمالي المستخلصات المعتمدة للمالك قبل النظام</p>
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1.5">إيرادات سابقة من المالك (المحصّل)</label>
-            <div className="relative">
-              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">ج.م</span>
-              <input
-                type="number" name="prior_owner_income" min="0" step="0.01"
-                value={ownerIncome || ''}
-                onChange={e => setOwnerIncome(parseFloat(e.target.value) || 0)}
-                className="w-full border rounded-lg pl-3 pr-10 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground mt-1">ما تم تحصيله فعلياً من المالك قبل النظام</p>
-          </div>
-        </div>
-
-        {/* Live outstanding calculator */}
-        {ownerDues > 0 && (
-          <div className="flex items-center justify-between rounded-lg bg-amber-100/60 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-4 py-3">
-            <div className="text-sm">
-              <span className="text-muted-foreground">المتبقي المستحق من المالك (سيظهر كمستخلص #0):</span>
-            </div>
-            <span className={`text-xl font-bold ${outstanding > 0 ? 'text-amber-700 dark:text-amber-400' : 'text-green-600'}`}>
-              {formatMoney(outstanding)}
+        <div className="flex items-center justify-between">
+          <p className="text-sm font-semibold text-amber-800 dark:text-amber-200 flex items-center gap-2">
+            👤 مستحقات المالك السابقة (مستخلص #0)
+          </p>
+          {ownerZeroClaimExists ? (
+            <span className="text-xs bg-green-100 text-green-800 border border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-800 px-3 py-1.5 rounded-lg flex items-center gap-1.5 font-medium">
+              ✅ تم تسجيل مستخلص #0 في النظام
             </span>
+          ) : (
+            <Link href={`/projects/${projectId}/owner-claims/create-zero`}
+              className="text-xs bg-amber-600 hover:bg-amber-700 text-white px-3 py-1.5 rounded-lg transition-colors shadow-sm inline-flex items-center">
+              + إنشاء مستخلص #0 للمالك
+            </Link>
+          )}
+        </div>
+        
+        {/* Legacy display if any */}
+        {(balance?.prior_owner_dues || 0) > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2 opacity-70">
+            <div>
+              <label className="block text-sm font-medium mb-1.5">مستحقات سابقة على المالك (سجل قديم)</label>
+              <div className="w-full border rounded-lg px-3 py-2 text-sm bg-muted text-left">
+                {formatMoney(balance?.prior_owner_dues || 0)} ج.م
+              </div>
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1.5">إيرادات سابقة من المالك (سجل قديم)</label>
+              <div className="w-full border rounded-lg px-3 py-2 text-sm bg-muted text-left">
+                {formatMoney(balance?.prior_owner_income || 0)} ج.م
+              </div>
+            </div>
           </div>
         )}
       </div>
@@ -212,9 +198,9 @@ function FinancialSection({ projectId, balance }: { projectId: string; balance: 
 // Vendor Prior Claims Section
 // ─────────────────────────────────────────────────
 function VendorClaimsSection({
-  projectId, cutoffDate, existingClaims, vendors, allProjects
+  projectId, cutoffDate, existingClaims, vendors, allProjects, vendorZeroClaims = []
 }: {
-  projectId: string; cutoffDate: string; existingClaims: VendorPriorClaim[]; vendors: Vendor[]; allProjects: any[]
+  projectId: string; cutoffDate: string; existingClaims: VendorPriorClaim[]; vendors: Vendor[]; allProjects: any[]; vendorZeroClaims?: string[]
 }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<VendorPriorClaim | null>(null);
@@ -231,6 +217,7 @@ function VendorClaimsSection({
 
   const [allowAllProjects, setAllowAllProjects] = useState(false);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([projectId]);
+  const [selectedVendorNav, setSelectedVendorNav] = useState('');
 
   const usedVendorIds = existingClaims.map(c => c.vendor_id);
   const availableVendors = vendors.filter(v => !usedVendorIds.includes(v.id) || editing?.vendor_id === v.id);
@@ -250,6 +237,11 @@ function VendorClaimsSection({
         fd.set('all_projects', allowAllProjects.toString());
         const res = await saveVendor(fd, selectedProjects);
         if (res?.error) throw new Error(res.error);
+        
+        if (res?.vendorId) {
+          setSelectedVendorNav(res.vendorId);
+        }
+        
         setIsAddingVendor(false);
         router.refresh();
       } catch (err: any) {
@@ -332,116 +324,47 @@ function VendorClaimsSection({
         </div>
       )}
 
-      {!showingForm && (
-        <button type="button" onClick={() => { 
-            setShowForm(true); 
-            setEditing(null); 
-            setCertifiedAmount(0); 
-            setRetentionPercent(5); 
-          }}
-          className="inline-flex items-center gap-2 border rounded-lg px-4 py-2 text-sm font-medium hover:bg-muted/40 transition-colors">
-          + إضافة سجل مقاول
-        </button>
-      )}
-
-      {showingForm && (
-        <form onSubmit={handleSubmit} className="border rounded-xl p-4 bg-muted/20 space-y-4">
-          <h4 className="font-semibold text-sm">
-            {editing ? `تعديل: ${editing.vendor_name}` : 'إضافة سجل مقاول سابق'}
-          </h4>
-          <input type="hidden" name="project_id" value={projectId} />
-          {editing && <input type="hidden" name="vendor_id" value={editing.vendor_id} />}
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {!editing && (
-              <div>
-                <label className="block text-sm font-medium mb-1">المقاول *</label>
-                <div className="flex gap-2 items-center">
-                  <select name="vendor_id" required
-                    className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none">
-                    <option value="">-- اختر مقاولاً --</option>
-                    {availableVendors.map(v => <option key={v.id} value={v.id}>{v.name}</option>)}
-                  </select>
-                  <button 
-                    type="button" 
-                    onClick={() => setIsAddingVendor(true)}
-                    className="flex-shrink-0 h-[38px] px-3 bg-muted border rounded-lg hover:bg-muted/80 transition-colors"
-                    title="إضافة مقاول جديد"
-                  >
-                    <span className="font-bold text-lg leading-none">+</span>
-                  </button>
-                </div>
-                {availableVendors.length === 0 && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400 mt-1 bg-amber-50 dark:bg-amber-900/20 px-2 py-1 rounded">
-                    كل المقاولين الحاليين لديهم سجل بالفعل. اضغط <strong>+</strong> لإضافة مقاول جديد.
-                  </p>
-                )}
-              </div>
-            )}
-            <div>
-              <label className="block text-sm font-medium mb-1">تاريخ التقطيع *</label>
-              <input type="date" name="cutoff_date" required
-                defaultValue={editing?.cutoff_date || cutoffDate}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none" />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-sm font-medium mb-1">إجمالي الأعمال المستخلصة (ج.م)</label>
-              <input type="number" name="prior_certified_amount" min="0" step="0.01" required
-                value={certifiedAmount}
-                onChange={e => setCertifiedAmount(parseFloat(e.target.value) || 0)}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">المدفوع منها (ج.م)</label>
-              <input type="number" name="prior_paid_amount" min="0" step="0.01" required
-                defaultValue={editing?.prior_paid_amount ?? 0}
-                className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
-            </div>
-            <div>
-              <label className="block text-sm font-medium mb-1">المحتجز (%)</label>
-              <div className="relative">
-                <input type="number" min="0" max="100" step="0.1" required
-                  value={retentionPercent}
-                  onChange={e => setRetentionPercent(parseFloat(e.target.value) || 0)}
-                  className="w-full border rounded-lg px-3 pl-8 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none text-left" />
-                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground text-sm">%</span>
-              </div>
-              <p className="text-xs text-muted-foreground mt-1">
-                قيمة المحتجز: {formatMoney((certifiedAmount * retentionPercent) / 100)}
-              </p>
-              <input type="hidden" name="prior_retention_held" value={(certifiedAmount * retentionPercent) / 100} />
-            </div>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium mb-1">ملاحظات</label>
-            <input type="text" name="notes" defaultValue={editing?.notes as string || ''}
-              className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none" />
-          </div>
-
-          {error && <p className="text-sm text-destructive bg-destructive/10 px-3 py-2 rounded-lg">{error}</p>}
-
-          <div className="flex gap-2">
-            <button type="submit" disabled={pending}
-              className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 disabled:opacity-50 transition-colors">
-              {pending ? '...' : 'حفظ'}
-            </button>
-            <button type="button" onClick={() => { setShowForm(false); setEditing(null); setError(''); }}
-              className="border px-4 py-2 rounded-lg text-sm hover:bg-muted/40 transition-colors">
-              إلغاء
-            </button>
-          </div>
-        </form>
-      )}
-
-      {existingClaims.length === 0 && !showingForm && (
-        <p className="text-sm text-muted-foreground text-center py-4">
-          لا يوجد سجلات سابقة للمقاولين. اضغط &ldquo;إضافة&rdquo; لإدخال الأعمال السابقة.
-        </p>
-      )}
+      <div className="border rounded-xl p-4 bg-muted/20 space-y-4">
+        <h4 className="font-semibold text-sm text-primary">إنشاء مستخلص مقاول #0 (رصيد افتتاحي)</h4>
+        <div className="flex gap-2 items-center max-w-md">
+          <select 
+            id="vendor_select_nav" 
+            value={selectedVendorNav}
+            onChange={(e) => setSelectedVendorNav(e.target.value)}
+            className="flex-1 border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
+          >
+            <option value="">-- اختر مقاولاً --</option>
+            {vendors.map(v => (
+              <option key={v.id} value={v.id} disabled={vendorZeroClaims.includes(v.id)}>
+                {v.name} {vendorZeroClaims.includes(v.id) ? '(✅ له مستخلص #0)' : ''}
+              </option>
+            ))}
+          </select>
+          <button 
+            type="button" 
+            onClick={() => setIsAddingVendor(true)}
+            title="إضافة مقاول جديد"
+            className="flex-shrink-0 h-[38px] w-[38px] flex items-center justify-center bg-muted border rounded-lg hover:bg-primary hover:text-primary-foreground hover:border-primary transition-colors text-lg font-bold"
+          >
+            +
+          </button>
+          <button 
+            type="button" 
+            onClick={() => {
+              if (selectedVendorNav) {
+                if (vendorZeroClaims.includes(selectedVendorNav)) {
+                  alert('يوجد مستخلص #0 مسجل مسبقاً لهذا المقاول.');
+                } else {
+                  router.push(`/claims/create-zero?party_id=${selectedVendorNav}&project_id=${projectId}`);
+                }
+              }
+              else alert('الرجاء اختيار مقاول أولاً');
+            }}
+            className="bg-primary text-primary-foreground px-4 py-2 rounded-lg text-sm font-semibold hover:bg-primary/90 transition-colors whitespace-nowrap">
+            إنشاء مستخلص
+          </button>
+        </div>
+      </div>
 
       {/* Add New Vendor Popup */}
       {isAddingVendor && (
@@ -906,6 +829,7 @@ export function OpeningBalanceForm({
   warehouses,
   inventoryItems,
   allProjects,
+  zeroClaims = [],
 }: OpeningBalanceFormProps) {
   return (
     <div className="space-y-4">
@@ -923,7 +847,7 @@ export function OpeningBalanceForm({
       )}
 
       <Section title="الأرصدة المالية السابقة" icon={<Building2 className="w-5 h-5" />}>
-        <FinancialSection projectId={projectId} balance={financialBalance} />
+        <FinancialSection projectId={projectId} balance={financialBalance} ownerZeroClaimExists={zeroClaims.some(c => c.claim_type === 'owner')} />
       </Section>
 
       <Section title="الأعمال السابقة للمقاولين (مستخلص رقم 0)" icon={<Scale className="w-5 h-5" />} defaultOpen={true}>
@@ -933,6 +857,7 @@ export function OpeningBalanceForm({
           existingClaims={vendorPriorClaims}
           vendors={vendors}
           allProjects={allProjects}
+          vendorZeroClaims={zeroClaims.filter(c => c.claim_type === 'vendor').map(c => c.party_id)}
         />
       </Section>
 

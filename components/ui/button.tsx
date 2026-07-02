@@ -1,3 +1,5 @@
+"use client"
+
 import * as React from "react"
 import { cn } from "@/lib/utils"
 
@@ -8,10 +10,32 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "default", size = "default", ...props }, ref) => {
+  ({ className, variant = "default", size = "default", onClick, ...props }, ref) => {
+    const handleClick = React.useCallback(
+      (e: React.MouseEvent<HTMLButtonElement>) => {
+        // Prevent double clicks (especially for submits) within 1 second
+        if (props.type === "submit") {
+          const now = Date.now()
+          const lastClick = Number(e.currentTarget.dataset.lastClick || "0")
+          if (now - lastClick < 1000) {
+            e.preventDefault()
+            e.stopPropagation()
+            return
+          }
+          e.currentTarget.dataset.lastClick = now.toString()
+        }
+
+        if (onClick) {
+          onClick(e)
+        }
+      },
+      [onClick, props.type]
+    )
+
     return (
       <button
         ref={ref}
+        onClick={handleClick}
         className={cn(
           "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
           {

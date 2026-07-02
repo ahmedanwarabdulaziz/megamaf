@@ -81,6 +81,7 @@ export async function getOwnerExpenses(ownerId?: string) {
     .order('expense_date', { ascending: false });
 
   if (ownerId) query = query.eq('owner_id', ownerId);
+  query = query.limit(300); // cap unbounded owner expenses scan
 
   const { data: expenses, error } = await query;
   if (error) {
@@ -145,7 +146,11 @@ export async function getAllExpenses(filters: { startDate?: string, endDate?: st
   if (filters.categoryId) query = query.eq('category_id', filters.categoryId);
   if (filters.status) query = query.eq('status', filters.status);
 
-  // Default limit to prevent huge loads if no date filters are present
+  // Hard cap: when date filters are set the conditional limit below is skipped;
+  // add an absolute safety cap to prevent enormous payloads.
+  query = query.limit(500);
+
+  // Tighter default limit when no date filters are present
   if (!filters.startDate && !filters.endDate) {
     query = query.limit(200);
   }
@@ -205,7 +210,8 @@ export async function getEmployeeDisbursements(employeeId: string) {
     .eq('employee_id', employeeId)
     .eq('category', 'custody_disbursement')
     .eq('direction', 'in')
-    .order('entry_date', { ascending: false });
+    .order('entry_date', { ascending: false })
+    .limit(200);
   if (error) throw error;
   return data;
 }
