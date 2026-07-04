@@ -377,7 +377,13 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
 
     // Replace items: delete old, insert new
     // Bundle rows are deleted automatically via CASCADE on claim_items
-    await supabase.from('claim_items').delete().eq('claim_id', claimId);
+    // NOTE: If the RLS DELETE policy is missing, this silently deletes 0 rows
+    // and the subsequent insert produces duplicates. Catch that case explicitly.
+    const { error: deleteError } = await supabase
+      .from('claim_items')
+      .delete()
+      .eq('claim_id', claimId);
+    if (deleteError) return { error: `فشل حذف البنود القديمة: ${deleteError.message}` };
 
     const isZeroClaim = claim.claim_number === 0;
     const dbItems = items.map(item => {
