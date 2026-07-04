@@ -151,3 +151,79 @@ export async function createTransfer(formData: FormData) {
   revalidatePath('/banks');
   return true;
 }
+
+const updateAccountSchema = z.object({
+  bank_account_id: z.string().uuid(),
+  opening_balance: z.coerce.number(),
+});
+
+export async function updateBankAccountOpeningBalance(formData: FormData) {
+  const supabase = await createClient();
+  
+  const parsed = updateAccountSchema.safeParse({
+    bank_account_id: formData.get('bank_account_id'),
+    opening_balance: formData.get('opening_balance'),
+  });
+
+  if (!parsed.success) {
+    throw new Error('Invalid account data');
+  }
+
+  const bankAccountId = parsed.data.bank_account_id;
+  const newBalance = parsed.data.opening_balance;
+
+  const { data, error } = await supabase
+    .from('bank_accounts')
+    .update({ opening_balance: newBalance })
+    .eq('id', bankAccountId)
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  // Sync ledger
+  const { data: existingLedger } = await supabase
+    .from('ledger_entries')
+    .select('id, entry_date')
+    .eq('bank_account_id', bankAccountId)
+    .eq('category', 'opening_balance')
+    .maybeSingle();
+
+  if (newBalance === 0) {
+    if (existingLedger) {
+      await supabase.from('ledger_entries').delete().eq('id', existingLedger.id);
+    }
+  } else {
+    const direction = newBalance > 0 ? 'in' : 'out';
+    const amount = Math.abs(newBalance);
+    
+    if (existingLedger) {
+      await supabase
+        .from('ledger_entries')
+        .update({ direction, amount })
+        .eq('id', existingLedger.id);
+    } else {
+      await supabase
+        .from('ledger_entries')
+        .insert({
+          bank_account_id: bankAccountId,
+          category: 'opening_balance',
+          direction,
+          amount,
+          entry_date: data.created_at || new Date().toISOString().split('T')[0],
+          counterparty_type: 'bank',
+          memo: 'Opening Balance',
+        });
+    }
+  }
+
+  await logAudit({
+    action: 'update',
+    entity_type: 'bank_account',
+    entity_id: bankAccountId,
+    after: { opening_balance: newBalance },
+  });
+
+  revalidatePath('/banks');
+  return data;
+}

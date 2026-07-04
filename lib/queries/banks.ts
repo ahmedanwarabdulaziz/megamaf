@@ -13,7 +13,7 @@ export async function getBanks() {
       .order('name'),
     supabase
       .from('v_bank_account_balances')
-      .select('bank_account_id, bank_id, account_name, account_number, currency, current_balance, current_month_in, current_month_out')
+      .select('bank_account_id, bank_id, account_name, account_number, currency, current_balance, current_month_in, current_month_out, initial_balance')
       .order('account_name'),
   ]);
 

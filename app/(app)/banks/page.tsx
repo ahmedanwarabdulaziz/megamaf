@@ -4,6 +4,7 @@ import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
 import { CreateBankModal } from '@/components/banks/create-bank-modal';
 import { CreateAccountModal } from '@/components/banks/create-account-modal';
+import { EditOpeningBalanceModal } from '@/components/banks/edit-opening-balance-modal';
 import { Building2, ArrowDownLeft, ArrowUpRight, ArrowLeftRight, Landmark } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { requirePageAccess } from '@/lib/require-page-access';
@@ -55,6 +56,10 @@ export default async function BanksPage() {
                             {account.currency}
                           </span>
                         </div>
+                        <EditOpeningBalanceModal 
+                          bankAccountId={account.bank_account_id} 
+                          initialBalance={account.initial_balance} 
+                        />
                       </div>
                     </div>
 
