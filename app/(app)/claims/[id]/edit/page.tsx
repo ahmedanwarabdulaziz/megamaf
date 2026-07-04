@@ -14,6 +14,7 @@ export default async function EditClaimPage({ params }: { params: Promise<{ id: 
     .from('claims')
     .select('*, claim_items(*, claim_item_stock_bundles(*))')
     .eq('id', id)
+    .order('created_at', { referencedTable: 'claim_items', ascending: true })
     .single();
 
   if (!claim) notFound();

@@ -117,7 +117,8 @@ export async function createClaim(formData: FormData, items: any[], attachmentUr
       const { data: pItems } = await supabase
         .from('claim_items')
         .select('*')
-        .in('claim_id', priorClaims.map(c => c.id));
+        .in('claim_id', priorClaims.map(c => c.id))
+        .order('created_at', { ascending: true });
       if (pItems) priorItems = pItems;
     }
 
