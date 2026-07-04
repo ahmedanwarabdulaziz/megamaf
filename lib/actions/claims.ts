@@ -346,7 +346,8 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
     const claim_date = formData.get('claim_date') as string;
     const tax_enabled = formData.get('tax_enabled') === 'true';
     const tax_rate = parseFloat(formData.get('tax_rate') as string) || 0;
-    const opening_paid_amount = parseFloat(formData.get('opening_paid_amount') as string) || null;
+    const _opa = parseFloat(formData.get('opening_paid_amount') as string);
+    const opening_paid_amount = isNaN(_opa) ? null : _opa;
 
     if (!items || items.length === 0) return { error: 'يجب إضافة بند واحد على الأقل' };
 
