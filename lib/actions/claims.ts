@@ -346,6 +346,7 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
     const claim_date = formData.get('claim_date') as string;
     const tax_enabled = formData.get('tax_enabled') === 'true';
     const tax_rate = parseFloat(formData.get('tax_rate') as string) || 0;
+    const opening_paid_amount = parseFloat(formData.get('opening_paid_amount') as string) || null;
 
     if (!items || items.length === 0) return { error: 'يجب إضافة بند واحد على الأقل' };
 
@@ -370,9 +371,13 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
     }
 
     // Update claim header
+    const headerUpdate: any = { claim_date, notes, tax_enabled, tax_rate };
+    if (claim.claim_number === 0 && opening_paid_amount !== null) {
+      headerUpdate.opening_paid_amount = opening_paid_amount;
+    }
     const { error: updateError } = await supabase
       .from('claims')
-      .update({ claim_date, notes, tax_enabled, tax_rate })
+      .update(headerUpdate)
       .eq('id', claimId);
     if (updateError) return { error: updateError.message };
 

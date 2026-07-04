@@ -78,6 +78,7 @@ export default async function EditClaimPage({ params }: { params: Promise<{ id: 
         taxEnabled={claim.tax_enabled}
         taxRate={claim.tax_rate}
         notes={claim.notes || ''}
+        openingPaidAmount={claim.opening_paid_amount ?? 0}
         existingItems={claim.claim_items || []}
         vendors={vendors}
         projects={projects}

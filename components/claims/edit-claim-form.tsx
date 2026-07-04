@@ -46,6 +46,7 @@ interface Props {
   taxEnabled: boolean;
   taxRate: number;
   notes: string;
+  openingPaidAmount?: number;  // المدفوع للمقاول قبل النظام (فقط Claim#0)
   existingItems: any[];
   vendors: any[];
   projects: any[];
@@ -58,6 +59,7 @@ interface Props {
 export function EditClaimForm({
   claimId, claimNumber, claimType, partyId, partyName, projectId, projectName,
   claimDate, taxEnabled: initTaxEnabled, taxRate: initTaxRate, notes: initNotes,
+  openingPaidAmount: initOpeningPaid = 0,
   existingItems, warehouses, inventoryItems, stockLevels,
   returnUrl = '/claims',
 }: Props) {
@@ -65,6 +67,7 @@ export function EditClaimForm({
   const [loading, setLoading] = useState(false);
   const [taxEnabled, setTaxEnabled] = useState(initTaxEnabled);
   const [taxRate, setTaxRate] = useState(initTaxRate || 0.14);
+  const [openingPaidAmount, setOpeningPaidAmount] = useState(initOpeningPaid);
   const [files, setFiles] = useState<File[]>([]);
 
   // Pre-populate items from DB — map existing bundles or legacy single-item fields
@@ -175,6 +178,9 @@ export function EditClaimForm({
       }
       formData.append('tax_enabled', taxEnabled.toString());
       formData.append('tax_rate', taxRate.toString());
+      if (claimNumber === 0) {
+        formData.append('opening_paid_amount', openingPaidAmount.toString());
+      }
       const result = await updateClaim(claimId, formData, items, attachmentUrls);
       if (result?.error) { alert(result.error); return; }
       router.push(returnUrl);
@@ -220,6 +226,26 @@ export function EditClaimForm({
             className="w-full p-2 rounded border bg-background" />
         </div>
       </div>
+
+      {/* المدفوع قبل النظام — only for Claim#0 */}
+      {claimNumber === 0 && (
+        <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4">
+          <label className="block text-sm font-semibold text-amber-800 dark:text-amber-300 mb-1">
+            💸 المدفوع للمقاول قبل النظام
+          </label>
+          <p className="text-xs text-amber-700 dark:text-amber-400 mb-2">
+            إجمالي ما دُفع لهذا المقاول قبل بدء التتبع في النظام
+          </p>
+          <input
+            type="number"
+            step="0.01"
+            min="0"
+            value={openingPaidAmount}
+            onChange={e => setOpeningPaidAmount(parseFloat(e.target.value) || 0)}
+            className="w-full max-w-xs p-2 rounded border bg-background text-amber-700 dark:text-amber-300 font-semibold focus:border-amber-500 focus:ring-amber-500"
+          />
+        </div>
+      )}
 
       {/* Items table */}
       <div className="space-y-4">
