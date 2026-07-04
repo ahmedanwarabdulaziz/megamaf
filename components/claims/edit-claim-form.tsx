@@ -19,6 +19,7 @@ interface ClaimItem {
   id: string;
   item_ref: string;
   description: string;
+  unit: string;                // وحدة القياس
   previous_qty: number;
   current_qty: number;
   unit_price: number;
@@ -35,6 +36,7 @@ function emptyBundleLine(): BundleLine {
 
 interface Props {
   claimId: string;
+  claimNumber: number;
   claimType: 'vendor' | 'owner';
   partyId: string;
   partyName: string;
@@ -50,12 +52,14 @@ interface Props {
   warehouses: any[];
   inventoryItems: any[];
   stockLevels: { warehouse_id: string; item_id: string; qty_on_hand: number; item_unit?: string }[];
+  returnUrl?: string;
 }
 
 export function EditClaimForm({
-  claimId, claimType, partyId, partyName, projectId, projectName,
+  claimId, claimNumber, claimType, partyId, partyName, projectId, projectName,
   claimDate, taxEnabled: initTaxEnabled, taxRate: initTaxRate, notes: initNotes,
   existingItems, warehouses, inventoryItems, stockLevels,
+  returnUrl = '/claims',
 }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -69,13 +73,12 @@ export function EditClaimForm({
       id: crypto.randomUUID(),
       item_ref: i.item_ref || '',
       description: i.description || '',
+      unit: i.unit || '',
       previous_qty: Number(i.previous_qty),
       current_qty: Number(i.current_qty),
       unit_price: Number(i.unit_price),
       disbursement_pct: Number(i.disbursement_pct),
       is_stock_issue: i.is_stock_issue || false,
-      // If the row came with bundle data attached (fetched via select with bundles), use it;
-      // otherwise fall back to legacy warehouse_id / item_id (left as-is per Q2).
       warehouse_id: i.claim_item_stock_bundles?.[0]?.warehouse_id || i.warehouse_id || '',
       stock_bundle: i.claim_item_stock_bundles && i.claim_item_stock_bundles.length > 0
         ? i.claim_item_stock_bundles.map((b: any) => ({
@@ -97,7 +100,7 @@ export function EditClaimForm({
   const addItem = () => {
     const lastPct = items.length > 0 ? items[items.length - 1].disbursement_pct : 1.0;
     setItems([...items, {
-      id: crypto.randomUUID(), item_ref: '', description: '',
+      id: crypto.randomUUID(), item_ref: '', description: '', unit: '',
       previous_qty: 0, current_qty: 0, unit_price: 0,
       disbursement_pct: lastPct, is_stock_issue: false, warehouse_id: '', stock_bundle: [],
       notes: '',
@@ -156,7 +159,9 @@ export function EditClaimForm({
   const totalDue = netPayable + taxAmount;
 
   // ── Submit ───────────────────────────────────────────────────
-  async function handleSubmit(formData: FormData) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    const formData = new FormData(e.currentTarget);
     try {
       setLoading(true);
       const supabase = createClient();
@@ -172,7 +177,7 @@ export function EditClaimForm({
       formData.append('tax_rate', taxRate.toString());
       const result = await updateClaim(claimId, formData, items, attachmentUrls);
       if (result?.error) { alert(result.error); return; }
-      router.push('/claims');
+      router.push(returnUrl);
     } catch (e: any) {
       alert(e.message || 'حدث خطأ');
     } finally {
@@ -180,9 +185,20 @@ export function EditClaimForm({
     }
   }
 
+  // Prevent Enter key from accidentally submitting the form
+  function handleFormKeyDown(e: React.KeyboardEvent<HTMLFormElement>) {
+    if (e.key === 'Enter') {
+      const target = e.target as HTMLElement;
+      // Allow Enter inside textarea (multi-line) but block everywhere else
+      if (target.tagName !== 'TEXTAREA') {
+        e.preventDefault();
+      }
+    }
+  }
+
   // ── Render ───────────────────────────────────────────────────
   return (
-    <form action={handleSubmit} className="space-y-6 bg-card p-6 rounded-lg border shadow-sm">
+    <form onSubmit={handleSubmit} onKeyDown={handleFormKeyDown} className="space-y-6 bg-card p-6 rounded-lg border shadow-sm">
 
       {/* Locked party + project */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -219,6 +235,7 @@ export function EditClaimForm({
             <thead>
               <tr className="border-b">
                 <th className="pb-2 px-2 font-medium text-right">البند</th>
+                <th className="pb-2 px-2 font-medium text-right w-20">الوحدة</th>
                 <th className="pb-2 px-2 font-medium text-right w-20">السابق</th>
                 <th className="pb-2 px-2 font-medium text-right w-24">الحالي</th>
                 <th className="pb-2 px-2 font-medium text-right w-16">الإجمالي</th>
@@ -253,7 +270,9 @@ export function EditClaimForm({
               {items.map(item => {
                 const cumQty = (item.previous_qty || 0) + (item.current_qty || 0);
                 const lineTotal = cumQty * (item.unit_price || 0);
-                const isReadOnlyItem = !!item.item_ref;
+                // For Claim#0 (opening balance), all fields are always editable
+                // For regular claims, items with an item_ref are read-only (price locked to prior)
+                const isReadOnlyItem = claimNumber !== 0 && !!item.item_ref;
 
                 const warehouseOptions = warehouses.map((w: any) => ({ value: w.id, label: w.name }));
                 const itemOptions = inventoryItems.map((i: any) => {
@@ -278,6 +297,14 @@ export function EditClaimForm({
                           onChange={e => updateItem(item.id, 'description', e.target.value)}
                           disabled={isReadOnlyItem}
                           className="w-full min-w-[140px] p-2 rounded border bg-background text-sm" />
+                      </td>
+                      <td className="py-2 px-2 w-20">
+                        <input
+                          type="text"
+                          placeholder="طن، م²..."
+                          value={item.unit}
+                          onChange={e => updateItem(item.id, 'unit', e.target.value)}
+                          className="w-full p-2 rounded border bg-background text-sm text-center" />
                       </td>
                       <td className="py-2 px-2 w-20">
                         <input disabled value={item.previous_qty}
@@ -337,7 +364,7 @@ export function EditClaimForm({
                     {/* ── Stock-issue sub-row ── */}
                     {warehouses.length > 0 && (
                       <tr className="border-b border-muted/20 bg-muted/5">
-                        <td colSpan={9} className="px-3 py-2">
+                        <td colSpan={10} className="px-3 py-2">
                           {/* Toggle */}
                           <div className="flex items-center gap-2 mb-2">
                             <input type="checkbox" id={`stock_${item.id}`}
@@ -547,7 +574,7 @@ export function EditClaimForm({
       </div>
 
       <div className="flex justify-end gap-3 border-t pt-6">
-        <Button type="button" variant="outline" onClick={() => router.push('/claims')}>
+        <Button type="button" variant="outline" onClick={() => router.push(returnUrl)}>
           إلغاء
         </Button>
         <Button type="submit" disabled={loading || items.length === 0}>

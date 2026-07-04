@@ -21,6 +21,7 @@ interface ClaimItem {
   id: string;
   item_ref: string;
   description: string;
+  unit: string;                // وحدة القياس (طن، م²، عدد...)
   previous_qty: number;
   current_qty: number;
   unit_price: number;
@@ -28,6 +29,7 @@ interface ClaimItem {
   is_stock_issue: boolean;
   warehouse_id: string;        // one warehouse for the whole bundle
   stock_bundle: BundleLine[];  // list of inventory items + qty-per-unit
+  notes: string;               // per-item note/remark
 }
 
 function emptyItem(lastPct = 1.0): ClaimItem {
@@ -35,6 +37,7 @@ function emptyItem(lastPct = 1.0): ClaimItem {
     id: crypto.randomUUID(),
     item_ref: '',
     description: '',
+    unit: '',
     previous_qty: 0,
     current_qty: 0,
     unit_price: 0,
@@ -42,8 +45,10 @@ function emptyItem(lastPct = 1.0): ClaimItem {
     is_stock_issue: false,
     warehouse_id: '',
     stock_bundle: [],
+    notes: '',
   };
 }
+
 
 function emptyBundleLine(): BundleLine {
   return { id: crypto.randomUUID(), item_id: '', qty_per_unit: 0 };
@@ -321,6 +326,7 @@ export function CreateZeroClaimForm({
             <thead>
               <tr className="border-b">
                 <th className="pb-2 px-2 font-medium text-right">البند</th>
+                <th className="pb-2 px-2 font-medium text-right w-20">الوحدة</th>
                 <th className="pb-2 px-2 font-medium text-right w-20">السابق</th>
                 <th className="pb-2 px-2 font-medium text-right w-24">الحالي</th>
                 <th className="pb-2 px-2 font-medium text-right w-16">الإجمالي</th>
@@ -347,6 +353,7 @@ export function CreateZeroClaimForm({
                   </div>
                 </th>
                 <th className="pb-2 px-2 font-medium text-left w-32">الإجمالي (ج.م)</th>
+                <th className="pb-2 px-2 font-medium text-right">ملاحظة البند</th>
                 <th className="w-8"></th>
               </tr>
             </thead>
@@ -383,6 +390,14 @@ export function CreateZeroClaimForm({
                           onChange={e => updateItem(item.id, 'description', e.target.value)}
                           disabled={isReadOnlyItem}
                           className="w-full min-w-[140px] p-2 rounded border bg-background text-sm" />
+                      </td>
+                      <td className="py-2 px-2 w-20">
+                        <input
+                          type="text"
+                          placeholder="طن، م²..."
+                          value={item.unit}
+                          onChange={e => updateItem(item.id, 'unit', e.target.value)}
+                          className="w-full p-2 rounded border bg-background text-sm text-center" />
                       </td>
                       <td className="py-2 px-2 w-20">
                         <input disabled value={item.previous_qty}
@@ -422,6 +437,15 @@ export function CreateZeroClaimForm({
                       <td className="py-2 px-2 w-32 font-bold text-left text-primary whitespace-nowrap">
                         {formatMoney(lineTotal * item.disbursement_pct)}
                       </td>
+                      <td className="py-2 px-2">
+                        <input
+                          type="text"
+                          placeholder="ملاحظة (اختياري)"
+                          value={item.notes || ''}
+                          onChange={e => updateItem(item.id, 'notes', e.target.value)}
+                          className="w-full min-w-[120px] p-2 rounded border bg-background text-sm"
+                        />
+                      </td>
                       <td className="py-2 px-1 w-8">
                         {!isReadOnlyItem && (
                           <Button type="button" variant="ghost" size="icon"
@@ -435,7 +459,7 @@ export function CreateZeroClaimForm({
                     {/* ── Stock-issue sub-row ── */}
                     {true && (
                       <tr key={`${item.id}-wh`} className="border-b border-muted/20 bg-muted/5">
-                        <td colSpan={8} className="px-3 py-2">
+                        <td colSpan={9} className="px-3 py-2">
                           {/* Toggle */}
                           <div className="flex items-center gap-2 mb-2">
                             <input type="checkbox" id={`stock_${item.id}`}

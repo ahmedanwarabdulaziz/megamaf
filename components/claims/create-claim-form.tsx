@@ -21,6 +21,7 @@ interface ClaimItem {
   id: string;
   item_ref: string;
   description: string;
+  unit: string;                // وحدة القياس (طن، م²، عدد...)
   previous_qty: number;
   current_qty: number;
   unit_price: number;
@@ -36,6 +37,7 @@ function emptyItem(lastPct = 1.0): ClaimItem {
     id: crypto.randomUUID(),
     item_ref: '',
     description: '',
+    unit: '',
     previous_qty: 0,
     current_qty: 0,
     unit_price: 0,
@@ -187,6 +189,7 @@ export function CreateClaimForm({
               id: crypto.randomUUID(),
               item_ref: pi.item_ref,
               description: pi.description,
+              unit: pi.unit || '',
               previous_qty: Number(pi.previous_qty) + Number(pi.current_qty),
               current_qty: 0,
               unit_price: Number(pi.unit_price),
@@ -403,6 +406,7 @@ export function CreateClaimForm({
             <thead>
               <tr className="border-b">
                 <th className="pb-2 px-2 font-medium text-right">البند</th>
+                <th className="pb-2 px-2 font-medium text-right w-20">الوحدة</th>
                 <th className="pb-2 px-2 font-medium text-right w-20">السابق</th>
                 <th className="pb-2 px-2 font-medium text-right w-24">الحالي</th>
                 <th className="pb-2 px-2 font-medium text-right w-16">الإجمالي</th>
@@ -468,6 +472,14 @@ export function CreateClaimForm({
                           className="w-full min-w-[140px] p-2 rounded border bg-background text-sm" />
                       </td>
                       <td className="py-2 px-2 w-20">
+                        <input
+                          type="text"
+                          placeholder="طن، م²..."
+                          value={item.unit}
+                          onChange={e => updateItem(item.id, 'unit', e.target.value)}
+                          className="w-full p-2 rounded border bg-background text-sm text-center" />
+                      </td>
+                      <td className="py-2 px-2 w-20">
                         <input disabled value={item.previous_qty}
                           className="w-full p-2 rounded border bg-muted text-sm text-center" />
                       </td>
@@ -527,7 +539,7 @@ export function CreateClaimForm({
                     {/* ── Stock-issue sub-row ── */}
                     {warehouses.length > 0 && (
                       <tr key={`${item.id}-wh`} className="border-b border-muted/20 bg-muted/5">
-                        <td colSpan={9} className="px-3 py-2">
+                        <td colSpan={10} className="px-3 py-2">
                           {/* Toggle */}
                           <div className="flex items-center gap-2 mb-2">
                             <input type="checkbox" id={`stock_${item.id}`}

@@ -166,6 +166,7 @@ export async function createClaim(formData: FormData, items: any[], attachmentUr
         claim_id: claimData.id,
         item_ref: item.item_ref || crypto.randomUUID(),
         description: item.description,
+        unit: item.unit || null,
         previous_qty: server_previous_qty,
         current_qty: Number(item.current_qty),
         unit_price: server_unit_price,
@@ -336,7 +337,9 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
       .single();
 
     if (!claim) return { error: 'المستخلص غير موجود' };
-    if (claim.status !== 'pending') return { error: 'لا يمكن تعديل مستخلص معتمد أو مرفوض' };
+    // Claim#0 (opening balance) is always editable — lock when Claim#1 exists is at UI level.
+    // All other claims must be in 'pending' state to allow edits.
+    if (claim.claim_number !== 0 && claim.status !== 'pending') return { error: 'لا يمكن تعديل مستخلص معتمد أو مرفوض' };
 
     const notes = formData.get('notes') as string | null;
     const claim_date = formData.get('claim_date') as string;
@@ -345,20 +348,24 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
 
     if (!items || items.length === 0) return { error: 'يجب إضافة بند واحد على الأقل' };
 
-    // Fetch prior approved items to recalculate previous_qty server-side
-    const { data: priorClaims } = await supabase
-      .from('claims')
-      .select('id')
-      .eq('party_id', claim.party_id)
-      .eq('project_id', claim.project_id)
-      .eq('claim_type', claim.claim_type)
-      .eq('status', 'approved');
-
+    // Fetch prior approved items to recalculate previous_qty server-side.
+    // For Claim#0 (opening balance), skip this — previous_qty is always 0
+    // and unit_price must come from the user's input directly.
     let priorItems: any[] = [];
-    if (priorClaims && priorClaims.length > 0) {
-      const { data: pItems } = await supabase
-        .from('claim_items').select('*').in('claim_id', priorClaims.map(c => c.id));
-      if (pItems) priorItems = pItems;
+    if (claim.claim_number !== 0) {
+      const { data: priorClaims } = await supabase
+        .from('claims')
+        .select('id')
+        .eq('party_id', claim.party_id)
+        .eq('project_id', claim.project_id)
+        .eq('claim_type', claim.claim_type)
+        .eq('status', 'approved');
+
+      if (priorClaims && priorClaims.length > 0) {
+        const { data: pItems } = await supabase
+          .from('claim_items').select('*').in('claim_id', priorClaims.map(c => c.id));
+        if (pItems) priorItems = pItems;
+      }
     }
 
     // Update claim header
@@ -372,10 +379,13 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
     // Bundle rows are deleted automatically via CASCADE on claim_items
     await supabase.from('claim_items').delete().eq('claim_id', claimId);
 
+    const isZeroClaim = claim.claim_number === 0;
     const dbItems = items.map(item => {
+      // For Claim#0: always trust the user's input for qty and price
+      // For regular claims: recalculate from prior approved items server-side
       let server_previous_qty = 0;
       let server_unit_price = Number(item.unit_price);
-      if (item.item_ref) {
+      if (!isZeroClaim && item.item_ref) {
         const pastOccurrences = priorItems.filter(pi => pi.item_ref === item.item_ref);
         if (pastOccurrences.length > 0) {
           server_previous_qty = pastOccurrences.reduce((sum: number, pi: any) => sum + Number(pi.current_qty), 0);
@@ -397,6 +407,7 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
         claim_id: claimId,
         item_ref: item.item_ref || crypto.randomUUID(),
         description: item.description,
+        unit: item.unit || null,
         previous_qty: server_previous_qty,
         current_qty: Number(item.current_qty),
         unit_price: server_unit_price,
@@ -532,6 +543,7 @@ export async function createZeroClaim(formData: FormData, items: any[], attachme
         claim_id: claimData.id,
         item_ref: item.item_ref || crypto.randomUUID(),
         description: item.description,
+        unit: item.unit || null,
         previous_qty: server_previous_qty,
         current_qty: Number(item.current_qty),
         unit_price: server_unit_price,

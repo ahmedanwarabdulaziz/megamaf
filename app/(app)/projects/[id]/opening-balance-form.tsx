@@ -63,6 +63,7 @@ interface OpeningBalanceFormProps {
   inventoryItems: InventoryItem[];
   allProjects: any[];
   zeroClaims?: { id: string, party_id: string, claim_type: string }[];
+  vendorOneClaims?: { id: string, party_id: string, claim_type: string }[];
 }
 
 // ─────────────────────────────────────────────────
@@ -198,9 +199,12 @@ function FinancialSection({ projectId, balance, ownerZeroClaimExists }: { projec
 // Vendor Prior Claims Section
 // ─────────────────────────────────────────────────
 function VendorClaimsSection({
-  projectId, cutoffDate, existingClaims, vendors, allProjects, vendorZeroClaims = []
+  projectId, cutoffDate, existingClaims, vendors, allProjects, vendorZeroClaims = [], vendorZeroClaimsData = [], vendorOneClaims = []
 }: {
-  projectId: string; cutoffDate: string; existingClaims: VendorPriorClaim[]; vendors: Vendor[]; allProjects: any[]; vendorZeroClaims?: string[]
+  projectId: string; cutoffDate: string; existingClaims: VendorPriorClaim[]; vendors: Vendor[]; allProjects: any[];
+  vendorZeroClaims?: string[];
+  vendorZeroClaimsData?: { id: string; party_id: string }[];
+  vendorOneClaims?: string[]; // party_ids that have claim#1
 }) {
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<VendorPriorClaim | null>(null);
@@ -319,6 +323,58 @@ function VendorClaimsSection({
                   </td>
                 </tr>
               ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── Claim#0 rows for vendors (from the claims system) ── */}
+      {vendorZeroClaimsData.length > 0 && (
+        <div className="overflow-x-auto rounded-lg border">
+          <div className="bg-primary/5 border-b px-3 py-2 flex items-center gap-2">
+            <span className="text-xs font-semibold text-primary">مستخلصات #0 المسجلة في النظام</span>
+            <span className="text-xs text-muted-foreground">— يمكن تعديل المستخلص ما لم يتم إنشاء مستخلص #1 للمقاول</span>
+          </div>
+          <table className="w-full text-sm text-right">
+            <thead className="bg-muted/40">
+              <tr>
+                <th className="p-3 font-medium">المقاول</th>
+                <th className="p-3 font-medium">الحالة</th>
+                <th className="p-3 w-32"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {vendorZeroClaimsData.map(zc => {
+                const vendorName = vendors.find(v => v.id === zc.party_id)?.name || zc.party_id;
+                const hasClaimOne = vendorOneClaims.includes(zc.party_id);
+                return (
+                  <tr key={zc.id} className="hover:bg-muted/20">
+                    <td className="p-3 font-medium">{vendorName}</td>
+                    <td className="p-3">
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-300">
+                        ✅ مستخلص #0 مسجل
+                      </span>
+                    </td>
+                    <td className="p-3">
+                      <div className="flex gap-1 justify-end">
+                        {!hasClaimOne ? (
+                          <a
+                            href={`/claims/${zc.id}/edit`}
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors dark:bg-amber-900/20 dark:text-amber-300 dark:border-amber-700"
+                          >
+                            <Pencil className="w-3 h-3" />
+                            تعديل المستخلص #0
+                          </a>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs text-muted-foreground bg-muted border" title="لا يمكن التعديل بعد إنشاء مستخلص #1">
+                            🔒 مُقفل (له مستخلص #1)
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
@@ -830,6 +886,7 @@ export function OpeningBalanceForm({
   inventoryItems,
   allProjects,
   zeroClaims = [],
+  vendorOneClaims = [],
 }: OpeningBalanceFormProps) {
   return (
     <div className="space-y-4">
@@ -858,6 +915,8 @@ export function OpeningBalanceForm({
           vendors={vendors}
           allProjects={allProjects}
           vendorZeroClaims={zeroClaims.filter(c => c.claim_type === 'vendor').map(c => c.party_id)}
+          vendorZeroClaimsData={zeroClaims.filter(c => c.claim_type === 'vendor').map(c => ({ id: c.id, party_id: c.party_id }))}
+          vendorOneClaims={(vendorOneClaims || []).map(c => c.party_id)}
         />
       </Section>
 

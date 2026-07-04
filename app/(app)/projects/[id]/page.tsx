@@ -86,6 +86,7 @@ export default async function ProjectDetailPage({
   let inventoryItems: any[] = []
 
   let zeroClaims: any[] = []
+  let vendorOneClaims: any[] = []
 
   if (!isMainCompany && canEdit) {
     const [
@@ -95,7 +96,8 @@ export default async function ProjectDetailPage({
       { data: v },
       { data: wh },
       { data: items },
-      { data: zc }
+      { data: zc },
+      { data: zc1 }
     ] = await Promise.all([
       supabase.from('project_opening_balances').select('*').eq('project_id', id).maybeSingle(),
       supabase.from('vendor_prior_claims').select('*, vendors(name)').eq('project_id', id).order('created_at'),
@@ -103,7 +105,8 @@ export default async function ProjectDetailPage({
       supabase.from('vendors').select('id, name').order('name'),
       supabase.from('warehouses').select('id, name, project_id'),
       supabase.from('inventory_items').select('id, name, unit, code').order('name'),
-      supabase.from('claims').select('id, party_id, claim_type').eq('project_id', id).eq('claim_number', 0).eq('status', 'approved'),
+      supabase.from('claims').select('id, party_id, claim_type').eq('project_id', id).eq('claim_number', 0),
+      supabase.from('claims').select('id, party_id, claim_type').eq('project_id', id).eq('claim_number', 1).eq('claim_type', 'vendor'),
     ])
     financialBalance = ob || null
     vendorPriorClaims = (vpc || []).map((c: any) => ({
@@ -120,6 +123,7 @@ export default async function ProjectDetailPage({
     warehouses = wh || []
     inventoryItems = items || []
     zeroClaims = zc || []
+    vendorOneClaims = zc1 || []
   }
 
   const hasOpeningBalance = finances?.has_opening_balance
@@ -600,6 +604,7 @@ export default async function ProjectDetailPage({
             inventoryItems={inventoryItems}
             allProjects={allProjects || []}
             zeroClaims={zeroClaims}
+            vendorOneClaims={vendorOneClaims}
           />
         </div>
       )}
