@@ -173,6 +173,10 @@ export default async function ClaimsPage({
                   <div className="flex flex-col items-end gap-1.5 min-w-[300px]">
                     {(() => {
                       const vpc = (claim as any).vendor_prior_claim;
+                      // NOTE: v_vendor_account already folds opening_paid_amount into amount_paid
+                      // for Claim#0 rows, so paidInSystem already includes it.
+                      // We pass openingPaid:0 to avoid double-counting in the formula.
+                      // We still display it separately as an informational line.
                       const fin = computeClaimFinancials({
                         claimCumulativeTotal:    totals?.claim_cumulative_total    || 0,
                         claimCumulativeRetained: totals?.claim_cumulative_retained || 0,
@@ -181,9 +185,11 @@ export default async function ClaimsPage({
                         taxEnabled: !!(claim as any).tax_enabled,
                         taxRate:    Number((claim as any).tax_rate || 0),
                         paidInSystem: vendorProjectPaid.get(`${claim.party_id}__${claim.project_id}`) || 0,
-                        openingPaid:  Number((claim as any).opening_paid_amount || 0),
+                        openingPaid:  0,  // already folded into paidInSystem via v_vendor_account
                         claimNumber:  (claim as any).claim_number ?? 0,
                       });
+                      // Display-only: the pre-system paid amount for informational purposes
+                      const openingPaidDisplay = Number((claim as any).opening_paid_amount || 0);
 
                       return (
                         <>
@@ -215,18 +221,18 @@ export default async function ClaimsPage({
                             </div>
                           )}
 
-                          {/* Opening Paid (المدفوع قبل النظام) */}
-                          {fin.openingPaid > 0 && (
+                          {/* Opening Paid (المدفوع قبل النظام) — display only */}
+                          {openingPaidDisplay > 0 && (
                             <div className="flex justify-between w-full gap-4 text-xs text-amber-600 dark:text-amber-500">
                               <span>المدفوع قبل النظام:</span>
-                              <span className="font-medium">- {formatMoney(fin.openingPaid)}</span>
+                              <span className="font-medium">- {formatMoney(openingPaidDisplay)}</span>
                             </div>
                           )}
 
-                          {/* In-system paid */}
+                          {/* In-system paid (includes opening_paid already) */}
                           {fin.paidInSystem > 0 && (
                             <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
-                              <span>المدفوع (في النظام):</span>
+                              <span>المدفوع (إجمالي):</span>
                               <span>- {formatMoney(fin.paidInSystem)}</span>
                             </div>
                           )}

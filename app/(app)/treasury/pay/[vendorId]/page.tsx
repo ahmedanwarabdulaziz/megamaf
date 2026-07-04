@@ -129,11 +129,10 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     paidByProject.set(row.project_id, (paidByProject.get(row.project_id) || 0) + Number(row.amount_paid || 0));
   }
 
-  // Build a map: "project_id" → opening_paid_amount from Claim#0
+  // Build a map: "project_id" → opening_paid_amount from Claim#0 (display only)
+  // NOTE: paidByProject (from v_vendor_account) already includes opening_paid_amount
+  // as amount_paid for Claim#0 rows. So we do NOT add openingPaid to paidInSystem again.
   const openingPaidByProject = new Map<string, number>();
-  for (const c of (latestClaims || [])) {
-    // We'll fetch opening_paid via a separate query below
-  }
   const { data: zeroClaims } = await supabase
     .from('claims')
     .select('project_id, opening_paid_amount')
@@ -158,7 +157,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
       taxEnabled: !!c.tax_enabled,
       taxRate:    Number(c.tax_rate || 0),
       paidInSystem: paidByProject.get(c.project_id) || 0,
-      openingPaid:  openingPaidByProject.get(c.project_id) || 0,
+      openingPaid:  0,  // already included in paidByProject via v_vendor_account
       claimNumber:  c.claim_number ?? 0,
     });
 
@@ -173,7 +172,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
       tax_rate:     fin.tax_rate,
       tax_enabled:  fin.tax_enabled,
       totalPaid:    fin.totalPaid,
-      openingPaid:  fin.openingPaid,
+      openingPaid:  openingPaidByProject.get(c.project_id) || 0,  // display only
       remaining:    fin.remaining,   // can be negative = overpayment
     };
   });
