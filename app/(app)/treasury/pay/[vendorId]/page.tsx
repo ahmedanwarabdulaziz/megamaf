@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import { VendorPaymentCalculator } from './calculator';
+import { computeClaimFinancials } from '@/lib/claim-financials';
 
 export default async function PayVendorPage({ params }: { params: Promise<{ vendorId: string }> }) {
   const { vendorId } = await params;
@@ -128,41 +129,52 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     paidByProject.set(row.project_id, (paidByProject.get(row.project_id) || 0) + Number(row.amount_paid || 0));
   }
 
-  // Build per-project claim summaries (same logic as /claims page)
+  // Build a map: "project_id" → opening_paid_amount from Claim#0
+  const openingPaidByProject = new Map<string, number>();
+  for (const c of (latestClaims || [])) {
+    // We'll fetch opening_paid via a separate query below
+  }
+  const { data: zeroClaims } = await supabase
+    .from('claims')
+    .select('project_id, opening_paid_amount')
+    .eq('party_id', vendorId)
+    .eq('claim_type', 'vendor')
+    .eq('claim_number', 0);
+  for (const zc of zeroClaims || []) {
+    openingPaidByProject.set(zc.project_id, Number(zc.opening_paid_amount || 0));
+  }
+
+  // Build per-project claim summaries using the shared utility
   const claimSummaries = latestClaimList.map(c => {
-    const totals   = (claimTotalsData || []).find((t: any) => t.claim_id === c.id);
-    const prior    = (priorClaims     || []).find((p: any) => p.project_id === c.project_id);
+    const totals      = (claimTotalsData || []).find((t: any) => t.claim_id === c.id);
+    const prior       = (priorClaims     || []).find((p: any) => p.project_id === c.project_id);
     const projectName = (projects || []).find(p => p.id === c.project_id)?.name || '';
 
-    // Mirror the exact logic from /claims page
-    const priorCert = Number(prior?.prior_certified_amount || 0);
-    const priorPaid = Number(prior?.prior_paid_amount      || 0);
-    const priorRet  = Number(prior?.prior_retention_held   || 0);
-
-    const grossInSystem    = Number(totals?.claim_cumulative_total    || 0);
-    const retainedInSystem = Number(totals?.claim_cumulative_retained || 0);
-    const grossTotal       = grossInSystem + priorCert;
-    const retained         = retainedInSystem + priorRet;
-    const netCumulative    = grossTotal - retained;
-
-    const totalPaid = paidByProject.get(c.project_id) || 0;
-
-    const tax = c.tax_enabled ? netCumulative * (c.tax_rate || 0) : 0;
-    const totalDue  = netCumulative + tax;
-    const remaining = Math.max(0, totalDue - totalPaid);
+    const fin = computeClaimFinancials({
+      claimCumulativeTotal:    Number(totals?.claim_cumulative_total    || 0),
+      claimCumulativeRetained: Number(totals?.claim_cumulative_retained || 0),
+      priorCertifiedAmount:    Number(prior?.prior_certified_amount || 0),
+      priorRetentionHeld:      Number(prior?.prior_retention_held   || 0),
+      taxEnabled: !!c.tax_enabled,
+      taxRate:    Number(c.tax_rate || 0),
+      paidInSystem: paidByProject.get(c.project_id) || 0,
+      openingPaid:  openingPaidByProject.get(c.project_id) || 0,
+      claimNumber:  c.claim_number ?? 0,
+    });
 
     return {
-      project_id:    c.project_id,
-      project_name:  projectName,
-      claim_number:  c.claim_number,
-      grossTotal,
-      retained,
-      netCumulative,
-      tax,
-      tax_rate:      c.tax_rate || 0,
-      tax_enabled:   c.tax_enabled,
-      totalPaid,
-      remaining,
+      project_id:   c.project_id,
+      project_name: projectName,
+      claim_number: fin.claim_number,
+      grossTotal:   fin.grossTotal,
+      retained:     fin.retained,
+      netCumulative: fin.netCumulative,
+      tax:          fin.tax,
+      tax_rate:     fin.tax_rate,
+      tax_enabled:  fin.tax_enabled,
+      totalPaid:    fin.totalPaid,
+      openingPaid:  fin.openingPaid,
+      remaining:    fin.remaining,   // can be negative = overpayment
     };
   });
 

@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { payVendor } from '@/lib/actions/payments';
 import { formatMoney } from '@/lib/money';
+import { remainingLabel, remainingColorClass } from '@/lib/claim-financials';
 
 type ClaimSummary = {
   project_id: string;
@@ -18,6 +19,7 @@ type ClaimSummary = {
   tax_rate: number;
   tax_enabled: boolean;
   totalPaid: number;
+  openingPaid: number;
   remaining: number;
 };
 
@@ -74,6 +76,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, proj
         tax:           summary?.tax           ?? 0,
         tax_rate:      summary?.tax_rate      ?? 0,
         totalPaid:     summary?.totalPaid     ?? 0,
+        openingPaid:   summary?.openingPaid   ?? 0,
       };
     });
     setAllocations(newAllocations);
@@ -164,23 +167,29 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, proj
                   </div>
                 )}
 
-                {/* Paid */}
-                {s.totalPaid > 0 && (
-                  <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
-                    <span>المدفوع:</span>
-                    <span>- {formatMoney(s.totalPaid)}</span>
+                {/* Opening Paid (المدفوع قبل النظام) */}
+                {s.openingPaid > 0 && (
+                  <div className="flex justify-between w-full gap-4 text-xs text-amber-600 dark:text-amber-500">
+                    <span>المدفوع قبل النظام:</span>
+                    <span className="font-medium">- {formatMoney(s.openingPaid)}</span>
                   </div>
                 )}
 
-                {/* Remaining */}
+                {/* In-system paid */}
+                {s.totalPaid - s.openingPaid > 0 && (
+                  <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
+                    <span>المدفوع (في النظام):</span>
+                    <span>- {formatMoney(s.totalPaid - s.openingPaid)}</span>
+                  </div>
+                )}
+
+                {/* Remaining / overpayment */}
                 <div className="flex justify-between items-center w-full gap-4 border-t border-primary/20 pt-1.5 mt-0.5">
                   <span className="text-sm font-semibold">
-                    {s.remaining <= 0 ? '✓ تم السداد بالكامل' : 'المتبقي المستحق:'}
+                    {remainingLabel(s.remaining)}
                   </span>
-                  <span className={`text-xl font-bold whitespace-nowrap ${
-                    s.remaining <= 0 ? 'text-green-600' : 'text-primary'
-                  }`}>
-                    {formatMoney(s.remaining)}
+                  <span className={`text-xl font-bold whitespace-nowrap ${remainingColorClass(s.remaining)}`}>
+                    {s.remaining < 0 ? `(${formatMoney(Math.abs(s.remaining))})` : formatMoney(s.remaining)}
                   </span>
                 </div>
               </div>

@@ -8,6 +8,7 @@ export const dynamic = 'force-dynamic';
 
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
+import { computeClaimFinancials, remainingLabel, remainingColorClass } from '@/lib/claim-financials';
 import { ClaimApproveRejectButtons } from '@/components/claims/approve-reject-buttons';
 import { ClaimHistory } from '@/components/claims/claim-history';
 import { ClaimsFilters } from '@/components/claims/claims-filters';
@@ -171,89 +172,72 @@ export default async function ClaimsPage({
                   {/* Right: financial summary + actions */}
                   <div className="flex flex-col items-end gap-1.5 min-w-[300px]">
                     {(() => {
-                      // ── Claim #0 (pre-system) data ───────────────────────
-                      const vpc           = (claim as any).vendor_prior_claim;
-                      const priorCert     = Number(vpc?.prior_certified_amount || 0);
-                      const priorPaid     = Number(vpc?.prior_paid_amount      || 0);
-                      const priorRet      = Number(vpc?.prior_retention_held   || 0);
-                      const priorOutstanding = Math.max(0, priorCert - priorPaid - priorRet);
-
-                      // ── In-system claim data (from v_claim_totals) ────────
-                      const grossInSystem  = totals?.claim_cumulative_total    || 0;
-                      const retainedInSystem = totals?.claim_cumulative_retained || 0;
-                      const netInSystem    = totals?.claim_cumulative_payable   || 0;
-
-                      // ── Merged totals (in-system + claim #0) ─────────────
-                      const grossTotal    = grossInSystem    + priorCert;
-                      const retained      = retainedInSystem + priorRet;
-                      const netCumulative = grossTotal - retained;
-
-                      // ── In-system paid amount ─────────────────────────────
-                      const totalPaid     = vendorProjectPaid.get(`${claim.party_id}__${claim.project_id}`) || 0;
-                      const openingPaid   = Number((claim as any).opening_paid_amount || 0);
-
-                      // ── Tax on total net cumulative ───────────────────────
-                      const tax = (claim as any).tax_enabled
-                        ? netCumulative * ((claim as any).tax_rate || 0)
-                        : 0;
-                      const totalDue    = netCumulative + tax;
-                      const remaining   = Math.max(0, totalDue - totalPaid);
+                      const vpc = (claim as any).vendor_prior_claim;
+                      const fin = computeClaimFinancials({
+                        claimCumulativeTotal:    totals?.claim_cumulative_total    || 0,
+                        claimCumulativeRetained: totals?.claim_cumulative_retained || 0,
+                        priorCertifiedAmount: Number(vpc?.prior_certified_amount || 0),
+                        priorRetentionHeld:   Number(vpc?.prior_retention_held   || 0),
+                        taxEnabled: !!(claim as any).tax_enabled,
+                        taxRate:    Number((claim as any).tax_rate || 0),
+                        paidInSystem: vendorProjectPaid.get(`${claim.party_id}__${claim.project_id}`) || 0,
+                        openingPaid:  Number((claim as any).opening_paid_amount || 0),
+                        claimNumber:  (claim as any).claim_number ?? 0,
+                      });
 
                       return (
                         <>
                           {/* Gross */}
                           <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
                             <span>إجمالي الأعمال التراكمي:</span>
-                            <span className="font-medium">{formatMoney(grossTotal)}</span>
+                            <span className="font-medium">{formatMoney(fin.grossTotal)}</span>
                           </div>
 
                           {/* Retention */}
-                          {retained > 0 && (
+                          {fin.retained > 0 && (
                             <div className="flex justify-between w-full gap-4 text-xs text-amber-600">
                               <span>المحتجز التراكمي (تأمين):</span>
-                              <span className="font-medium">- {formatMoney(retained)}</span>
+                              <span className="font-medium">- {formatMoney(fin.retained)}</span>
                             </div>
                           )}
 
                           {/* Net cumulative */}
                           <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground border-t border-muted/30 pt-1">
                             <span>الصافي التراكمي (قابل للدفع):</span>
-                            <span className="font-medium">{formatMoney(netCumulative)}</span>
+                            <span className="font-medium">{formatMoney(fin.netCumulative)}</span>
                           </div>
 
                           {/* Tax */}
-                          {tax > 0 && (
+                          {fin.tax > 0 && (
                             <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
-                              <span>الضريبة ({(((claim as any).tax_rate || 0) * 100).toFixed(1)}%):</span>
-                              <span>+ {formatMoney(tax)}</span>
+                              <span>الضريبة ({(fin.tax_rate * 100).toFixed(1)}%):</span>
+                              <span>+ {formatMoney(fin.tax)}</span>
                             </div>
                           )}
 
-                          {/* Opening Paid */}
-                          {openingPaid > 0 && (
+                          {/* Opening Paid (المدفوع قبل النظام) */}
+                          {fin.openingPaid > 0 && (
                             <div className="flex justify-between w-full gap-4 text-xs text-amber-600 dark:text-amber-500">
                               <span>المدفوع قبل النظام:</span>
-                              <span className="font-medium">- {formatMoney(openingPaid)}</span>
+                              <span className="font-medium">- {formatMoney(fin.openingPaid)}</span>
                             </div>
                           )}
 
-                          {/* Paid */}
-                          {totalPaid > 0 && (
+                          {/* In-system paid */}
+                          {fin.paidInSystem > 0 && (
                             <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
-                              <span>المدفوع:</span>
-                              <span>- {formatMoney(totalPaid)}</span>
+                              <span>المدفوع (في النظام):</span>
+                              <span>- {formatMoney(fin.paidInSystem)}</span>
                             </div>
                           )}
 
-                          {/* Remaining balance headline */}
+                          {/* Remaining / overpayment */}
                           <div className="flex justify-between items-center w-full gap-4 border-t border-primary/20 pt-1.5 mt-0.5">
                             <span className="text-sm font-semibold">
-                              {remaining <= 0 ? '✓ تم السداد بالكامل' : 'المتبقي المستحق:'}
+                              {remainingLabel(fin.remaining)}
                             </span>
-                            <span className={`text-xl font-bold whitespace-nowrap ${
-                              remaining <= 0 ? 'text-green-600' : 'text-primary'
-                            }`}>
-                              {formatMoney(remaining)}
+                            <span className={`text-xl font-bold whitespace-nowrap ${remainingColorClass(fin.remaining)}`}>
+                              {fin.remaining < 0 ? `(${formatMoney(Math.abs(fin.remaining))})` : formatMoney(fin.remaining)}
                             </span>
                           </div>
                         </>

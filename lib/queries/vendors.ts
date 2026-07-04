@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server';
+import { computeClaimFinancials } from '@/lib/claim-financials';
 
 export async function getVendors() {
   const supabase = await createClient();
@@ -110,59 +111,56 @@ export async function getVendorsWithSummary(filters?: { startDate?: string, endD
       : { data: [] as any[] }
   ]);
 
-  // Build a map: "party_id__project_id" → total paid across ALL claims in that group
+  // Build a map: "party_id__project_id" → in-system paid (ledger only, NOT opening_paid)
   const paidByGroup = new Map<string, number>();
   for (const r of (ledgerVendorPayments || [])) {
     if (!r.project_id) continue;
     const key = `${r.counterparty_id}__${r.project_id}`;
     paidByGroup.set(key, (paidByGroup.get(key) || 0) + Number(r.amount));
   }
+
+  // Build a map: "party_id__project_id" → opening_paid_amount (pre-system)
+  const openingPaidByGroup = new Map<string, number>();
   for (const r of (claimZeroVendorPaid || [])) {
     const key = `${r.party_id}__${r.project_id}`;
-    paidByGroup.set(key, (paidByGroup.get(key) || 0) + Number(r.opening_paid_amount));
+    openingPaidByGroup.set(key, Number(r.opening_paid_amount || 0));
   }
 
-  // 5. Build per-vendor summary using the exact same logic as /claims page
+  // 5. Build per-vendor summary using computeClaimFinancials (shared utility)
   const summaryMap = new Map<string, {
     grossTotal: number; retained: number; netCumulative: number;
     tax: number; totalPaid: number; remaining: number;
   }>();
 
-  // Process each latest claim (mirrors the IIFE inside /claims page cards)
   for (const c of latestClaims) {
     const totals  = (claimTotals || []).find((t: any) => t.claim_id === c.id);
     const prior   = (allPriorClaims || []).find((p: any) =>
       p.vendor_id === c.party_id && p.project_id === c.project_id
     );
 
-    const priorCert = Number(prior?.prior_certified_amount || 0);
-    const priorPaid = Number(prior?.prior_paid_amount      || 0);
-    const priorRet  = Number(prior?.prior_retention_held   || 0);
-
-    const grossInSystem    = Number(totals?.claim_cumulative_total    || 0);
-    const retainedInSystem = Number(totals?.claim_cumulative_retained || 0);
-    const grossTotal       = grossInSystem + priorCert;
-    const retained         = retainedInSystem + priorRet;
-    const netCumulative    = grossTotal - retained;
-
-    // Sum paid across ALL claims for this vendor+project
-    const paidInSystem = paidByGroup.get(`${c.party_id}__${c.project_id}`) || 0;
-    const totalPaid    = paidInSystem + priorPaid;
-
-    const tax       = c.tax_enabled ? netCumulative * (c.tax_rate || 0) : 0;
-    const totalDue  = netCumulative + tax;
-    const remaining = Math.max(0, totalDue - totalPaid);
+    const groupKey = `${c.party_id}__${c.project_id}`;
+    const fin = computeClaimFinancials({
+      claimCumulativeTotal:    Number(totals?.claim_cumulative_total    || 0),
+      claimCumulativeRetained: Number(totals?.claim_cumulative_retained || 0),
+      priorCertifiedAmount:    Number(prior?.prior_certified_amount || 0),
+      priorRetentionHeld:      Number(prior?.prior_retention_held   || 0),
+      taxEnabled: !!c.tax_enabled,
+      taxRate:    Number(c.tax_rate || 0),
+      paidInSystem: paidByGroup.get(groupKey) || 0,
+      openingPaid:  openingPaidByGroup.get(groupKey) || 0,
+      claimNumber:  c.claim_number ?? 0,
+    });
 
     const existing = summaryMap.get(c.party_id) || {
       grossTotal: 0, retained: 0, netCumulative: 0,
       tax: 0, totalPaid: 0, remaining: 0,
     };
-    existing.grossTotal    += grossTotal;
-    existing.retained      += retained;
-    existing.netCumulative += netCumulative;
-    existing.tax           += tax;
-    existing.totalPaid     += totalPaid;
-    existing.remaining     += remaining;
+    existing.grossTotal    += fin.grossTotal;
+    existing.retained      += fin.retained;
+    existing.netCumulative += fin.netCumulative;
+    existing.tax           += fin.tax;
+    existing.totalPaid     += fin.totalPaid;
+    existing.remaining     += fin.remaining;  // can be negative (overpayment)
     summaryMap.set(c.party_id, existing);
   }
 
