@@ -166,7 +166,7 @@ export async function createClaim(formData: FormData, items: any[], attachmentUr
         claim_id: claimData.id,
         item_ref: item.item_ref || crypto.randomUUID(),
         description: item.description,
-        unit: item.unit || null,
+        // unit: item.unit || null, -- re-enable after migration 0059 is applied
         previous_qty: server_previous_qty,
         current_qty: Number(item.current_qty),
         unit_price: server_unit_price,
@@ -407,7 +407,7 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
         claim_id: claimId,
         item_ref: item.item_ref || crypto.randomUUID(),
         description: item.description,
-        unit: item.unit || null,
+        // unit: item.unit || null, -- re-enable after migration 0059 is applied
         previous_qty: server_previous_qty,
         current_qty: Number(item.current_qty),
         unit_price: server_unit_price,
@@ -543,7 +543,7 @@ export async function createZeroClaim(formData: FormData, items: any[], attachme
         claim_id: claimData.id,
         item_ref: item.item_ref || crypto.randomUUID(),
         description: item.description,
-        unit: item.unit || null,
+        // unit: item.unit || null, -- re-enable after migration 0059 is applied
         previous_qty: server_previous_qty,
         current_qty: Number(item.current_qty),
         unit_price: server_unit_price,
