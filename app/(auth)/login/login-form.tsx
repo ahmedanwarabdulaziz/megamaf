@@ -1,5 +1,6 @@
 "use client"
 
+import { useActionState } from "react"
 import { useFormStatus } from "react-dom"
 import { useSearchParams } from "next/navigation"
 import { login } from "./actions"
@@ -26,6 +27,7 @@ interface LoginFormProps {
 export function LoginForm({ noUsers = false }: LoginFormProps) {
   const searchParams = useSearchParams()
   const message = searchParams.get("message")
+  const [state, formAction] = useActionState(login, null as any)
 
   return (
     <div className="flex flex-col gap-4">
@@ -50,7 +52,7 @@ export function LoginForm({ noUsers = false }: LoginFormProps) {
         </a>
       )}
 
-      <form action={login} className="flex flex-col w-full gap-4" suppressHydrationWarning>
+      <form action={formAction} className="flex flex-col w-full gap-4" suppressHydrationWarning>
         <div className="flex flex-col gap-2">
           <label className="text-sm font-medium" htmlFor="username">
             اسم المستخدم
@@ -86,7 +88,12 @@ export function LoginForm({ noUsers = false }: LoginFormProps) {
           <SubmitButton />
         </div>
 
-        {message && (
+        {state?.error && (
+          <p className="p-3 bg-destructive/10 text-destructive text-center rounded-md text-sm">
+            {state.error}
+          </p>
+        )}
+        {message && !state?.error && (
           <p className="p-3 bg-destructive/10 text-destructive text-center rounded-md text-sm">
             {decodeURIComponent(message)}
           </p>

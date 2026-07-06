@@ -10,7 +10,7 @@ import crypto from 'crypto'
 import { logAudit } from '@/lib/audit'
 import { headers } from 'next/headers'
 
-export async function login(formData: FormData) {
+export async function login(prevState: any, formData: FormData) {
   const adminClient = createAdminClient()
   const supabase = await createClient()
 
@@ -18,7 +18,7 @@ export async function login(formData: FormData) {
   const pin = formData.get('password') as string
   
   if (!username || !pin) {
-    redirect(`/login?message=يرجى إدخال اسم المستخدم والرقم السري`)
+    return { error: 'يرجى إدخال اسم المستخدم والرقم السري' }
   }
 
   // 1. Find employee
@@ -30,11 +30,11 @@ export async function login(formData: FormData) {
     .maybeSingle()
 
   if (!employee || !employee.auth_user_id) {
-    redirect(`/login?message=اسم المستخدم أو الرقم السري غير صحيح`)
+    return { error: 'اسم المستخدم أو الرقم السري غير صحيح' }
   }
 
   if (employee.is_active === false) {
-    redirect(`/login?message=هذا الحساب موقوف. يرجى التواصل مع مدير النظام`)
+    return { error: 'هذا الحساب موقوف. يرجى التواصل مع مدير النظام' }
   }
 
   // 2. Find secrets
@@ -45,18 +45,18 @@ export async function login(formData: FormData) {
     .single()
 
   if (!secrets?.pin_hash) {
-    redirect(`/login?message=اسم المستخدم أو الرقم السري غير صحيح`)
+    return { error: 'اسم المستخدم أو الرقم السري غير صحيح' }
   }
 
   const { locked, unlockTime } = await checkLockout(secrets.locked_until)
   if (locked) {
-    redirect(`/login?message=الحساب مقفل مؤقتاً. حاول مجدداً بعد ${unlockTime}`)
+    return { error: `الحساب مقفل مؤقتاً. حاول مجدداً بعد ${unlockTime}` }
   }
 
   // 3. Verify PIN
   const isValid = await verifyPin(employee.id, username, pin, secrets.pin_hash)
   if (!isValid) {
-    redirect(`/login?message=اسم المستخدم أو الرقم السري غير صحيح`)
+    return { error: 'اسم المستخدم أو الرقم السري غير صحيح' }
   }
 
   // 4. PIN is valid — rotate underlying auth password and sign in
@@ -66,7 +66,7 @@ export async function login(formData: FormData) {
   })
   
   if (updateError) {
-    redirect(`/login?message=خطأ داخلي في المصادقة. يرجى المحاولة مرة أخرى`)
+    return { error: 'خطأ داخلي في المصادقة. يرجى المحاولة مرة أخرى' }
   }
 
   const { error: signInError } = await supabase.auth.signInWithPassword({
@@ -75,7 +75,7 @@ export async function login(formData: FormData) {
   })
 
   if (signInError) {
-    redirect(`/login?message=فشل تسجيل الدخول. يرجى المحاولة مرة أخرى`)
+    return { error: 'فشل تسجيل الدخول. يرجى المحاولة مرة أخرى' }
   }
 
   // 5. Rotate session ID for single-session enforcement
