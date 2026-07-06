@@ -19,13 +19,14 @@ export function CreateOwnerExpenseModal({
   categories: Category[];
   projects:   Project[];
 }) {
-  const [open, setOpen]       = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [files, setFiles]     = useState<File[]>([]);
-  const [error, setError]     = useState('');
+  const [open, setOpen]             = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [files, setFiles]           = useState<File[]>([]);
+  const [error, setError]           = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('');
   const today = new Date().toISOString().split('T')[0];
 
-  const close = () => { setOpen(false); setFiles([]); setError(''); };
+  const close = () => { setOpen(false); setFiles([]); setError(''); setSelectedProjectId(''); };
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -97,24 +98,44 @@ export function CreateOwnerExpenseModal({
                 </select>
               </div>
 
-              {/* Category */}
+              {/* Project (optional) — placed before category to drive filtering */}
               <div>
-                <label className="block text-sm font-medium mb-1">التصنيف</label>
-                <select name="category_id" required className="w-full p-2 rounded-md border bg-background">
-                  <option value="">-- اختر التصنيف --</option>
-                  {categories.map(c => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
+                <label className="block text-sm font-medium mb-1">المشروع (اختياري)</label>
+                <select
+                  name="project_id"
+                  className="w-full p-2 rounded-md border bg-background"
+                  value={selectedProjectId}
+                  onChange={e => setSelectedProjectId(e.target.value)}
+                >
+                  <option value="">-- بدون مشروع محدد --</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
               </div>
 
-              {/* Project (optional) */}
+              {/* Category — filtered by selected project */}
               <div>
-                <label className="block text-sm font-medium mb-1">المشروع (اختياري)</label>
-                <select name="project_id" className="w-full p-2 rounded-md border bg-background">
-                  <option value="">-- بدون مشروع محدد --</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
+                <label className="block text-sm font-medium mb-1">التصنيف</label>
+                <select
+                  key={`cat-owner-${selectedProjectId}`}
+                  name="category_id"
+                  required
+                  className="w-full p-2 rounded-md border bg-background"
+                >
+                  <option value="">-- اختر التصنيف --</option>
+                  {(categories as any[]).filter((c: any) => {
+                    const scopes: any[] = c.scopes || [];
+                    if (scopes.length === 0) return true;
+                    if (!selectedProjectId) {
+                      return scopes.some((s: any) => s.scope === 'main_company' || s.scope === 'all_projects');
+                    }
+                    return scopes.some((s: any) =>
+                      s.scope === 'all_projects' ||
+                      (s.scope === 'specific_project' && s.project_id === selectedProjectId)
+                    );
+                  }).map((c: any) => (
+                    <option key={c.id} value={c.id}>{c.name}</option>
                   ))}
                 </select>
               </div>

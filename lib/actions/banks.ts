@@ -172,58 +172,15 @@ export async function updateBankAccountOpeningBalance(formData: FormData) {
   const bankAccountId = parsed.data.bank_account_id;
   const newBalance = parsed.data.opening_balance;
 
-  const { data, error } = await supabase
-    .from('bank_accounts')
-    .update({ opening_balance: newBalance })
-    .eq('id', bankAccountId)
-    .select()
-    .single();
+  // Use the RPC which atomically updates bank_accounts + ledger_entries
+  // in a SECURITY DEFINER context, bypassing RLS restrictions on ledger updates.
+  const { error } = await supabase.rpc('update_bank_account_opening_balance', {
+    p_bank_account_id: bankAccountId,
+    p_opening_balance: newBalance,
+  });
 
   if (error) throw error;
 
-  // Sync ledger
-  const { data: existingLedger } = await supabase
-    .from('ledger_entries')
-    .select('id, entry_date')
-    .eq('bank_account_id', bankAccountId)
-    .eq('category', 'opening_balance')
-    .maybeSingle();
-
-  if (newBalance === 0) {
-    if (existingLedger) {
-      await supabase.from('ledger_entries').delete().eq('id', existingLedger.id);
-    }
-  } else {
-    const direction = newBalance > 0 ? 'in' : 'out';
-    const amount = Math.abs(newBalance);
-    
-    if (existingLedger) {
-      await supabase
-        .from('ledger_entries')
-        .update({ direction, amount })
-        .eq('id', existingLedger.id);
-    } else {
-      await supabase
-        .from('ledger_entries')
-        .insert({
-          bank_account_id: bankAccountId,
-          category: 'opening_balance',
-          direction,
-          amount,
-          entry_date: data.created_at || new Date().toISOString().split('T')[0],
-          counterparty_type: 'bank',
-          memo: 'Opening Balance',
-        });
-    }
-  }
-
-  await logAudit({
-    action: 'update',
-    entity_type: 'bank_account',
-    entity_id: bankAccountId,
-    after: { opening_balance: newBalance },
-  });
-
   revalidatePath('/banks');
-  return data;
+  revalidatePath(`/banks/${bankAccountId}/statement`);
 }

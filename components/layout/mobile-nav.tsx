@@ -73,7 +73,8 @@ export function MobileNav({
     {
       title: 'الرئيسية',
       items: [
-        { href: '/', label: 'الرئيسية', icon: <Home className="w-5 h-5" /> },
+        // Dashboard only for super-admins
+        ...(isSuperAdmin ? [{ href: '/', label: 'الرئيسية', icon: <Home className="w-5 h-5" /> }] : []),
         ...(canSeeProjects ? [{ href: '/projects', label: 'المشاريع', icon: <FolderKanban className="w-5 h-5" /> }] : []),
       ],
     },
@@ -120,7 +121,8 @@ export function MobileNav({
 
   /* ── Quick-access bottom tabs (always visible on mobile) ─────────────── */
   const bottomTabs = [
-    { href: '/', label: 'الرئيسية', icon: <Home className="w-5 h-5" /> },
+    // Dashboard tab only for super-admins
+    ...(isSuperAdmin ? [{ href: '/', label: 'الرئيسية', icon: <Home className="w-5 h-5" /> }] : []),
     ...(canSeeProjects ? [{ href: '/projects', label: 'المشاريع', icon: <FolderKanban className="w-5 h-5" /> }] : []),
     ...(canSeeTreasury ? [{ href: '/treasury', label: 'الخزينة', icon: <ArrowLeftRight className="w-5 h-5" /> }] : []),
     ...(canSeeExpenses ? [{ href: '/expenses', label: 'المصروفات', icon: <Receipt className="w-5 h-5" /> }] : []),

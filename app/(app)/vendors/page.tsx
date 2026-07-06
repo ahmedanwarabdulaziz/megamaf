@@ -144,123 +144,103 @@ export default async function VendorsPage({
         </Link>
       </div>
 
-      {/* ── CLAIMS sub-tab: vendor cards grid ── */}
+      {/* ── CLAIMS sub-tab: vendor rows ── */}
       {subtab !== 'invoices' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {vendors
-            .filter((vendor: any) => vendor.summary.grossTotal > 0)
-            .map((vendor: any) => (
-            <div key={vendor.id} className="bg-card rounded-lg border shadow-sm flex flex-col justify-between overflow-hidden">
-              <div className="p-4">
-                <div className="flex justify-between items-start mb-2">
-                  <Link href={`/vendors/${vendor.id}/statement`} className="font-bold text-lg hover:text-primary transition-colors">
-                    {vendor.name}
-                  </Link>
-                  <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${vendor.kind === 'contractor' ? 'bg-primary/10 text-primary' : 'bg-secondary text-secondary-foreground'}`}>
-                    {vendor.kind === 'contractor' ? 'مقاول' : 'مورد'}
-                  </span>
-                </div>
-                
-                <div className="text-sm text-muted-foreground mb-4">
-                  <p>الهاتف: {vendor.phone || 'لا يوجد'}</p>
-                  <div className="mt-2">
-                    <p className="mb-1">المشاريع:</p>
-                    {vendor.all_projects ? (
-                      <span className="text-green-600 font-medium">كل المشاريع</span>
-                    ) : vendor.vendor_project_access?.length > 0 ? (
-                      <div className="flex flex-wrap gap-1">
-                        {vendor.vendor_project_access.map((acc: any) => (
-                          <span key={acc.project_id} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
-                            {acc.project?.name || 'غير معروف'}
+        <div className="bg-card rounded-lg border shadow-sm overflow-x-auto">
+          <table className="w-full text-sm text-right">
+            <thead className="bg-muted/50 border-b whitespace-nowrap">
+              <tr>
+                <th className="p-4 font-medium">المقاول / المورد</th>
+                <th className="p-4 font-medium">المشاريع</th>
+                <th className="p-4 font-medium">الإجمالي التراكمي</th>
+                <th className="p-4 font-medium">الصافي التراكمي</th>
+                <th className="p-4 font-medium text-green-600">المدفوع</th>
+                <th className="p-4 font-medium text-primary">المتبقي المستحق</th>
+                <th className="p-4 font-medium w-32">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {vendors
+                .filter((vendor: any) => vendor.summary.grossTotal > 0)
+                .map((vendor: any) => (
+                  <tr key={vendor.id} className="hover:bg-muted/30 transition-colors">
+                    <td className="p-4 align-top">
+                      <div className="flex flex-col gap-1.5">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Link href={`/vendors/${vendor.id}/statement`} className="font-bold text-base hover:text-primary transition-colors">
+                            {vendor.name}
+                          </Link>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${vendor.kind === 'contractor' ? 'bg-primary/10 text-primary' : 'bg-secondary text-secondary-foreground'}`}>
+                            {vendor.kind === 'contractor' ? 'مقاول' : 'مورد'}
                           </span>
-                        ))}
+                        </div>
+                        {vendor.phone && <span className="text-xs text-muted-foreground whitespace-nowrap">الهاتف: {vendor.phone}</span>}
+                        {vendor.notes && <span className="text-xs text-muted-foreground max-w-[200px] line-clamp-2" title={vendor.notes}>{vendor.notes}</span>}
                       </div>
-                    ) : (
-                      <span className="text-muted-foreground">لا توجد مشاريع محددة</span>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Summary Box */}
-                <div className="bg-muted/30 rounded-md p-3 border mt-4 text-sm space-y-1">
-                  <h4 className="font-semibold mb-2 text-xs uppercase tracking-wider text-muted-foreground">
-                    ملخص آخر مستخلص معتمد
-                  </h4>
-
-                  {/* Gross */}
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>إجمالي الأعمال التراكمي:</span>
-                    <span className="font-medium">{formatMoney(vendor.summary.grossTotal)}</span>
-                  </div>
-
-                  {/* Retention */}
-                  {vendor.summary.retained > 0 && (
-                    <div className="flex justify-between text-xs text-amber-600">
-                      <span>المحتجز التراكمي (تأمين):</span>
-                      <span className="font-medium">- {formatMoney(vendor.summary.retained)}</span>
-                    </div>
-                  )}
-
-                  {/* Net cumulative */}
-                  <div className="flex justify-between text-xs text-muted-foreground border-t border-muted/40 pt-1">
-                    <span>الصافي التراكمي (قابل للدفع):</span>
-                    <span className="font-medium">{formatMoney(vendor.summary.netCumulative)}</span>
-                  </div>
-
-                  {/* Tax */}
-                  {vendor.summary.tax > 0 && (
-                    <div className="flex justify-between text-xs text-muted-foreground">
-                      <span>الضريبة:</span>
-                      <span>+ {formatMoney(vendor.summary.tax)}</span>
-                    </div>
-                  )}
-
-                  {/* Paid */}
-                  {vendor.summary.totalPaid > 0 && (
-                    <div className="flex justify-between text-xs text-green-700 dark:text-green-400 font-medium">
-                      <span>المدفوع:</span>
-                      <span>- {formatMoney(vendor.summary.totalPaid)}</span>
-                    </div>
-                  )}
-
-                  {/* Remaining */}
-                  <div className="flex justify-between items-center border-t border-primary/20 pt-1.5 mt-0.5">
-                    <span className="text-sm font-semibold">
-                      {vendor.summary.remaining <= 0 ? '✓ تم السداد بالكامل' : 'المتبقي المستحق:'}
-                    </span>
-                    <span className={`text-lg font-bold whitespace-nowrap ${
-                      vendor.summary.remaining <= 0 ? 'text-green-600' : 'text-primary'
-                    }`}>
-                      {formatMoney(vendor.summary.remaining)}
-                    </span>
-                  </div>
-                </div>
-
-                {vendor.notes && (
-                  <p className="mt-4 text-xs text-muted-foreground bg-muted/50 p-2 rounded">
-                    ملاحظات: {vendor.notes}
-                  </p>
-                )}
-              </div>
-              
-              <div className="bg-muted/20 border-t p-3 flex justify-between items-center">
-                <Link 
-                  href={`/vendors/${vendor.id}/statement`}
-                  className="text-xs font-medium text-primary hover:underline"
-                >
-                  كشف الحساب التفصيلي
-                </Link>
-                {(profile.is_super_admin || profile.can_approve) && (
-                  <VendorModal vendor={vendor} projects={projects} />
-                )}
-              </div>
-            </div>
-          ))}
-          {vendors.filter((v: any) => v.summary.grossTotal > 0).length === 0 && (
-            <div className="col-span-full p-8 text-center text-muted-foreground border rounded-lg border-dashed">
-              لا توجد مستخلصات معتمدة تطابق خيارات التصفية المحددة.
-            </div>
-          )}
+                    </td>
+                    <td className="p-4 align-top">
+                      {vendor.all_projects ? (
+                        <span className="text-green-600 font-medium text-xs whitespace-nowrap">كل المشاريع</span>
+                      ) : vendor.vendor_project_access?.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 min-w-[120px] max-w-[250px]">
+                          {vendor.vendor_project_access.map((acc: any) => (
+                            <span key={acc.project_id} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+                              {acc.project?.name || 'غير معروف'}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </td>
+                    <td className="p-4 align-top whitespace-nowrap">
+                      <div className="font-medium">{formatMoney(vendor.summary.grossTotal)}</div>
+                      {vendor.summary.retained > 0 && (
+                        <div className="text-[11px] text-amber-600 mt-1 font-medium" title="محتجز">
+                          - {formatMoney(vendor.summary.retained)} محتجز
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-4 align-top whitespace-nowrap">
+                      <div className="font-medium">{formatMoney(vendor.summary.netCumulative)}</div>
+                      {vendor.summary.tax > 0 && (
+                        <div className="text-[11px] text-muted-foreground mt-1" title="ضريبة">
+                          + {formatMoney(vendor.summary.tax)} ضريبة
+                        </div>
+                      )}
+                    </td>
+                    <td className="p-4 text-green-700 align-top font-medium whitespace-nowrap">
+                      {vendor.summary.totalPaid > 0 ? `- ${formatMoney(vendor.summary.totalPaid)}` : '-'}
+                    </td>
+                    <td className="p-4 align-top whitespace-nowrap">
+                      <span className={`font-bold text-base ${vendor.summary.remaining <= 0 ? 'text-green-600' : 'text-primary'}`}>
+                        {formatMoney(vendor.summary.remaining)}
+                      </span>
+                    </td>
+                    <td className="p-4 align-top">
+                      <div className="flex items-center gap-2">
+                        <Link 
+                          href={`/vendors/${vendor.id}/statement`}
+                          className="text-xs bg-muted hover:bg-muted/80 text-foreground px-3 py-2 rounded-md font-medium whitespace-nowrap transition-colors"
+                        >
+                          كشف حساب
+                        </Link>
+                        {(profile.is_super_admin || profile.can_approve) && (
+                          <VendorModal vendor={vendor} projects={projects} />
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              {vendors.filter((v: any) => v.summary.grossTotal > 0).length === 0 && (
+                <tr>
+                  <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                    لا توجد مستخلصات معتمدة تطابق خيارات التصفية المحددة.
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       )}
 

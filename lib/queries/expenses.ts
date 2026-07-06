@@ -2,12 +2,30 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function getExpenseCategories() {
   const supabase = await createClient();
+
+  // Try to fetch categories WITH scope data (requires migration 0063 to be applied).
+  // Fall back to categories without scope data if the table doesn't exist yet.
   const { data, error } = await supabase
     .from('expense_categories')
-    .select('*')
+    .select('*, scopes:expense_category_scopes(scope, project_id)')
     .order('name');
-  if (error) throw error;
-  return data;
+
+  if (error) {
+    // 42P01 = undefined_table; 42703 = undefined_column — migration not applied yet
+    if (error.code === '42P01' || error.code === '42703' || error.code === 'PGRST200') {
+      const { data: fallback } = await supabase
+        .from('expense_categories')
+        .select('*')
+        .order('name');
+      return (fallback ?? []).map((c: any) => ({ ...c, scopes: [] }));
+    }
+    throw error;
+  }
+
+  return (data ?? []).map((c: any) => ({
+    ...c,
+    scopes: c.scopes ?? [],
+  }));
 }
 
 export async function getPendingExpenses() {

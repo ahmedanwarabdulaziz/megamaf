@@ -136,3 +136,60 @@ export async function deleteExpenseCategory(id: string): Promise<{ error: string
     return { error: e?.message || 'حدث خطأ غير متوقع' };
   }
 }
+
+// ─── Category Scope Assignment ────────────────────────────────────────────────
+
+type ScopeInput =
+  | { scope: 'main_company' | 'all_projects'; project_id?: undefined }
+  | { scope: 'specific_project'; project_id: string };
+
+/**
+ * Replace ALL scope entries for a parent category with the new set.
+ * Passing an empty array clears all scopes → category becomes visible everywhere.
+ */
+export async function updateCategoryScopes(
+  categoryId: string,
+  scopes: ScopeInput[]
+): Promise<void> {
+  const supabase = await createClient();
+
+  const { data: userData } = await supabase.auth.getUser();
+  const { data: emp } = await supabase
+    .from('employees')
+    .select('id, is_super_admin')
+    .eq('auth_user_id', userData.user?.id)
+    .single();
+  if (!emp?.is_super_admin) throw new Error('غير مصرح: يلزم صلاحية مدير النظام');
+
+  // Delete all existing scope rows for this category
+  const { error: delErr } = await supabase
+    .from('expense_category_scopes')
+    .delete()
+    .eq('category_id', categoryId);
+  if (delErr) throw delErr;
+
+  // Insert new scope rows
+  if (scopes.length > 0) {
+    const rows = scopes.map(s => ({
+      category_id: categoryId,
+      scope: s.scope,
+      ...(s.project_id ? { project_id: s.project_id } : {}),
+    }));
+    const { error: insErr } = await supabase
+      .from('expense_category_scopes')
+      .insert(rows);
+    if (insErr) throw insErr;
+  }
+
+  await logAudit({
+    employee_id: emp.id,
+    action: 'update',
+    entity_type: 'expense_category',
+    entity_id: categoryId,
+    after: { scopes },
+  });
+
+  revalidatePath('/settings/expenses');
+  revalidatePath('/expenses');
+}
+

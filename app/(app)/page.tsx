@@ -1,11 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
-import { getProfile } from '@/lib/supabase/get-profile';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
 import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
 import { Landmark, ArrowRightLeft, Clock, Wallet, AlertCircle, ShieldOff } from 'lucide-react';
 import { FAB } from '@/components/ui/fab';
 import { PWAInstallPrompt } from '@/components/ui/pwa-install-prompt';
+import { requireAdmin } from '@/lib/require-page-access';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الرئيسية' };
@@ -16,9 +16,12 @@ export default async function HomePage({
 }: {
   searchParams: Promise<{ access_denied?: string }>
 }) {
+  // Only super-admins may see the dashboard.
+  // Non-admins are redirected to their first allowed page automatically.
+  const { profile } = await requireAdmin();
   const { access_denied } = await searchParams;
-  const { profile } = await getProfile();
   const supabase = await createClient();
+
 
   // Run all queries in parallel for fast dashboard load
   const [

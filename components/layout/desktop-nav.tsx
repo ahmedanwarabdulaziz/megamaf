@@ -60,10 +60,13 @@ export function DesktopNav({
 
   return (
     <nav className="flex-1 space-y-1 p-2">
-      <Link href="/" className={navClass('/')}>
-        <Home className="h-5 w-5" />
-        الرئيسية
-      </Link>
+      {/* Dashboard only visible to super-admins */}
+      {isSuperAdmin && (
+        <Link href="/" className={navClass('/')}>
+          <Home className="h-5 w-5" />
+          الرئيسية
+        </Link>
+      )}
       
       {canSeeProjects && (
         <Link href="/projects" className={navClass('/projects')}>

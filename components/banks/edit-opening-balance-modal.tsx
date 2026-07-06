@@ -23,6 +23,7 @@ export function EditOpeningBalanceModal({
       setLoading(true);
       await updateBankAccountOpeningBalance(formData);
       router.push('/banks');
+      router.refresh();
     } catch (e: any) {
       alert(e.message);
     } finally {
