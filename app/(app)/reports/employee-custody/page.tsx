@@ -44,7 +44,7 @@ export default async function EmployeeCustodyPage({
     // For disbursements, there is no "category_id" of expenses, so if they filter by an expense category, 
     // we should NOT return any disbursements.
     let disburseQuery = supabase.from('ledger_entries')
-      .select('id, entry_date, amount, memo, projects(name), attachments(id)')
+      .select('id, entry_date, amount, memo, projects(name)')
       .eq('category', 'custody_disbursement')
       .eq('employee_id', employee_id)
       .gte('entry_date', startDate)
@@ -66,9 +66,20 @@ export default async function EmployeeCustodyPage({
       { data: disbursements },
       { data: expenses },
     ] = await Promise.all([
-      category_id ? Promise.resolve({ data: [] }) : disburseQuery, // Skip disbursements if filtering by expense category
+      category_id ? Promise.resolve({ data: [] }) : disburseQuery,
       expenseQuery
     ]);
+
+    // Separately fetch which disbursement IDs have attachments (polymorphic relationship)
+    const disbursementIds = (disbursements || []).map((d: any) => d.id);
+    const { data: attachmentRows } = disbursementIds.length > 0
+      ? await supabase
+          .from('attachments')
+          .select('entity_id')
+          .eq('entity_type', 'custody_disbursement')
+          .in('entity_id', disbursementIds)
+      : { data: [] };
+    const idsWithAttachments = new Set((attachmentRows || []).map((a: any) => a.entity_id));
 
     if (balanceData) {
       balance = balanceData.balance;
@@ -83,7 +94,7 @@ export default async function EmployeeCustodyPage({
         project: (d.projects as any)?.name,
         category: 'تمويل عهدة',
         id: d.id,
-        hasAttachment: Array.isArray((d as any).attachments) && (d as any).attachments.length > 0,
+        hasAttachment: idsWithAttachments.has(d.id),
       })),
       ...(expenses || []).map(e => ({ 
         type: 'expense', 
