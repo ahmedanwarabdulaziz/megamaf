@@ -1,6 +1,6 @@
 "use server"
 
-import { PutObjectCommand } from "@aws-sdk/client-s3"
+import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { createR2Client, R2_BUCKET } from "@/lib/r2"
 
@@ -19,6 +19,25 @@ export async function getUploadUrl(fileName: string, contentType: string) {
   } catch (error) {
     console.error("Error generating signed upload URL:", error)
     return { error: "Failed to generate upload URL" }
+  }
+}
+
+/**
+ * Generate a signed URL for downloading/viewing a file from R2.
+ * URL is valid for 1 hour.
+ */
+export async function getDownloadUrl(r2Key: string): Promise<{ url?: string; error?: string }> {
+  try {
+    const r2 = createR2Client()
+    const url = await getSignedUrl(
+      r2,
+      new GetObjectCommand({ Bucket: R2_BUCKET, Key: r2Key }),
+      { expiresIn: 3600 }
+    )
+    return { url }
+  } catch (e: any) {
+    console.error("Error generating signed download URL:", e)
+    return { error: "Failed to generate download URL" }
   }
 }
 

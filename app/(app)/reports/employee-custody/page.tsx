@@ -70,16 +70,21 @@ export default async function EmployeeCustodyPage({
       expenseQuery
     ]);
 
-    // Separately fetch which disbursement IDs have attachments (polymorphic relationship)
+    // Separately fetch attachment data for disbursements (polymorphic relationship)
     const disbursementIds = (disbursements || []).map((d: any) => d.id);
     const { data: attachmentRows } = disbursementIds.length > 0
       ? await supabase
           .from('attachments')
-          .select('entity_id')
+          .select('entity_id, r2_key, file_name')
           .eq('entity_type', 'custody_disbursement')
           .in('entity_id', disbursementIds)
       : { data: [] };
-    const idsWithAttachments = new Set((attachmentRows || []).map((a: any) => a.entity_id));
+    // Map: disbursementId -> attachments[]
+    const attachmentsByDisbursement: Record<string, { r2_key: string; file_name: string }[]> = {};
+    for (const a of (attachmentRows || [])) {
+      if (!attachmentsByDisbursement[a.entity_id]) attachmentsByDisbursement[a.entity_id] = [];
+      attachmentsByDisbursement[a.entity_id].push({ r2_key: a.r2_key, file_name: a.file_name });
+    }
 
     if (balanceData) {
       balance = balanceData.balance;
@@ -94,7 +99,8 @@ export default async function EmployeeCustodyPage({
         project: (d.projects as any)?.name,
         category: 'تمويل عهدة',
         id: d.id,
-        hasAttachment: idsWithAttachments.has(d.id),
+        hasAttachment: (attachmentsByDisbursement[d.id]?.length ?? 0) > 0,
+        attachments: attachmentsByDisbursement[d.id] || [],
       })),
       ...(expenses || []).map(e => ({ 
         type: 'expense', 
