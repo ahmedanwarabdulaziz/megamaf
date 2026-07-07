@@ -225,6 +225,7 @@ export async function createClaim(formData: FormData, items: any[], attachmentUr
         entity_type: 'claim',
         entity_id: claimData.id,
         r2_key: url,
+        file_name: url,
         uploaded_by: emp.id,
       }));
       await supabase.from('attachments').insert(attachRows);
@@ -470,7 +471,7 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
     // New attachments
     if (attachmentUrls && attachmentUrls.length > 0) {
       await supabase.from('attachments').insert(
-        attachmentUrls.map(url => ({ entity_type: 'claim', entity_id: claimId, r2_key: url, uploaded_by: emp.id }))
+        attachmentUrls.map(url => ({ entity_type: 'claim', entity_id: claimId, r2_key: url, file_name: url, uploaded_by: emp.id }))
       );
     }
 
@@ -612,6 +613,7 @@ export async function createZeroClaim(formData: FormData, items: any[], attachme
         entity_type: 'claim',
         entity_id: claimData.id,
         r2_key: url,
+        file_name: url,
         uploaded_by: emp.id,
       }));
       await supabase.from('attachments').insert(attachRows);

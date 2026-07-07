@@ -94,6 +94,7 @@ export async function createInvoice(formData: FormData, items: any[], attachment
         entity_type: 'invoice',
         entity_id: invoiceData.id,
         r2_key: url,
+        file_name: url,
         uploaded_by: emp.id,
       }));
       await supabase.from('attachments').insert(attachRows);

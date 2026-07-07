@@ -49,6 +49,7 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
         const { error: uploadError } = await uploadFile(file, fileName);
         if (uploadError) throw new Error(uploadError);
         formData.append('attachment_url', fileName);
+        formData.append('attachment_name', file.name);
       }
 
       const result = await disburseCustody(formData);

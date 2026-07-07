@@ -102,6 +102,7 @@ export async function createExpense(formData: FormData) {
         entity_type: 'expense',
         entity_id: data.id,
         r2_key: url,
+        file_name: url,
         uploaded_by: employeeData.id,
       }));
       const { error: attachError } = await supabase.from('attachments').insert(attachmentRows);
@@ -233,11 +234,13 @@ export async function disburseCustody(formData: FormData) {
 
     // Save attachments if any were uploaded
     const attachmentUrls = formData.getAll('attachment_url') as string[];
+    const attachmentNames = formData.getAll('attachment_name') as string[];
     if (attachmentUrls.length > 0 && ledgerEntryId) {
-      const rows = attachmentUrls.map(url => ({
+      const rows = attachmentUrls.map((url, i) => ({
         entity_type: 'custody_disbursement',
         entity_id: ledgerEntryId as string,
         r2_key: url,
+        file_name: attachmentNames[i] || url,
         uploaded_by: emp.id,
       }));
       const { error: attachError } = await supabase.from('attachments').insert(rows);
@@ -369,6 +372,7 @@ export async function createOwnerExpense(formData: FormData) {
         entity_type: 'expense',
         entity_id: data.id,
         r2_key: url,
+        file_name: url,
         uploaded_by: emp.id,
       }));
       const { error: attachError } = await supabase.from('attachments').insert(rows);
@@ -444,6 +448,7 @@ export async function disburseOwnerCustody(formData: FormData) {
         entity_type: 'owner_custody_disbursement',
         entity_id: disbId as string,
         r2_key: url,
+        file_name: url,
         uploaded_by: emp.id,
       }));
       const { error: attachError } = await supabase.from('attachments').insert(rows);
