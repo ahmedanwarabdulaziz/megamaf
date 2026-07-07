@@ -3,8 +3,9 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Download, Search } from 'lucide-react';
+import { Download, Search, Trash2, Loader2 } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
+import { deleteCustodyDisbursement } from '@/lib/actions/expenses';
 import { exportToCsv } from '@/lib/export';
 import { Input } from '@/components/ui/input';
 
@@ -37,6 +38,19 @@ export function EmployeeCustodyReport({
   const [category, setCategory] = useState(selectedCategoryId);
   const [start, setStart] = useState(startDate);
   const [end, setEnd] = useState(endDate);
+  const [deleting, setDeleting] = useState<string | null>(null);
+
+  const handleDelete = async (id: string) => {
+    if (!confirm('هل أنت متأكد من حذف هذه الدفعة نهائياً؟')) return;
+    setDeleting(id);
+    const res = await deleteCustodyDisbursement(id);
+    setDeleting(null);
+    if (res?.error) {
+      alert(res.error);
+    } else {
+      router.refresh();
+    }
+  };
 
   const handleSearch = () => {
     if (employee) {
@@ -145,6 +159,7 @@ export function EmployeeCustodyReport({
                   <th className="p-3 font-medium">منصرف للموظف (عهدة)</th>
                   <th className="p-3 font-medium">مصروف معتمد (تسوية)</th>
                   <th className="p-3 font-medium w-1/3">البيان</th>
+                  <th className="p-3 font-medium text-center">الإجراءات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -157,12 +172,25 @@ export function EmployeeCustodyReport({
                     <td className="p-3 font-medium text-green-600">{row.type === 'disbursement' ? formatMoney(row.amount) : '-'}</td>
                     <td className="p-3 font-medium text-red-600">{row.type === 'expense' ? formatMoney(row.amount) : '-'}</td>
                     <td className="p-3 whitespace-normal break-words">{row.notes || '-'}</td>
+                    <td className="p-3 text-center">
+                      {row.type === 'disbursement' && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="text-red-500 hover:text-red-700 hover:bg-red-50 h-8 w-8"
+                          onClick={() => handleDelete(row.id)}
+                          disabled={deleting === row.id}
+                        >
+                          {deleting === row.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                        </Button>
+                      )}
+                    </td>
                   </tr>
                 ))}
                 
                 {data.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-muted-foreground">لا توجد حركات عهد لهذا الموظف ضمن هذا النطاق</td>
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">لا توجد حركات عهد لهذا الموظف ضمن هذا النطاق</td>
                   </tr>
                 )}
               </tbody>

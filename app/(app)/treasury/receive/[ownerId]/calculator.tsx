@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2, Paperclip, FileText, Image, X } from 'lucide-react';
 import { receiveFromOwner } from '@/lib/actions/payments';
-import { getUploadUrl } from '@/lib/actions/storage';
+import { uploadFile } from '@/lib/upload';
 import { formatMoney } from '@/lib/money';
 
 export function OwnerReceiptCalculator({
@@ -106,16 +106,8 @@ export function OwnerReceiptCalculator({
       for (const file of files) {
         const fileExt = file.name.split('.').pop();
         const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const { url, error: urlError } = await getUploadUrl(fileName, file.type);
-        if (urlError || !url) throw new Error(urlError || 'Failed to get upload URL');
-        
-        const uploadRes = await fetch(url, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        });
-        
-        if (!uploadRes.ok) throw new Error('Failed to upload file');
+        const { error: uploadError } = await uploadFile(file, fileName);
+        if (uploadError) throw new Error(uploadError);
         uploadedPaths.push(fileName);
       }
 

@@ -3,7 +3,7 @@
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { disburseCustody } from '@/lib/actions/expenses';
-import { getUploadUrl } from '@/lib/actions/storage';
+import { uploadFile } from '@/lib/upload';
 import { Paperclip, X, FileText, Image } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 
@@ -43,16 +43,8 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
       for (const file of files) {
         const ext = file.name.split('.').pop();
         const fileName = `custody_${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-        const { url, error: urlError } = await getUploadUrl(fileName, file.type);
-        if (urlError || !url) throw new Error(urlError || 'Failed to get upload URL');
-        
-        const uploadRes = await fetch(url, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        });
-        
-        if (!uploadRes.ok) throw new Error('Failed to upload file');
+        const { error: uploadError } = await uploadFile(file, fileName);
+        if (uploadError) throw new Error(uploadError);
         formData.append('attachment_url', fileName);
       }
 

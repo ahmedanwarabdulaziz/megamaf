@@ -6,7 +6,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { createClaim } from '@/lib/actions/claims';
-import { getUploadUrl } from '@/lib/actions/storage';
+import { uploadFile } from '@/lib/upload';
 import { Plus, Trash2, Loader2, Package, X } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { SearchableSelect } from '@/components/ui/searchable-select';
@@ -245,16 +245,8 @@ export function CreateClaimForm({
       for (const file of files) {
         const ext = file.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-        const { url, error: urlError } = await getUploadUrl(fileName, file.type);
-        if (urlError || !url) throw new Error(urlError || 'Failed to get upload URL');
-        
-        const uploadRes = await fetch(url, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        });
-        
-        if (!uploadRes.ok) throw new Error('Failed to upload file');
+        const { error: uploadError } = await uploadFile(file, fileName);
+        if (uploadError) throw new Error(uploadError);
         attachmentUrls.push(fileName);
       }
       formData.append('claim_type', claimType);

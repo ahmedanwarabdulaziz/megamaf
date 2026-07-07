@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { createInvoice } from '@/lib/actions/invoices';
+import { uploadFile } from '@/lib/upload';
 import { saveVendor } from '@/lib/actions/vendors';
-import { getUploadUrl } from '@/lib/actions/storage';
 import { Plus, Trash2, X } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { QuickAddItemModal } from './quick-add-item-modal';
@@ -87,16 +87,8 @@ export function CreateInvoiceForm({
       for (const file of files) {
         const ext      = file.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-        const { url, error: urlError } = await getUploadUrl(fileName, file.type);
-        if (urlError || !url) throw new Error(urlError || 'Failed to get upload URL');
-        
-        const uploadRes = await fetch(url, {
-          method: 'PUT',
-          body: file,
-          headers: { 'Content-Type': file.type }
-        });
-        
-        if (!uploadRes.ok) throw new Error('Failed to upload file');
+        const { error: uploadError } = await uploadFile(file, fileName);
+        if (uploadError) throw new Error(uploadError);
         attachmentUrls.push(fileName);
       }
 

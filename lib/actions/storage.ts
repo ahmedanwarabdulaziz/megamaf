@@ -21,3 +21,26 @@ export async function getUploadUrl(fileName: string, contentType: string) {
     return { error: "Failed to generate upload URL" }
   }
 }
+
+/**
+ * Upload a file to R2 directly from the server (avoids CORS issues).
+ * Use this from server actions or server components.
+ */
+export async function uploadFileToR2(file: File, key: string): Promise<{ error?: string }> {
+  try {
+    const r2 = createR2Client()
+    const buffer = Buffer.from(await file.arrayBuffer())
+    await r2.send(
+      new PutObjectCommand({
+        Bucket: R2_BUCKET,
+        Key: key,
+        Body: buffer,
+        ContentType: file.type,
+      })
+    )
+    return {}
+  } catch (e: any) {
+    console.error("R2 upload error:", e)
+    return { error: e.message || "Upload failed" }
+  }
+}
