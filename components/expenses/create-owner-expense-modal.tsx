@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Plus, Paperclip, X, FileText, Image } from 'lucide-react';
 import { createOwnerExpense } from '@/lib/actions/expenses';
-import { createClient } from '@/lib/supabase/client';
+import { getUploadUrl } from '@/lib/actions/storage';
 
 interface Owner    { id: string; name: string; }
 interface Category { id: string; name: string; }
@@ -33,17 +33,22 @@ export function CreateOwnerExpenseModal({
     setError('');
     setLoading(true);
     try {
-      const supabase = createClient();
       const formData = new FormData(e.currentTarget);
 
       // Upload attachments
       for (const file of files) {
         const ext = file.name.split('.').pop();
         const fileName = `owner_exp_${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-        const { error: uploadError } = await supabase.storage
-          .from('attachments')
-          .upload(fileName, file);
-        if (uploadError) throw uploadError;
+        const { url, error: urlError } = await getUploadUrl(fileName, file.type);
+        if (urlError || !url) throw new Error(urlError || 'Failed to get upload URL');
+        
+        const uploadRes = await fetch(url, {
+          method: 'PUT',
+          body: file,
+          headers: { 'Content-Type': file.type }
+        });
+        
+        if (!uploadRes.ok) throw new Error('Failed to upload file');
         formData.append('attachment_url', fileName);
       }
 
