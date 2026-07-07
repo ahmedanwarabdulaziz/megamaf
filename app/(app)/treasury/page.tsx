@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/money';
-import { Wallet } from 'lucide-react';
+import { Wallet, ClipboardList } from 'lucide-react';
 import { AdvancePayButton } from './advance-pay-button';
 import { AdvanceReceiveButton } from './advance-receive-button';
 import { AssignPaymentButton } from '../settings/owners/[id]/statement/assign-payment-button';
@@ -503,31 +503,44 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
       )}
 
       {tab === 'emp_custodies' && (
-        <div className="bg-card rounded-lg border shadow-sm divide-y divide-border">
+        <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
           {empCustodyBalances.length === 0 ? (
             <div className="p-8 text-center text-muted-foreground">لا يوجد موظفين لديهم صلاحية العهد</div>
           ) : (
-            empCustodyBalances.map((b: any) => (
-              <div key={b.employee_id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4 hover:bg-muted/20 transition-colors">
-                <div>
-                  <p className="font-bold">{b.full_name}</p>
-                  <div className="text-sm text-muted-foreground mt-1 flex flex-wrap gap-4">
-                    <span>إجمالي المنصرف: <span className="font-medium text-foreground">{formatMoney(b.total_disbursed)}</span></span>
-                    <span>العهد المسواة: <span className="font-medium text-foreground">{formatMoney(b.total_settled)}</span></span>
-                    <span>المصروفات المعتمدة: <span className="font-medium text-foreground">{formatMoney(b.total_approved_expenses)}</span></span>
-                  </div>
-                </div>
-                <div className="text-left flex flex-col sm:items-end">
-                  <p className="text-xs text-muted-foreground mb-1">الرصيد المتبقي</p>
-                  <div className={`text-xl font-bold whitespace-nowrap ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
-                    {formatMoney(b.balance)}
-                  </div>
-                  <Link href={`/reports/employee-custody?employee_id=${b.employee_id}`} className="mt-2 text-xs font-medium text-primary hover:text-primary/80 flex items-center gap-1 bg-primary/10 px-3 py-1.5 rounded-lg transition-colors hover:bg-primary/20">
-                    التفاصيل / كشف العهدة
-                  </Link>
-                </div>
-              </div>
-            ))
+            <table className="w-full text-sm">
+              <thead className="bg-muted/50 border-b">
+                <tr>
+                  <th className="p-3 text-right font-medium">الموظف</th>
+                  <th className="p-3 text-right font-medium">إجمالي المنصرف</th>
+                  <th className="p-3 text-right font-medium">العهد المسواة</th>
+                  <th className="p-3 text-right font-medium">المصروفات المعتمدة</th>
+                  <th className="p-3 text-right font-medium">الرصيد المتبقي</th>
+                  <th className="p-3 text-center font-medium">الكشف</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-border">
+                {empCustodyBalances.map((b: any) => (
+                  <tr key={b.employee_id} className="hover:bg-muted/20 transition-colors">
+                    <td className="p-3 font-medium">{b.full_name}</td>
+                    <td className="p-3 text-foreground">{formatMoney(b.total_disbursed)}</td>
+                    <td className="p-3 text-foreground">{formatMoney(b.total_settled)}</td>
+                    <td className="p-3 text-foreground">{formatMoney(b.total_approved_expenses)}</td>
+                    <td className={`p-3 font-bold ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
+                      {formatMoney(b.balance)}
+                    </td>
+                    <td className="p-3 text-center">
+                      <Link
+                        href={`/reports/employee-custody?employee_id=${b.employee_id}`}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-md text-primary hover:bg-primary/10 transition-colors"
+                        title="كشف العهدة"
+                      >
+                        <ClipboardList className="w-4 h-4" />
+                      </Link>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
       )}
