@@ -44,7 +44,7 @@ export default async function EmployeeCustodyPage({
     // For disbursements, there is no "category_id" of expenses, so if they filter by an expense category, 
     // we should NOT return any disbursements.
     let disburseQuery = supabase.from('ledger_entries')
-      .select('id, entry_date, amount, memo, projects(name)')
+      .select('id, entry_date, amount, memo, projects(name), attachments(id)')
       .eq('category', 'custody_disbursement')
       .eq('employee_id', employee_id)
       .gte('entry_date', startDate)
@@ -82,7 +82,8 @@ export default async function EmployeeCustodyPage({
         notes: d.memo, 
         project: (d.projects as any)?.name,
         category: 'تمويل عهدة',
-        id: d.id 
+        id: d.id,
+        hasAttachment: Array.isArray((d as any).attachments) && (d as any).attachments.length > 0,
       })),
       ...(expenses || []).map(e => ({ 
         type: 'expense', 

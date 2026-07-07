@@ -2,9 +2,9 @@
 
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { Loader2, Paperclip, X, FileText, Image } from 'lucide-react';
 import { disburseCustody } from '@/lib/actions/expenses';
 import { uploadFile } from '@/lib/upload';
-import { Paperclip, X, FileText, Image } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 
 export function DisburseCustodyModal({ employees, banks }: { employees: any[], banks: any[] }) {
@@ -14,6 +14,7 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
   const [selectedEmp, setSelectedEmp] = useState<any>(null);
   const [amountStr, setAmountStr] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const submittingRef = useRef(false); // prevents double-submit
 
   function handleClose() {
     setOpen(false);
@@ -37,6 +38,8 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
   }
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return; // block double-submit
+    submittingRef.current = true;
     try {
       setLoading(true);
       // Upload files to R2 first
@@ -58,6 +61,7 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
       alert(e.message || 'حدث خطأ');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 
@@ -201,7 +205,7 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
               إلغاء
             </Button>
             <Button type="submit" disabled={loading} className="w-full">
-              {loading ? 'جاري الصرف...' : 'صرف العهدة'}
+              {loading ? <><Loader2 className="w-4 h-4 ml-2 animate-spin" /> جاري الصرف...</> : 'صرف العهدة'}
             </Button>
           </div>
         </form>

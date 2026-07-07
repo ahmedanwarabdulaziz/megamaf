@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Download, Search, Trash2, Loader2 } from 'lucide-react';
+import { Download, Search, Trash2, Loader2, Paperclip } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { deleteCustodyDisbursement } from '@/lib/actions/expenses';
 import { exportToCsv } from '@/lib/export';
@@ -171,7 +171,14 @@ export function EmployeeCustodyReport({
                     <td className="p-3 font-medium">{row.type === 'disbursement' ? 'منصرف عهدة' : 'مصروف معتمد'}</td>
                     <td className="p-3 font-medium text-green-600">{row.type === 'disbursement' ? formatMoney(row.amount) : '-'}</td>
                     <td className="p-3 font-medium text-red-600">{row.type === 'expense' ? formatMoney(row.amount) : '-'}</td>
-                    <td className="p-3 whitespace-normal break-words">{row.notes || '-'}</td>
+                    <td className="p-3 whitespace-normal break-words">
+                      <div className="flex items-center gap-1.5">
+                        {row.hasAttachment && (
+                          <Paperclip className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                        )}
+                        <span>{row.notes || '-'}</span>
+                      </div>
+                    </td>
                     <td className="p-3 text-center">
                       {row.type === 'disbursement' && (
                         <Button
