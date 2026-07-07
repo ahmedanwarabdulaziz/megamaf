@@ -1,6 +1,7 @@
 import { getEmployeeExpenses, getOwnerExpenses, getExpenseCategories, getAllExpenses } from '@/lib/queries/expenses';
 import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
+import { Wallet, CheckCircle, AlertCircle, TrendingDown } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -72,16 +73,31 @@ export default async function EmployeeExpensesPage({
   let owners: any[] = [];
   // Employees list for super admin to pick who to add expense for
   let allEmployees: any[] = [];
+
+  // Fetch custody balance for the current employee
+  let custodyBalance: any = null;
+  const supabase = await createClient();
+
+  const custodyBalancePromise = supabase
+    .from('v_employee_custody_balance')
+    .select('*')
+    .eq('employee_id', employee.id)
+    .maybeSingle();
+
   if (isApprover) {
-    const supabase = await createClient();
-    const [{ data: ownerData }, { data: empData }] = await Promise.all([
+    const [{ data: ownerData }, { data: empData }, { data: custodyData }] = await Promise.all([
       supabase.from('project_owners').select('id, name').order('name'),
       employee.is_super_admin
         ? supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name')
         : Promise.resolve({ data: [] }),
+      custodyBalancePromise,
     ]);
     owners = ownerData || [];
     allEmployees = empData || [];
+    custodyBalance = custodyData;
+  } else {
+    const { data: custodyData } = await custodyBalancePromise;
+    custodyBalance = custodyData;
   }
 
   return (
@@ -146,7 +162,61 @@ export default async function EmployeeExpensesPage({
         )}
       </div>
 
+      {/* Summary cards – only shown on "mine" tab */}
+      {tab === 'mine' && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {/* Total custody received */}
+          <div className="bg-card rounded-lg border shadow-sm p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-blue-500/10 text-blue-600 shrink-0">
+              <Wallet className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">إجمالي العهد المستلمة</p>
+              <p className="text-lg font-bold truncate">{formatMoney(custodyBalance?.total_disbursed ?? 0)}</p>
+            </div>
+          </div>
+
+          {/* Total approved expenses */}
+          <div className="bg-card rounded-lg border shadow-sm p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-green-500/10 text-green-600 shrink-0">
+              <CheckCircle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">إجمالي المصروفات المعتمدة</p>
+              <p className="text-lg font-bold truncate text-green-600">{formatMoney(custodyBalance?.total_approved_expenses ?? 0)}</p>
+            </div>
+          </div>
+
+          {/* Remaining balance */}
+          <div className="bg-card rounded-lg border shadow-sm p-4 flex items-center gap-3">
+            <div className={`p-2 rounded-lg shrink-0 ${(custodyBalance?.balance ?? 0) >= 0 ? 'bg-emerald-500/10 text-emerald-600' : 'bg-red-500/10 text-red-600'}`}>
+              <TrendingDown className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">الرصيد المتبقي</p>
+              <p className={`text-lg font-bold truncate ${(custodyBalance?.balance ?? 0) >= 0 ? 'text-emerald-600' : 'text-red-600'}`}>
+                {formatMoney(custodyBalance?.balance ?? 0)}
+              </p>
+            </div>
+          </div>
+
+          {/* Pending (unapproved) expenses */}
+          <div className="bg-card rounded-lg border shadow-sm p-4 flex items-center gap-3">
+            <div className="p-2 rounded-lg bg-yellow-500/10 text-yellow-600 shrink-0">
+              <AlertCircle className="w-5 h-5" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs text-muted-foreground">المصروفات غير المعتمدة</p>
+              <p className="text-lg font-bold truncate text-yellow-600">
+                {formatMoney(myExpenses.filter((e: any) => e.status === 'pending').reduce((s: number, e: any) => s + (e.amount ?? 0), 0))}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* My expenses list */}
+
       {tab === 'mine' && (
         <div className="space-y-4">
           <AllExpensesFilters 
