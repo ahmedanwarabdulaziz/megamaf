@@ -137,6 +137,7 @@ export function EmployeeCustodyReport({
 
   const handleExport = () => {
     exportToCsv(
+      'employee_custody_report',
       data.map(row => ({
         'التاريخ': row.date,
         'المشروع': row.project || '',
@@ -145,8 +146,7 @@ export function EmployeeCustodyReport({
         'منصرف للموظف': row.type === 'disbursement' ? row.amount : '',
         'مصروف معتمد': row.type === 'expense' ? row.amount : '',
         'البيان': row.notes || '',
-      })),
-      'employee_custody_report'
+      }))
     );
   };
 
