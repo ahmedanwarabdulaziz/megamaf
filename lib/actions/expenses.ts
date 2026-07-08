@@ -31,8 +31,7 @@ export async function createExpense(formData: FormData) {
     });
 
     if (!parsed.success) {
-      const fieldErrors = parsed.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(' | ');
-      return { error: `Validation failed: ${fieldErrors}` };
+      return { error: 'بيانات المصروف غير صالحة: ' + parsed.error.issues.map(e => e.path.join('.') + ': ' + e.message).join(' | ') };
     }
 
     // Super admins bypass project access check; others must have it
@@ -331,7 +330,7 @@ export async function disburseCustody(formData: FormData) {
       memo: formData.get('memo'),
     });
 
-    if (!parsed.success) return { error: 'Invalid disbursement data' };
+    if (!parsed.success) return { error: 'بيانات الصرف غير صالحة' };
 
     const { data: userData } = await supabase.auth.getUser();
     const { data: emp } = await supabase

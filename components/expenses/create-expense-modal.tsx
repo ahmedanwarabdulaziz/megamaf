@@ -23,13 +23,13 @@ export function CreateExpenseModal({
   const [loading, setLoading] = useState(false);
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
-  const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [selectedProjectId, setSelectedProjectId] = useState('00000000-0000-0000-0000-000000000001');
 
   const close = () => {
     setOpen(false);
     setFiles([]);
     setError('');
-    setSelectedProjectId('');
+    setSelectedProjectId('00000000-0000-0000-0000-000000000001');
   };
 
   if (!open) return <Button onClick={() => setOpen(true)}>تسجيل مصروف</Button>;
