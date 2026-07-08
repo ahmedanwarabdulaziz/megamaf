@@ -35,27 +35,30 @@ export function CreateExpenseModal({
   if (!open) return <Button onClick={() => setOpen(true)}>تسجيل مصروف</Button>;
 
   // ── Category filtering based on selected project ────────────────────────
-  const topLevelCategories = categories.filter((c: any) => !c.parent_id);
+  const MAIN_PROJECT = '00000000-0000-0000-0000-000000000001';
+  const effectiveProjectId = selectedProjectId || MAIN_PROJECT;
 
-  const filteredParents = topLevelCategories.filter((parent: any) => {
-    const scopes: any[] = parent.scopes || [];
-    // No scopes defined → show everywhere (backward compat)
+  const filteredCategories = categories.filter((c: any) => {
+    const scopes: any[] = c.scopes || [];
     if (scopes.length === 0) return true;
-
-    if (!selectedProjectId) {
-      // No project selected yet → show all (form is not in valid state anyway)
-      return true;
-    }
-
-    // Project selected → show if scoped for all projects or this specific project
     return scopes.some(
       (s: any) =>
         s.scope === 'all_projects' ||
-        (s.scope === 'specific_project' && s.project_id === selectedProjectId)
+        (s.scope === 'specific_project' && s.project_id === effectiveProjectId)
     );
   });
 
-  const hasNoCategories = !!(selectedProjectId && filteredParents.length === 0);
+  // Separate into parents-with-children (grouped) and flat leaves
+  const parentIds = new Set(filteredCategories.filter((c: any) => !c.parent_id).map((c: any) => c.id));
+  const childCategories = filteredCategories.filter((c: any) => c.parent_id && parentIds.has(c.parent_id));
+  const flatCategories = filteredCategories.filter(
+    (c: any) => !c.parent_id && !childCategories.some((ch: any) => ch.parent_id === c.id)
+  );
+  const groupedParents = filteredCategories.filter(
+    (c: any) => !c.parent_id && childCategories.some((ch: any) => ch.parent_id === c.id)
+  );
+
+  const hasNoCategories = filteredCategories.length === 0;
 
   // ── Form submit ─────────────────────────────────────────────────────────
   async function action(formData: FormData) {
@@ -149,27 +152,26 @@ export function CreateExpenseModal({
             ) : (
               // key forces re-mount (reset selection) when project changes
               <select
-                key={`cat-${selectedProjectId}`}
+                key={`cat-${effectiveProjectId}`}
                 name="category_id"
                 required
                 className="w-full p-2 rounded-md border bg-background"
               >
                 <option value="">-- اختر التصنيف --</option>
-                {filteredParents.map((parent: any) => {
-                  const children = categories.filter(
-                    (c: any) => c.parent_id === parent.id
-                  );
-                  if (children.length === 0) return null;
-                  return (
-                    <optgroup key={parent.id} label={parent.name}>
-                      {children.map((child: any) => (
-                        <option key={child.id} value={child.id}>
-                          {child.name}
-                        </option>
+                {/* Flat (no-parent) categories shown directly */}
+                {flatCategories.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+                {/* Hierarchical categories shown as optgroups */}
+                {groupedParents.map((parent: any) => (
+                  <optgroup key={parent.id} label={parent.name}>
+                    {childCategories
+                      .filter((ch: any) => ch.parent_id === parent.id)
+                      .map((child: any) => (
+                        <option key={child.id} value={child.id}>{child.name}</option>
                       ))}
-                    </optgroup>
-                  );
-                })}
+                  </optgroup>
+                ))}
               </select>
             )}
           </div>
@@ -270,20 +272,28 @@ export function EditExpenseModal({
     </Button>
   );
 
-  const topLevelCategories = categories.filter((c: any) => !c.parent_id);
+  const EDIT_MAIN_PROJECT = '00000000-0000-0000-0000-000000000001';
+  const editEffectiveProjectId = selectedProjectId || EDIT_MAIN_PROJECT;
 
-  const filteredParents = topLevelCategories.filter((parent: any) => {
-    const scopes: any[] = parent.scopes || [];
+  const editFilteredCategories = categories.filter((c: any) => {
+    const scopes: any[] = c.scopes || [];
     if (scopes.length === 0) return true;
-    if (!selectedProjectId) return true;
     return scopes.some(
       (s: any) =>
         s.scope === 'all_projects' ||
-        (s.scope === 'specific_project' && s.project_id === selectedProjectId)
+        (s.scope === 'specific_project' && s.project_id === editEffectiveProjectId)
     );
   });
 
-  const hasNoCategories = !!(selectedProjectId && filteredParents.length === 0);
+  const editParentIds = new Set(editFilteredCategories.filter((c: any) => !c.parent_id).map((c: any) => c.id));
+  const editChildCategories = editFilteredCategories.filter((c: any) => c.parent_id && editParentIds.has(c.parent_id));
+  const editFlatCategories = editFilteredCategories.filter(
+    (c: any) => !c.parent_id && !editChildCategories.some((ch: any) => ch.parent_id === c.id)
+  );
+  const editGroupedParents = editFilteredCategories.filter(
+    (c: any) => !c.parent_id && editChildCategories.some((ch: any) => ch.parent_id === c.id)
+  );
+  const hasNoCategories = editFilteredCategories.length === 0;
 
   async function action(formData: FormData) {
     try {
@@ -350,28 +360,25 @@ export function EditExpenseModal({
               </div>
             ) : (
               <select
-                key={`cat-${selectedProjectId}`}
+                key={`cat-${editEffectiveProjectId}`}
                 name="category_id"
                 required
                 defaultValue={expense.category_id}
                 className="w-full p-2 rounded-md border bg-background"
               >
                 <option value="">-- اختر التصنيف --</option>
-                {filteredParents.map((parent: any) => {
-                  const children = categories.filter(
-                    (c: any) => c.parent_id === parent.id
-                  );
-                  if (children.length === 0) return null;
-                  return (
-                    <optgroup key={parent.id} label={parent.name}>
-                      {children.map((child: any) => (
-                        <option key={child.id} value={child.id}>
-                          {child.name}
-                        </option>
+                {editFlatCategories.map((c: any) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+                {editGroupedParents.map((parent: any) => (
+                  <optgroup key={parent.id} label={parent.name}>
+                    {editChildCategories
+                      .filter((ch: any) => ch.parent_id === parent.id)
+                      .map((child: any) => (
+                        <option key={child.id} value={child.id}>{child.name}</option>
                       ))}
-                    </optgroup>
-                  );
-                })}
+                  </optgroup>
+                ))}
               </select>
             )}
           </div>
