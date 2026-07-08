@@ -7,8 +7,10 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendPushNotification } from '@/lib/notifications';
 
+const MAIN_COMPANY_PROJECT_ID = '00000000-0000-0000-0000-000000000001';
+
 const createExpenseSchema = z.object({
-  project_id: z.string().uuid().nullable().optional(),
+  project_id: z.string().uuid(),
   category_id: z.string().uuid(),
   expense_date: z.string(),
   amount: z.coerce.number().positive(),
@@ -21,7 +23,7 @@ export async function createExpense(formData: FormData) {
     const supabase = await createClient();
     
     const parsed = createExpenseSchema.safeParse({
-      project_id: formData.get('project_id') || null,
+      project_id: (formData.get('project_id') as string) || MAIN_COMPANY_PROJECT_ID,
       category_id: formData.get('category_id'),
       expense_date: formData.get('expense_date'),
       amount: formData.get('amount'),
@@ -42,7 +44,7 @@ export async function createExpense(formData: FormData) {
 
     if (empError || !employeeData) return { error: 'Employee profile not found' };
 
-    if (!employeeData.is_super_admin && parsed.data.project_id) {
+    if (!employeeData.is_super_admin && parsed.data.project_id !== MAIN_COMPANY_PROJECT_ID) {
       const { data: hasAccess, error: accessError } = await supabase.rpc('has_project_access', { p_project_id: parsed.data.project_id });
       if (accessError) return { error: accessError.message };
       if (!hasAccess) return { error: 'لا تملك صلاحية على هذا المشروع' };
@@ -83,7 +85,7 @@ export async function createExpense(formData: FormData) {
     const { data, error } = await supabase
       .from('expenses')
       .insert({
-        project_id: parsed.data.project_id ?? null,
+        project_id: parsed.data.project_id,
         employee_id: targetEmployeeId,
         category_id: parsed.data.category_id,
         expense_date: parsed.data.expense_date,
@@ -140,7 +142,7 @@ export async function createExpense(formData: FormData) {
 
 const updateExpenseSchema = z.object({
   id: z.string().uuid(),
-  project_id: z.string().uuid().nullable().optional(),
+  project_id: z.string().uuid(),
   category_id: z.string().uuid(),
   expense_date: z.string(),
   amount: z.coerce.number().positive(),
@@ -153,7 +155,7 @@ export async function updateExpense(formData: FormData) {
     
     const parsed = updateExpenseSchema.safeParse({
       id: formData.get('id'),
-      project_id: formData.get('project_id') || null,
+      project_id: (formData.get('project_id') as string) || MAIN_COMPANY_PROJECT_ID,
       category_id: formData.get('category_id'),
       expense_date: formData.get('expense_date'),
       amount: formData.get('amount'),
@@ -186,7 +188,7 @@ export async function updateExpense(formData: FormData) {
        return { error: 'لا تملك صلاحية تعديل مصروف شخص آخر' };
     }
 
-    if (!employeeData.is_super_admin && parsed.data.project_id) {
+    if (!employeeData.is_super_admin && parsed.data.project_id !== MAIN_COMPANY_PROJECT_ID) {
       const { data: hasAccess, error: accessError } = await supabase.rpc('has_project_access', { p_project_id: parsed.data.project_id });
       if (accessError) return { error: accessError.message };
       if (!hasAccess) return { error: 'لا تملك صلاحية على هذا المشروع' };
