@@ -9,9 +9,11 @@ import { sendPushNotification } from '@/lib/notifications';
 
 const MAIN_COMPANY_PROJECT_ID = '00000000-0000-0000-0000-000000000001';
 
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const createExpenseSchema = z.object({
-  project_id: z.string().uuid(),
-  category_id: z.string().uuid(),
+  project_id: z.string().regex(uuidRegex, 'Invalid UUID'),
+  category_id: z.string().regex(uuidRegex, 'Invalid UUID'),
   expense_date: z.string(),
   amount: z.coerce.number().positive(),
   notes: z.string().optional(),
@@ -141,9 +143,9 @@ export async function createExpense(formData: FormData) {
 }
 
 const updateExpenseSchema = z.object({
-  id: z.string().uuid(),
-  project_id: z.string().uuid(),
-  category_id: z.string().uuid(),
+  id: z.string().regex(uuidRegex, 'Invalid UUID'),
+  project_id: z.string().regex(uuidRegex, 'Invalid UUID'),
+  category_id: z.string().regex(uuidRegex, 'Invalid UUID'),
   expense_date: z.string(),
   amount: z.coerce.number().positive(),
   notes: z.string().optional(),
