@@ -2,6 +2,7 @@
 
 import * as React from "react"
 import { cn } from "@/lib/utils"
+import { useFormStatus } from "react-dom"
 
 export interface ButtonProps
   extends React.ButtonHTMLAttributes<HTMLButtonElement> {
@@ -10,32 +11,45 @@ export interface ButtonProps
 }
 
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
-  ({ className, variant = "default", size = "default", onClick, ...props }, ref) => {
+  ({ className, variant = "default", size = "default", onClick, disabled, ...props }, ref) => {
+    const { pending } = useFormStatus()
+    const [isPending, setIsPending] = React.useState(false)
+
     const handleClick = React.useCallback(
-      (e: React.MouseEvent<HTMLButtonElement>) => {
-        // Prevent double clicks (especially for submits) within 1 second
-        if (props.type === "submit") {
-          const now = Date.now()
-          const lastClick = Number(e.currentTarget.dataset.lastClick || "0")
-          if (now - lastClick < 1000) {
-            e.preventDefault()
-            e.stopPropagation()
-            return
-          }
-          e.currentTarget.dataset.lastClick = now.toString()
+      async (e: React.MouseEvent<HTMLButtonElement>) => {
+        // Prevent physical double clicks within 1.5 seconds for submits, and 500ms for others
+        const now = Date.now()
+        const lastClick = Number(e.currentTarget.dataset.lastClick || "0")
+        const delay = props.type === "submit" ? 1500 : 500
+        if (now - lastClick < delay) {
+          e.preventDefault()
+          e.stopPropagation()
+          return
         }
+        e.currentTarget.dataset.lastClick = now.toString()
 
         if (onClick) {
-          onClick(e)
+          try {
+            const result = onClick(e) as any
+            if (result instanceof Promise) {
+              setIsPending(true)
+              await result
+            }
+          } finally {
+            if (isPending) setIsPending(false)
+          }
         }
       },
-      [onClick, props.type]
+      [onClick, props.type, isPending]
     )
+
+    const isDisabled = disabled || pending || isPending
 
     return (
       <button
         ref={ref}
         onClick={handleClick}
+        disabled={isDisabled}
         className={cn(
           "inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50",
           {

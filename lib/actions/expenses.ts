@@ -138,6 +138,122 @@ export async function createExpense(formData: FormData) {
   }
 }
 
+const updateExpenseSchema = z.object({
+  id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  category_id: z.string().uuid(),
+  expense_date: z.string(),
+  amount: z.coerce.number().positive(),
+  notes: z.string().optional(),
+});
+
+export async function updateExpense(formData: FormData) {
+  try {
+    const supabase = await createClient();
+    
+    const parsed = updateExpenseSchema.safeParse({
+      id: formData.get('id'),
+      project_id: formData.get('project_id'),
+      category_id: formData.get('category_id'),
+      expense_date: formData.get('expense_date'),
+      amount: formData.get('amount'),
+      notes: formData.get('notes'),
+    });
+
+    if (!parsed.success) {
+      return { error: 'بيانات المصروف غير صالحة' };
+    }
+
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: employeeData } = await supabase
+      .from('employees')
+      .select('id, is_super_admin')
+      .eq('auth_user_id', userData.user?.id)
+      .single();
+
+    if (!employeeData) return { error: 'Employee profile not found' };
+
+    // Verify the expense exists and is NOT approved
+    const { data: existing } = await supabase
+      .from('expenses')
+      .select('status, employee_id')
+      .eq('id', parsed.data.id)
+      .single();
+      
+    if (!existing) return { error: 'المصروف غير موجود' };
+    if (existing.status === 'approved') return { error: 'لا يمكن تعديل مصروف معتمد' };
+    if (!employeeData.is_super_admin && existing.employee_id !== employeeData.id) {
+       return { error: 'لا تملك صلاحية تعديل مصروف شخص آخر' };
+    }
+
+    if (!employeeData.is_super_admin) {
+      const { data: hasAccess, error: accessError } = await supabase.rpc('has_project_access', { p_project_id: parsed.data.project_id });
+      if (accessError) return { error: accessError.message };
+      if (!hasAccess) return { error: 'لا تملك صلاحية على هذا المشروع' };
+    }
+
+    // Enforce date backdating logic (max 15 days for non-admins)
+    const expenseDate = new Date(parsed.data.expense_date);
+    const today = new Date();
+    expenseDate.setHours(0, 0, 0, 0);
+    today.setHours(0, 0, 0, 0);
+    const diffTime = today.getTime() - expenseDate.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (!employeeData.is_super_admin && diffDays < 0) {
+      return { error: 'لا يمكن تسجيل مصروف بتاريخ مستقبلي' };
+    }
+    if (!employeeData.is_super_admin && diffDays > 15) {
+      return { error: 'لا يمكن تعديل مصروف لتاريخ أقدم من 15 يوم' };
+    }
+
+    const adminClient = createAdminClient();
+    const { error } = await adminClient
+      .from('expenses')
+      .update({
+        project_id: parsed.data.project_id,
+        category_id: parsed.data.category_id,
+        expense_date: parsed.data.expense_date,
+        amount: parsed.data.amount,
+        notes: parsed.data.notes,
+        status: 'pending' // Reset to pending if it was rejected
+      })
+      .eq('id', parsed.data.id);
+
+    if (error) return { error: error.message };
+
+    // Handle multiple attachments
+    const attachmentUrls = formData.getAll('attachment_url') as string[];
+    if (attachmentUrls.length > 0) {
+      const attachmentRows = attachmentUrls.map(url => ({
+        entity_type: 'expense',
+        entity_id: parsed.data.id,
+        r2_key: url,
+        file_name: url,
+        uploaded_by: employeeData.id,
+      }));
+      const { error: attachError } = await supabase.from('attachments').insert(attachmentRows);
+      if (attachError) console.error("Attachment insert failed:", attachError);
+    }
+
+    await logAudit({
+      employee_id: employeeData.id,
+      action: 'update',
+      entity_type: 'expense',
+      entity_id: parsed.data.id,
+      after: parsed.data,
+    });
+
+    revalidatePath('/expenses');
+    revalidatePath('/expenses/approvals');
+    revalidatePath('/expenses/statement');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ غير متوقع' };
+  }
+}
+
+
 export async function approveExpense(expenseId: string) {
   try {
     const supabase = await createClient();

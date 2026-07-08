@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 import { createClient } from '@/lib/supabase/server';
 import { formatMoney } from '@/lib/money';
-import { CreateExpenseModal } from '@/components/expenses/create-expense-modal';
+import { CreateExpenseModal, EditExpenseModal } from '@/components/expenses/create-expense-modal';
 import { CreateOwnerExpenseModal } from '@/components/expenses/create-owner-expense-modal';
 import { AllExpensesFilters } from '@/components/expenses/all-expenses-filters';
 
@@ -254,8 +254,17 @@ export default async function EmployeeExpensesPage({
                       )}
                     </div>
                   </div>
-                  <div className="text-xl font-bold whitespace-nowrap">
-                    {formatMoney(expense.amount)}
+                  <div className="flex items-center gap-4">
+                    <div className="text-xl font-bold whitespace-nowrap">
+                      {formatMoney(expense.amount)}
+                    </div>
+                    {expense.status !== 'approved' && (
+                      <EditExpenseModal 
+                        expense={expense} 
+                        categories={activeCategories} 
+                        projects={projects || []} 
+                      />
+                    )}
                   </div>
                 </div>
               ))
@@ -341,7 +350,18 @@ export default async function EmployeeExpensesPage({
                     </td>
                     <td className="p-4 text-muted-foreground">{expense.project?.name || '-'}</td>
                     <td className="p-4 text-muted-foreground">{expense.category?.name || '-'}</td>
-                    <td className="p-4 font-bold">{formatMoney(expense.amount)}</td>
+                    <td className="p-4 font-bold">
+                      <div className="flex items-center gap-2 justify-end">
+                        {formatMoney(expense.amount)}
+                        {expense.status !== 'approved' && !expense.owner_id && (
+                          <EditExpenseModal 
+                            expense={expense} 
+                            categories={categories || []} 
+                            projects={projects || []} 
+                          />
+                        )}
+                      </div>
+                    </td>
                     <td className="p-4"><StatusBadge status={expense.status} /></td>
                     <td className="p-4 text-muted-foreground">{expense.notes || '-'}</td>
                   </tr>
