@@ -127,12 +127,11 @@ export function CreateExpenseModal({
             <label className="block text-sm font-medium mb-1">المشروع</label>
             <select
               name="project_id"
-              required
               className="w-full p-2 rounded-md border bg-background"
               value={selectedProjectId}
               onChange={e => setSelectedProjectId(e.target.value)}
             >
-              <option value="">-- اختر المشروع --</option>
+              <option value="">-- الشركة الرئيسية (بدون مشروع) --</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
