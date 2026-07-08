@@ -37,6 +37,7 @@ export function CreateExpenseModal({
   // ── Category filtering based on selected project ────────────────────────
   const MAIN_PROJECT = '00000000-0000-0000-0000-000000000001';
   const effectiveProjectId = selectedProjectId || MAIN_PROJECT;
+  const isMainCompany = effectiveProjectId === MAIN_PROJECT;
 
   const filteredCategories = categories.filter((c: any) => {
     const scopes: any[] = c.scopes || [];
@@ -44,6 +45,7 @@ export function CreateExpenseModal({
     return scopes.some(
       (s: any) =>
         s.scope === 'all_projects' ||
+        (isMainCompany && s.scope === 'main_company') ||
         (s.scope === 'specific_project' && s.project_id === effectiveProjectId)
     );
   });
@@ -274,6 +276,7 @@ export function EditExpenseModal({
 
   const EDIT_MAIN_PROJECT = '00000000-0000-0000-0000-000000000001';
   const editEffectiveProjectId = selectedProjectId || EDIT_MAIN_PROJECT;
+  const editIsMainCompany = editEffectiveProjectId === EDIT_MAIN_PROJECT;
 
   const editFilteredCategories = categories.filter((c: any) => {
     const scopes: any[] = c.scopes || [];
@@ -281,6 +284,7 @@ export function EditExpenseModal({
     return scopes.some(
       (s: any) =>
         s.scope === 'all_projects' ||
+        (editIsMainCompany && s.scope === 'main_company') ||
         (s.scope === 'specific_project' && s.project_id === editEffectiveProjectId)
     );
   });
