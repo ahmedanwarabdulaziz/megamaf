@@ -2,9 +2,9 @@
 
 import { useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { createExpense, updateExpense } from '@/lib/actions/expenses';
+import { createExpense, updateExpense, deleteExpense } from '@/lib/actions/expenses';
 import { uploadFile } from '@/lib/upload';
-import { AlertCircle, Pencil } from 'lucide-react';
+import { AlertCircle, Pencil, Trash2 } from 'lucide-react';
 
 interface Employee { id: string; full_name: string; }
 
@@ -460,5 +460,73 @@ export function EditExpenseModal({
         </form>
       </div>
     </div>
+  );
+}
+
+export function DeleteExpenseButton({ expenseId }: { expenseId: string }) {
+  const [confirming, setConfirming] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  async function handleDelete() {
+    try {
+      setLoading(true);
+      setError('');
+      const result = await deleteExpense(expenseId);
+      if (result?.error) {
+        setError(result.error);
+        setConfirming(false);
+      }
+    } catch (e: any) {
+      setError(e.message || 'حدث خطأ');
+      setConfirming(false);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (error) return (
+    <span className="text-xs text-destructive">{error}</span>
+  );
+
+  if (confirming) return (
+    <div className="flex items-center gap-1">
+      <span className="text-xs text-muted-foreground whitespace-nowrap">تأكيد الحذف؟</span>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={handleDelete}
+        disabled={loading}
+        className="h-7 w-7 text-destructive hover:bg-destructive/10"
+        title="نعم، احذف"
+      >
+        {loading ? (
+          <span className="w-3 h-3 border-2 border-destructive border-t-transparent rounded-full animate-spin" />
+        ) : (
+          <Trash2 className="w-3.5 h-3.5" />
+        )}
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon"
+        onClick={() => setConfirming(false)}
+        disabled={loading}
+        className="h-7 w-7"
+        title="إلغاء"
+      >
+        <span className="text-xs font-bold">✕</span>
+      </Button>
+    </div>
+  );
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon"
+      onClick={() => setConfirming(true)}
+      title="حذف"
+    >
+      <Trash2 className="w-4 h-4 text-destructive" />
+    </Button>
   );
 }

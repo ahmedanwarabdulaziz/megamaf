@@ -7,7 +7,7 @@ export const dynamic = 'force-dynamic';
 
 import { createClient } from '@/lib/supabase/server';
 import { formatMoney } from '@/lib/money';
-import { CreateExpenseModal, EditExpenseModal } from '@/components/expenses/create-expense-modal';
+import { CreateExpenseModal, EditExpenseModal, DeleteExpenseButton } from '@/components/expenses/create-expense-modal';
 import { CreateOwnerExpenseModal } from '@/components/expenses/create-owner-expense-modal';
 import { AllExpensesFilters } from '@/components/expenses/all-expenses-filters';
 
@@ -254,16 +254,19 @@ export default async function EmployeeExpensesPage({
                       )}
                     </div>
                   </div>
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-2">
                     <div className="text-xl font-bold whitespace-nowrap">
                       {formatMoney(expense.amount)}
                     </div>
                     {expense.status !== 'approved' && (
-                      <EditExpenseModal 
-                        expense={expense} 
-                        categories={activeCategories} 
-                        projects={projects || []} 
-                      />
+                      <>
+                        <EditExpenseModal 
+                          expense={expense} 
+                          categories={activeCategories} 
+                          projects={projects || []} 
+                        />
+                        <DeleteExpenseButton expenseId={expense.id} />
+                      </>
                     )}
                   </div>
                 </div>
@@ -354,11 +357,14 @@ export default async function EmployeeExpensesPage({
                       <div className="flex items-center gap-2 justify-end">
                         {formatMoney(expense.amount)}
                         {expense.status !== 'approved' && !expense.owner_id && (
-                          <EditExpenseModal 
-                            expense={expense} 
-                            categories={categories || []} 
-                            projects={projects || []} 
-                          />
+                          <>
+                            <EditExpenseModal 
+                              expense={expense} 
+                              categories={categories || []} 
+                              projects={projects || []} 
+                            />
+                            <DeleteExpenseButton expenseId={expense.id} />
+                          </>
                         )}
                       </div>
                     </td>

@@ -142,6 +142,56 @@ export async function createExpense(formData: FormData) {
   }
 }
 
+export async function deleteExpense(expenseId: string) {
+  try {
+    const supabase = await createClient();
+    const adminClient = createAdminClient();
+
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: employeeData } = await supabase
+      .from('employees')
+      .select('id, is_super_admin')
+      .eq('auth_user_id', userData.user?.id)
+      .single();
+
+    if (!employeeData) return { error: 'Employee profile not found' };
+
+    // Fetch the expense to verify ownership and status
+    const { data: existing } = await supabase
+      .from('expenses')
+      .select('status, employee_id')
+      .eq('id', expenseId)
+      .single();
+
+    if (!existing) return { error: 'المصروف غير موجود' };
+    if (existing.status === 'approved') return { error: 'لا يمكن حذف مصروف معتمد' };
+    if (!employeeData.is_super_admin && existing.employee_id !== employeeData.id) {
+      return { error: 'لا تملك صلاحية حذف مصروف شخص آخر' };
+    }
+
+    // Delete attachments first
+    await adminClient.from('attachments').delete().eq('entity_type', 'expense').eq('entity_id', expenseId);
+
+    // Delete the expense
+    const { error } = await adminClient.from('expenses').delete().eq('id', expenseId);
+    if (error) return { error: error.message };
+
+    await logAudit({
+      employee_id: employeeData.id,
+      action: 'delete',
+      entity_type: 'expense',
+      entity_id: expenseId,
+    });
+
+    revalidatePath('/expenses');
+    revalidatePath('/expenses/approvals');
+    revalidatePath('/expenses/statement');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ غير متوقع' };
+  }
+}
+
 const updateExpenseSchema = z.object({
   id: z.string().regex(uuidRegex, 'Invalid UUID'),
   project_id: z.string().regex(uuidRegex, 'Invalid UUID'),
