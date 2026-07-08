@@ -31,7 +31,8 @@ export async function createExpense(formData: FormData) {
     });
 
     if (!parsed.success) {
-      return { error: 'Invalid expense data' };
+      const fieldErrors = parsed.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(' | ');
+      return { error: `Validation failed: ${fieldErrors}` };
     }
 
     // Super admins bypass project access check; others must have it
