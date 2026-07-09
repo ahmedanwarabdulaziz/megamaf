@@ -3,7 +3,9 @@ import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
 import { formatMoney } from '@/lib/money';
 import { ApproveRejectButtons } from '@/components/expenses/approve-reject-buttons';
+import { EditExpenseModal } from '@/components/expenses/create-expense-modal';
 import { AllExpensesFilters } from '@/components/expenses/all-expenses-filters';
+import { AttachmentViewer } from '@/components/ui/attachment-viewer';
 import { createClient } from '@/lib/supabase/server';
 
 export const metadata = {
@@ -155,15 +157,18 @@ export default async function ExpenseApprovalsPage({
                           <td className="px-4 py-3 max-w-[200px] truncate" title={expense.notes}>{expense.notes}</td>
                           <td className="px-4 py-3 font-bold whitespace-nowrap">{formatMoney(expense.amount)}</td>
                           <td className="px-4 py-3 text-center">
-                            {expense.attachments && expense.attachments.length > 0 ? (
-                              <span className="text-[10px] font-medium bg-blue-500/10 text-blue-600 px-2 py-1 rounded-full whitespace-nowrap">مرفق</span>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
+                            <AttachmentViewer attachments={expense.attachments} />
                           </td>
                           {tab === 'pending' && (
                             <td className="px-4 py-2 text-center">
-                              <div className="flex justify-center transform scale-90 origin-center">
+                              <div className="flex justify-center items-center gap-2 transform scale-90 origin-center">
+                                {!expense.owner_id && (
+                                  <EditExpenseModal 
+                                    expense={expense} 
+                                    categories={categories.filter(c => c.is_active)} 
+                                    projects={projects || []} 
+                                  />
+                                )}
                                 <ApproveRejectButtons expenseId={expense.id} />
                               </div>
                             </td>
