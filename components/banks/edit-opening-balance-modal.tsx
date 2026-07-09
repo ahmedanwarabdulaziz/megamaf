@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -16,9 +16,12 @@ export function EditOpeningBalanceModal({
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const modalName = `edit-balance-${bankAccountId}`;
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       await updateBankAccountOpeningBalance(formData);
@@ -28,6 +31,7 @@ export function EditOpeningBalanceModal({
       alert(e.message);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

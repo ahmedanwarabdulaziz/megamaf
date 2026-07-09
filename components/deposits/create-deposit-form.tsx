@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
@@ -9,21 +9,29 @@ import { formatMoney } from '@/lib/money';
 
 export function CreateDepositForm({ bankAccounts }: { bankAccounts: any[] }) {
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const router = useRouter();
 
   const [profitType, setProfitType] = useState('annual_rate');
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     const formData = new FormData(e.currentTarget);
-    const result = await createDeposit(formData);
-    
-    if (result.error) {
-      alert(result.error);
+    try {
+      const result = await createDeposit(formData);
+      if (result.error) {
+        alert(result.error);
+      } else {
+        router.push(`/deposits/${result.id}`);
+      }
+    } catch (e: any) {
+      alert(e.message || 'حدث خطأ');
+    } finally {
       setLoading(false);
-    } else {
-      router.push(`/deposits/${result.id}`);
+      submittingRef.current = false;
     }
   }
 

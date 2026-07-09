@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Plus, Paperclip, X, FileText, Image } from 'lucide-react';
 import { createOwnerExpense } from '@/lib/actions/expenses';
@@ -22,6 +22,7 @@ export function CreateOwnerExpenseModal({
 }) {
   const [open, setOpen]             = useState(false);
   const [loading, setLoading]       = useState(false);
+  const submittingRef               = useRef(false);
   const [files, setFiles]           = useState<File[]>([]);
   const [error, setError]           = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
@@ -33,6 +34,8 @@ export function CreateOwnerExpenseModal({
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setError('');
     setLoading(true);
     try {
@@ -57,6 +60,7 @@ export function CreateOwnerExpenseModal({
       setError(e.message || 'حدث خطأ غير متوقع');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

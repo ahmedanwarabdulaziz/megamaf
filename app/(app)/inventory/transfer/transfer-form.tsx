@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
@@ -9,6 +9,7 @@ import { recordTransfer } from '@/lib/actions/inventory';
 export function TransferForm({ warehouses, stock }: { warehouses: any[], stock: any[] }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   const [fromWh, setFromWh] = useState('');
   const [toWh, setToWh] = useState('');
@@ -38,7 +39,8 @@ export function TransferForm({ warehouses, stock }: { warehouses: any[], stock: 
       alert('الكمية المطلوبة أكبر من الرصيد المتاح.');
       return;
     }
-
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     const formData = new FormData();
     formData.append('from_warehouse_id', fromWh);
@@ -46,13 +48,16 @@ export function TransferForm({ warehouses, stock }: { warehouses: any[], stock: 
     formData.append('item_id', itemId);
     formData.append('qty', qty);
     formData.append('notes', notes);
-
-    const result = await recordTransfer(formData);
-    if (result.error) {
-      alert(result.error);
+    try {
+      const result = await recordTransfer(formData);
+      if (result.error) {
+        alert(result.error);
+      } else {
+        router.push('/inventory');
+      }
+    } finally {
       setLoading(false);
-    } else {
-      router.push('/inventory');
+      submittingRef.current = false;
     }
   }
 

@@ -1,7 +1,7 @@
 'use client';
 import React from 'react';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
@@ -80,6 +80,7 @@ export function CreateClaimForm({
   stockLevels?: { warehouse_id: string; item_id: string; qty_on_hand: number; item_unit?: string }[];
 }) {
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false); // synchronous guard
   const [fetchingPrevious, setFetchingPrevious] = useState(false);
   const [pendingWarning, setPendingWarning] = useState<string | null>(null);
   const router = useRouter();
@@ -238,6 +239,8 @@ export function CreateClaimForm({
 
   // ── Submit ───────────────────────────────────────────────────
   async function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       const supabase = createClient();
@@ -259,6 +262,7 @@ export function CreateClaimForm({
       alert(e.message || 'حدث خطأ');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

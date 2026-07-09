@@ -1,7 +1,7 @@
 'use client';
 // Force HMR recompile
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { createExpense, updateExpense, deleteExpense } from '@/lib/actions/expenses';
 import { uploadFile } from '@/lib/upload';
@@ -23,6 +23,7 @@ export function CreateExpenseModal({
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('00000000-0000-0000-0000-000000000001');
@@ -108,6 +109,8 @@ export function CreateExpenseModal({
 
   // ── Form submit ─────────────────────────────────────────────────────────
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       setError('');
@@ -130,6 +133,7 @@ export function CreateExpenseModal({
       setError(e.message || 'حدث خطأ');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 
@@ -287,6 +291,7 @@ export function EditExpenseModal({
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState(expense.project_id || '');
@@ -367,6 +372,8 @@ export function EditExpenseModal({
   ];
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       setError('');
@@ -390,6 +397,7 @@ export function EditExpenseModal({
       setError(e.message || 'حدث خطأ');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

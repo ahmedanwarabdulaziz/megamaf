@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { saveVendor } from '@/lib/actions/vendors';
@@ -8,6 +8,7 @@ import { saveVendor } from '@/lib/actions/vendors';
 export function VendorModal({ vendor, projects }: { vendor?: any, projects: any[] }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const [allProjects, setAllProjects] = useState(vendor ? vendor.all_projects : false);
   
   // Initialize with existing project IDs if editing
@@ -24,6 +25,8 @@ export function VendorModal({ vendor, projects }: { vendor?: any, projects: any[
   }
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       formData.append('all_projects', allProjects.toString());
@@ -40,6 +43,7 @@ export function VendorModal({ vendor, projects }: { vendor?: any, projects: any[
       alert(e.message || "حدث خطأ");
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

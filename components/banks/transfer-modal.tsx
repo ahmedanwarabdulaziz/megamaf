@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -10,6 +10,7 @@ import { formatMoney } from '@/lib/money';
 export function TransferModal({ banks, currentAccountId }: { banks: any[], currentAccountId: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   // Flatten accounts for easy selection
   const accounts = banks.flatMap(b => 
@@ -20,6 +21,8 @@ export function TransferModal({ banks, currentAccountId }: { banks: any[], curre
   ).filter((a: any) => a.bank_account_id !== currentAccountId); // exclude current account
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       await createTransfer(formData);
@@ -28,6 +31,7 @@ export function TransferModal({ banks, currentAccountId }: { banks: any[], curre
       alert(e.message);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

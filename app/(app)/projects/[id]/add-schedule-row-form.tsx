@@ -1,27 +1,32 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2, Plus } from 'lucide-react';
 import { addPaymentScheduleRow } from '@/lib/actions/owner-payments';
 
 export function AddScheduleRowForm({ projectId }: { projectId: string }) {
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   async function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     formData.append('project_id', projectId);
-    
-    const result = await addPaymentScheduleRow(formData);
-    
-    if (result?.error) {
-      alert(result.error);
-    } else {
-      // Reset form
-      const form = document.getElementById('add-schedule-form') as HTMLFormElement;
-      if (form) form.reset();
+    try {
+      const result = await addPaymentScheduleRow(formData);
+      if (result?.error) {
+        alert(result.error);
+      } else {
+        // Reset form
+        const form = document.getElementById('add-schedule-form') as HTMLFormElement;
+        if (form) form.reset();
+      }
+    } finally {
+      setLoading(false);
+      submittingRef.current = false;
     }
-    setLoading(false);
   }
 
   return (

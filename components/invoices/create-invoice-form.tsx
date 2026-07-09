@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useTransition } from 'react';
+import React, { useState, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
@@ -26,6 +26,7 @@ export function CreateInvoiceForm({
   inventoryItems: InventoryItem[];
 }) {
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false); // synchronous guard – immune to React re-render timing
   const router = useRouter();
 
   const [taxEnabled, setTaxEnabled]     = useState(false);
@@ -79,6 +80,8 @@ export function CreateInvoiceForm({
   const total         = subtotal - discountAmount + taxAmount;
 
   async function handleSubmit(formData: FormData) {
+    if (submittingRef.current) return; // block duplicate submissions immediately
+    submittingRef.current = true;
     try {
       setLoading(true);
       const supabase = createClient();
@@ -103,6 +106,7 @@ export function CreateInvoiceForm({
       alert(e.message || 'حدث خطأ');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

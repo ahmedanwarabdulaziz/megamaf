@@ -1,5 +1,5 @@
 'use client';
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
@@ -66,6 +66,7 @@ export function EditClaimForm({
 }: Props) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false); // synchronous guard
   const [taxEnabled, setTaxEnabled] = useState(initTaxEnabled);
   const [taxRate, setTaxRate] = useState(initTaxRate || 0.14);
   const [openingPaidAmount, setOpeningPaidAmount] = useState(initOpeningPaid);
@@ -165,6 +166,8 @@ export function EditClaimForm({
   // ── Submit ───────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     const formData = new FormData(e.currentTarget);
     try {
       setLoading(true);
@@ -189,6 +192,7 @@ export function EditClaimForm({
       alert(e.message || 'حدث خطأ');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

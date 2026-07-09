@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -11,8 +11,11 @@ export function CreateBankModal() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       await createBank(formData);
@@ -21,6 +24,7 @@ export function CreateBankModal() {
       alert(e.message);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

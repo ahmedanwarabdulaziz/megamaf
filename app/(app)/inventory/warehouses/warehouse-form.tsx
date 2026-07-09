@@ -1,25 +1,31 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { createWarehouse } from '@/lib/actions/inventory';
 
 export function WarehouseForm({ projects }: { projects: any[] }) {
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     const formData = new FormData(e.currentTarget);
-    const result = await createWarehouse(formData);
-    
-    if (result.error) {
-      alert(result.error);
-    } else {
-      (e.target as HTMLFormElement).reset();
+    try {
+      const result = await createWarehouse(formData);
+      if (result.error) {
+        alert(result.error);
+      } else {
+        (e.target as HTMLFormElement).reset();
+      }
+    } finally {
+      setLoading(false);
+      submittingRef.current = false;
     }
-    setLoading(false);
   }
 
   return (

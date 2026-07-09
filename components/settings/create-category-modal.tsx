@@ -1,16 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { createExpenseCategory } from '@/lib/actions/categories';
 
 export function CreateCategoryModal({ categories }: { categories: any[] }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   if (!open) return <Button onClick={() => setOpen(true)}>إضافة تصنيف</Button>;
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       await createExpenseCategory(formData);
@@ -19,6 +22,7 @@ export function CreateCategoryModal({ categories }: { categories: any[] }) {
       alert(e.message);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

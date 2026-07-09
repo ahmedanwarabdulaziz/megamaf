@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { collectDepositPayout } from '@/lib/actions/deposits';
@@ -9,21 +9,27 @@ import { formatMoney } from '@/lib/money';
 export function CollectModal({ payout, bankAccounts, defaultBankAccountId }: { payout: any, bankAccounts: any[], defaultBankAccountId?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setLoading(true);
     const formData = new FormData(e.currentTarget);
     formData.append('payout_id', payout.id);
-
-    const result = await collectDepositPayout(formData);
-    
-    if (result.error) {
-      alert(result.error);
+    try {
+      const result = await collectDepositPayout(formData);
+      if (result.error) {
+        alert(result.error);
+      } else {
+        setIsOpen(false);
+      }
+    } catch (e: any) {
+      alert(e.message || 'حدث خطأ');
+    } finally {
       setLoading(false);
-    } else {
-      setIsOpen(false);
-      setLoading(false);
+      submittingRef.current = false;
     }
   }
 

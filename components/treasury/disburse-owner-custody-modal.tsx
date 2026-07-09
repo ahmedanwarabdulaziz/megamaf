@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2, UserRound, Paperclip, X, FileText, Image } from 'lucide-react';
@@ -21,12 +21,15 @@ export function DisburseOwnerCustodyModal({
   const router = useRouter();
   const [open, setOpen]     = useState(false);
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
   const [files, setFiles]   = useState<File[]>([]);
   const today = new Date().toISOString().split('T')[0];
 
   const close = () => { setOpen(false); setFiles([]); };
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       // Upload attachments first
@@ -49,6 +52,7 @@ export function DisburseOwnerCustodyModal({
       alert(e.message || 'حدث خطأ');
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 

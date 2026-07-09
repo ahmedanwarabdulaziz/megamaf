@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
@@ -9,8 +9,11 @@ import { addAdjustment } from '@/lib/actions/banks';
 export function AdjustmentModal({ accountId }: { accountId: string }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+  const submittingRef = useRef(false);
 
   async function action(formData: FormData) {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     try {
       setLoading(true);
       await addAdjustment(formData);
@@ -19,6 +22,7 @@ export function AdjustmentModal({ accountId }: { accountId: string }) {
       alert(e.message);
     } finally {
       setLoading(false);
+      submittingRef.current = false;
     }
   }
 
