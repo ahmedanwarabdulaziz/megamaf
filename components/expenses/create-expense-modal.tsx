@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { createExpense, updateExpense, deleteExpense } from '@/lib/actions/expenses';
 import { uploadFile } from '@/lib/upload';
 import { AlertCircle, Pencil, Trash2 } from 'lucide-react';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface Employee { id: string; full_name: string; }
 
@@ -24,12 +25,16 @@ export function CreateExpenseModal({
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('00000000-0000-0000-0000-000000000001');
+  const [categoryId, setCategoryId] = useState('');
+  const [targetEmployeeId, setTargetEmployeeId] = useState('');
 
   const close = () => {
     setOpen(false);
     setFiles([]);
     setError('');
     setSelectedProjectId('00000000-0000-0000-0000-000000000001');
+    setCategoryId('');
+    setTargetEmployeeId('');
   };
 
   if (!open) return <Button onClick={() => setOpen(true)}>تسجيل مصروف</Button>;
@@ -50,17 +55,55 @@ export function CreateExpenseModal({
     );
   });
 
-  // Separate into parents-with-children (grouped) and flat leaves
-  const parentIds = new Set(filteredCategories.filter((c: any) => !c.parent_id).map((c: any) => c.id));
+  const parents = filteredCategories.filter((c: any) => !c.parent_id);
+  const parentIds = new Set(parents.map((c: any) => c.id));
   const childCategories = filteredCategories.filter((c: any) => c.parent_id && parentIds.has(c.parent_id));
-  const flatCategories = filteredCategories.filter(
-    (c: any) => !c.parent_id && !childCategories.some((ch: any) => ch.parent_id === c.id)
-  );
-  const groupedParents = filteredCategories.filter(
-    (c: any) => !c.parent_id && childCategories.some((ch: any) => ch.parent_id === c.id)
-  );
+  const orphanCategories = filteredCategories.filter((c: any) => c.parent_id && !parentIds.has(c.parent_id));
+  
+  const flatCategories = [
+    ...parents.filter((p: any) => !childCategories.some((ch: any) => ch.parent_id === p.id)),
+    ...orphanCategories
+  ];
+
+  const groupedParents = parents.filter((p: any) => childCategories.some((ch: any) => ch.parent_id === p.id));
 
   const hasNoCategories = filteredCategories.length === 0;
+
+  const categoryOptions: any[] = [];
+  
+  flatCategories.forEach((c: any) => {
+    categoryOptions.push({
+      value: c.id,
+      label: c.name
+    });
+  });
+
+  groupedParents.forEach((parent: any) => {
+    categoryOptions.push({
+      value: parent.id,
+      label: parent.name,
+      isGroupHeader: true,
+      className: 'bg-blue-50 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100 font-bold'
+    });
+    
+    const children = childCategories.filter((ch: any) => ch.parent_id === parent.id);
+    children.forEach((child: any) => {
+      categoryOptions.push({
+        value: child.id,
+        label: `— ${child.name}`
+      });
+    });
+  });
+
+  const allProjectOptions = [
+    { value: '00000000-0000-0000-0000-000000000001', label: '-- ميجاماف (الشركة الرئيسية) --' },
+    ...projects.map((p: any) => ({ value: p.id, label: p.name }))
+  ];
+
+  const employeeOptions = [
+    { value: '', label: '-- نفسي (أنا) --' },
+    ...(employees || []).map((emp: any) => ({ value: emp.id, label: emp.full_name }))
+  ];
 
   // ── Form submit ─────────────────────────────────────────────────────────
   async function action(formData: FormData) {
@@ -115,32 +158,33 @@ export function CreateExpenseModal({
                   (اتركه فارغاً لتسجيله باسمك)
                 </span>
               </label>
-              <select
-                name="target_employee_id"
-                className="w-full p-2 rounded-md border bg-background"
-              >
-                <option value="">-- نفسي (أنا) --</option>
-                {employees.map(emp => (
-                  <option key={emp.id} value={emp.id}>{emp.full_name}</option>
-                ))}
-              </select>
+              <div key="emp-select">
+                <input type="hidden" name="target_employee_id" value={targetEmployeeId} />
+                <SearchableSelect
+                  options={employeeOptions}
+                  value={targetEmployeeId}
+                  onChange={setTargetEmployeeId}
+                  placeholder="-- نفسي (أنا) --"
+                />
+              </div>
             </div>
           )}
 
           {/* Project — controls category filter */}
           <div>
             <label className="block text-sm font-medium mb-1">المشروع</label>
-            <select
-              name="project_id"
-              className="w-full p-2 rounded-md border bg-background"
-              value={selectedProjectId}
-              onChange={e => setSelectedProjectId(e.target.value)}
-            >
-              <option value="00000000-0000-0000-0000-000000000001">-- ميجاماف (الشركة الرئيسية) --</option>
-              {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
+            <div key="proj-select">
+              <input type="hidden" name="project_id" value={selectedProjectId} required />
+              <SearchableSelect
+                options={allProjectOptions}
+                value={selectedProjectId}
+                onChange={val => {
+                  setSelectedProjectId(val);
+                  setCategoryId('');
+                }}
+                placeholder="-- اختر المشروع --"
+              />
+            </div>
           </div>
 
           {/* Category — filtered by selected project */}
@@ -153,28 +197,15 @@ export function CreateExpenseModal({
               </div>
             ) : (
               // key forces re-mount (reset selection) when project changes
-              <select
-                key={`cat-${effectiveProjectId}`}
-                name="category_id"
-                required
-                className="w-full p-2 rounded-md border bg-background"
-              >
-                <option value="">-- اختر التصنيف --</option>
-                {/* Flat (no-parent) categories shown directly */}
-                {flatCategories.map((c: any) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-                {/* Hierarchical categories shown as optgroups */}
-                {groupedParents.map((parent: any) => (
-                  <optgroup key={parent.id} label={parent.name}>
-                    {childCategories
-                      .filter((ch: any) => ch.parent_id === parent.id)
-                      .map((child: any) => (
-                        <option key={child.id} value={child.id}>{child.name}</option>
-                      ))}
-                  </optgroup>
-                ))}
-              </select>
+              <div key={`cat-${effectiveProjectId}`}>
+                <input type="hidden" name="category_id" value={categoryId} required />
+                <SearchableSelect
+                  options={categoryOptions}
+                  value={categoryId}
+                  onChange={setCategoryId}
+                  placeholder="-- اختر التصنيف --"
+                />
+              </div>
             )}
           </div>
 
@@ -258,6 +289,7 @@ export function EditExpenseModal({
   const [files, setFiles] = useState<File[]>([]);
   const [error, setError] = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState(expense.project_id || '');
+  const [categoryId, setCategoryId] = useState(expense.category_id || '');
   const [amount, setAmount] = useState(expense.amount || '');
   const [expenseDate, setExpenseDate] = useState(expense.expense_date || '');
   const [notes, setNotes] = useState(expense.notes || '');
@@ -289,15 +321,49 @@ export function EditExpenseModal({
     );
   });
 
-  const editParentIds = new Set(editFilteredCategories.filter((c: any) => !c.parent_id).map((c: any) => c.id));
+  const editParents = editFilteredCategories.filter((c: any) => !c.parent_id);
+  const editParentIds = new Set(editParents.map((c: any) => c.id));
   const editChildCategories = editFilteredCategories.filter((c: any) => c.parent_id && editParentIds.has(c.parent_id));
-  const editFlatCategories = editFilteredCategories.filter(
-    (c: any) => !c.parent_id && !editChildCategories.some((ch: any) => ch.parent_id === c.id)
-  );
-  const editGroupedParents = editFilteredCategories.filter(
-    (c: any) => !c.parent_id && editChildCategories.some((ch: any) => ch.parent_id === c.id)
-  );
+  const editOrphanCategories = editFilteredCategories.filter((c: any) => c.parent_id && !editParentIds.has(c.parent_id));
+  
+  const editFlatCategories = [
+    ...editParents.filter((p: any) => !editChildCategories.some((ch: any) => ch.parent_id === p.id)),
+    ...editOrphanCategories
+  ];
+
+  const editGroupedParents = editParents.filter((p: any) => editChildCategories.some((ch: any) => ch.parent_id === p.id));
   const hasNoCategories = editFilteredCategories.length === 0;
+
+  const editCategoryOptions: any[] = [];
+  
+  editFlatCategories.forEach((c: any) => {
+    editCategoryOptions.push({
+      value: c.id,
+      label: c.name
+    });
+  });
+
+  editGroupedParents.forEach((parent: any) => {
+    editCategoryOptions.push({
+      value: parent.id,
+      label: parent.name,
+      isGroupHeader: true,
+      className: 'bg-blue-50 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100 font-bold'
+    });
+    
+    const children = editChildCategories.filter((ch: any) => ch.parent_id === parent.id);
+    children.forEach((child: any) => {
+      editCategoryOptions.push({
+        value: child.id,
+        label: `— ${child.name}`
+      });
+    });
+  });
+
+  const editAllProjectOptions = [
+    { value: '00000000-0000-0000-0000-000000000001', label: '-- ميجاماف (الشركة الرئيسية) --' },
+    ...projects.map((p: any) => ({ value: p.id, label: p.name }))
+  ];
 
   async function action(formData: FormData) {
     try {
@@ -363,27 +429,15 @@ export function EditExpenseModal({
                 لا توجد تصنيفات متاحة لهذا المشروع.
               </div>
             ) : (
-              <select
-                key={`cat-${editEffectiveProjectId}`}
-                name="category_id"
-                required
-                defaultValue={expense.category_id}
-                className="w-full p-2 rounded-md border bg-background"
-              >
-                <option value="">-- اختر التصنيف --</option>
-                {editFlatCategories.map((c: any) => (
-                  <option key={c.id} value={c.id}>{c.name}</option>
-                ))}
-                {editGroupedParents.map((parent: any) => (
-                  <optgroup key={parent.id} label={parent.name}>
-                    {editChildCategories
-                      .filter((ch: any) => ch.parent_id === parent.id)
-                      .map((child: any) => (
-                        <option key={child.id} value={child.id}>{child.name}</option>
-                      ))}
-                  </optgroup>
-                ))}
-              </select>
+              <div key={`cat-${editEffectiveProjectId}`}>
+                <input type="hidden" name="category_id" value={categoryId} required />
+                <SearchableSelect
+                  options={editCategoryOptions}
+                  value={categoryId}
+                  onChange={setCategoryId}
+                  placeholder="-- اختر التصنيف --"
+                />
+              </div>
             )}
           </div>
 

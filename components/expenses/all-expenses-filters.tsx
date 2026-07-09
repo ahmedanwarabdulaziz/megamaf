@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Search } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 export function AllExpensesFilters({
   employees,
@@ -66,64 +67,70 @@ export function AllExpensesFilters({
     setIsAll(e.target.checked);
   };
 
+  const employeeOptions = [
+    { value: '', label: 'كل الموظفين' },
+    ...employees.map(e => ({ value: e.id, label: e.full_name }))
+  ];
+
+  const projectOptions = [
+    { value: '', label: 'كل المشاريع' },
+    ...projects.map(p => ({ value: p.id, label: p.name }))
+  ];
+
+  const categoryOptions = [
+    { value: '', label: 'كل البنود' },
+    ...categories.map(c => ({ value: c.id, label: c.name }))
+  ];
+
+  const statusOptions = [
+    { value: '', label: 'الكل' },
+    { value: 'pending', label: 'قيد المراجعة' },
+    { value: 'approved', label: 'معتمد' },
+    { value: 'rejected', label: 'مرفوض' }
+  ];
+
   return (
     <div className="bg-muted/30 p-4 rounded-lg border shadow-sm flex flex-wrap gap-4 items-end mb-4">
       {!hideEmployeeFilter && (
         <div className="flex-1 min-w-[200px]">
           <label className="block text-sm font-medium mb-1">الموظف</label>
-          <select 
-            value={employee} 
-            onChange={e => setEmployee(e.target.value)} 
-            className="w-full p-2 rounded-md border bg-background"
-          >
-            <option value="">كل الموظفين</option>
-            {employees.map(e => (
-              <option key={e.id} value={e.id}>{e.full_name}</option>
-            ))}
-          </select>
+          <SearchableSelect
+            options={employeeOptions}
+            value={employee}
+            onChange={setEmployee}
+            placeholder="كل الموظفين"
+          />
         </div>
       )}
 
-      <div className="flex-1 min-w-[150px]">
+      <div className="flex-1 min-w-[200px]">
         <label className="block text-sm font-medium mb-1">المشروع</label>
-        <select 
-          value={project} 
-          onChange={e => setProject(e.target.value)} 
-          className="w-full p-2 rounded-md border bg-background"
-        >
-          <option value="">كل المشاريع</option>
-          {projects.map(p => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
+        <SearchableSelect
+          options={projectOptions}
+          value={project}
+          onChange={setProject}
+          placeholder="كل المشاريع"
+        />
       </div>
 
-      <div className="flex-1 min-w-[150px]">
+      <div className="flex-1 min-w-[200px]">
         <label className="block text-sm font-medium mb-1">بند الصرف</label>
-        <select 
-          value={category} 
-          onChange={e => setCategory(e.target.value)} 
-          className="w-full p-2 rounded-md border bg-background"
-        >
-          <option value="">كل البنود</option>
-          {categories.map(c => (
-            <option key={c.id} value={c.id}>{c.name}</option>
-          ))}
-        </select>
+        <SearchableSelect
+          options={categoryOptions}
+          value={category}
+          onChange={setCategory}
+          placeholder="كل البنود"
+        />
       </div>
 
       <div className="flex-1 min-w-[150px]">
         <label className="block text-sm font-medium mb-1">الحالة</label>
-        <select 
-          value={status} 
-          onChange={e => setStatus(e.target.value)} 
-          className="w-full p-2 rounded-md border bg-background"
-        >
-          <option value="">الكل</option>
-          <option value="pending">قيد المراجعة</option>
-          <option value="approved">معتمد</option>
-          <option value="rejected">مرفوض</option>
-        </select>
+        <SearchableSelect
+          options={statusOptions}
+          value={status}
+          onChange={setStatus}
+          placeholder="الكل"
+        />
       </div>
       
       {!isAll && (

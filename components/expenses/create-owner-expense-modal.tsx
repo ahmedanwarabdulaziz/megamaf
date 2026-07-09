@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2, Plus, Paperclip, X, FileText, Image } from 'lucide-react';
 import { createOwnerExpense } from '@/lib/actions/expenses';
 import { uploadFile } from '@/lib/upload';
+import { SearchableSelect } from '@/components/ui/searchable-select';
 
 interface Owner    { id: string; name: string; }
 interface Category { id: string; name: string; }
@@ -24,9 +25,11 @@ export function CreateOwnerExpenseModal({
   const [files, setFiles]           = useState<File[]>([]);
   const [error, setError]           = useState('');
   const [selectedProjectId, setSelectedProjectId] = useState('');
+  const [categoryId, setCategoryId] = useState('');
+  const [ownerId, setOwnerId] = useState('');
   const today = new Date().toISOString().split('T')[0];
 
-  const close = () => { setOpen(false); setFiles([]); setError(''); setSelectedProjectId(''); };
+  const close = () => { setOpen(false); setFiles([]); setError(''); setSelectedProjectId(''); setCategoryId(''); setOwnerId(''); };
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -65,6 +68,12 @@ export function CreateOwnerExpenseModal({
     setFiles(prev => [...prev, ...allowed]);
   };
 
+  const ownerOptions = owners.map(o => ({ value: o.id, label: o.name }));
+  const projectOptions = [
+    { value: '', label: '-- بدون مشروع محدد --' },
+    ...projects.map(p => ({ value: p.id, label: p.name }))
+  ];
+
   return (
     <>
       <Button onClick={() => setOpen(true)} className="gap-2">
@@ -87,54 +96,97 @@ export function CreateOwnerExpenseModal({
               {/* Owner */}
               <div>
                 <label className="block text-sm font-medium mb-1">المالك</label>
-                <select name="owner_id" required className="w-full p-2 rounded-md border bg-background">
-                  <option value="">-- اختر المالك --</option>
-                  {owners.map(o => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
-                </select>
+                <div key="owner-select">
+                  <input type="hidden" name="owner_id" value={ownerId} required />
+                  <SearchableSelect
+                    options={ownerOptions}
+                    value={ownerId}
+                    onChange={setOwnerId}
+                    placeholder="-- اختر المالك --"
+                  />
+                </div>
               </div>
 
               {/* Project (optional) — placed before category to drive filtering */}
               <div>
                 <label className="block text-sm font-medium mb-1">المشروع (اختياري)</label>
-                <select
-                  name="project_id"
-                  className="w-full p-2 rounded-md border bg-background"
-                  value={selectedProjectId}
-                  onChange={e => setSelectedProjectId(e.target.value)}
-                >
-                  <option value="">-- بدون مشروع محدد --</option>
-                  {projects.map(p => (
-                    <option key={p.id} value={p.id}>{p.name}</option>
-                  ))}
-                </select>
+                <div key={`proj-owner-select`}>
+                  <input type="hidden" name="project_id" value={selectedProjectId} />
+                  <SearchableSelect
+                    options={projectOptions}
+                    value={selectedProjectId}
+                    onChange={val => {
+                      setSelectedProjectId(val);
+                      setCategoryId('');
+                    }}
+                    placeholder="-- بدون مشروع محدد --"
+                  />
+                </div>
               </div>
 
               {/* Category — filtered by selected project */}
               <div>
                 <label className="block text-sm font-medium mb-1">التصنيف</label>
-                <select
-                  key={`cat-owner-${selectedProjectId}`}
-                  name="category_id"
-                  required
-                  className="w-full p-2 rounded-md border bg-background"
-                >
-                  <option value="">-- اختر التصنيف --</option>
-                  {(categories as any[]).filter((c: any) => {
-                    const scopes: any[] = c.scopes || [];
-                    if (scopes.length === 0) return true;
-                    if (!selectedProjectId) {
-                      return scopes.some((s: any) => s.scope === 'main_company' || s.scope === 'all_projects');
-                    }
-                    return scopes.some((s: any) =>
-                      s.scope === 'all_projects' ||
-                      (s.scope === 'specific_project' && s.project_id === selectedProjectId)
-                    );
-                  }).map((c: any) => (
-                    <option key={c.id} value={c.id}>{c.name}</option>
-                  ))}
-                </select>
+                <div key={`cat-owner-${selectedProjectId}`}>
+                  <input type="hidden" name="category_id" value={categoryId} required />
+                  <SearchableSelect
+                    options={(() => {
+                      const filteredCategories = (categories as any[]).filter((c: any) => {
+                        const scopes: any[] = c.scopes || [];
+                        if (scopes.length === 0) return true;
+                        if (!selectedProjectId) {
+                          return scopes.some((s: any) => s.scope === 'main_company' || s.scope === 'all_projects');
+                        }
+                        return scopes.some((s: any) =>
+                          s.scope === 'all_projects' ||
+                          (s.scope === 'specific_project' && s.project_id === selectedProjectId)
+                        );
+                      });
+
+                      const parents = filteredCategories.filter((c: any) => !c.parent_id);
+                      const parentIds = new Set(parents.map((c: any) => c.id));
+                      const childCategories = filteredCategories.filter((c: any) => c.parent_id && parentIds.has(c.parent_id));
+                      const orphanCategories = filteredCategories.filter((c: any) => c.parent_id && !parentIds.has(c.parent_id));
+                      
+                      const flatCategories = [
+                        ...parents.filter((p: any) => !childCategories.some((ch: any) => ch.parent_id === p.id)),
+                        ...orphanCategories
+                      ];
+
+                      const groupedParents = parents.filter((p: any) => childCategories.some((ch: any) => ch.parent_id === p.id));
+
+                      const categoryOptions: any[] = [];
+                      
+                      flatCategories.forEach((c: any) => {
+                        categoryOptions.push({
+                          value: c.id,
+                          label: c.name
+                        });
+                      });
+
+                      groupedParents.forEach((parent: any) => {
+                        categoryOptions.push({
+                          value: parent.id,
+                          label: parent.name,
+                          isGroupHeader: true,
+                          className: 'bg-blue-50 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100 font-bold'
+                        });
+                        
+                        const children = childCategories.filter((ch: any) => ch.parent_id === parent.id);
+                        children.forEach((child: any) => {
+                          categoryOptions.push({
+                            value: child.id,
+                            label: `— ${child.name}`
+                          });
+                        });
+                      });
+                      return categoryOptions;
+                    })()}
+                    value={categoryId}
+                    onChange={setCategoryId}
+                    placeholder="-- اختر التصنيف --"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">

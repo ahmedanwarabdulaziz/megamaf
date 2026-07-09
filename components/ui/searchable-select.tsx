@@ -13,6 +13,10 @@ export interface SelectOption {
   badge?: string;
   /** Tailwind color classes for the badge e.g. 'bg-green-50 text-green-700 border-green-300' */
   badgeColor?: string;
+  /** Custom class name for the entire option row (e.g. custom background) */
+  className?: string;
+  /** If true, this option cannot be selected and acts as a header */
+  isGroupHeader?: boolean;
 }
 
 interface Props {
@@ -63,6 +67,7 @@ export function SearchableSelect({
         top:  rect.bottom + 4,
         left: rect.left,
         width: Math.max(rect.width, 220),
+        maxWidth: 'calc(100vw - 32px)',
         zIndex: 9999,
       });
     } else {
@@ -72,6 +77,7 @@ export function SearchableSelect({
         bottom: window.innerHeight - rect.top + 4,
         left: rect.left,
         width: Math.max(rect.width, 220),
+        maxWidth: 'calc(100vw - 32px)',
         zIndex: 9999,
       });
     }
@@ -176,22 +182,38 @@ export function SearchableSelect({
         ) : (
           filtered.map(opt => (
             <li key={opt.value}>
-              <button
-                type="button"
-                onClick={() => pick(opt)}
-                className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-right hover:bg-accent transition-colors ${opt.value === value ? 'bg-primary/5' : ''}`}
-              >
-                {opt.value === value && <Check className="w-3.5 h-3.5 text-primary flex-shrink-0" />}
-                <div className="flex-1 min-w-0">
-                  <div className="truncate">{opt.label}</div>
-                  {opt.sub && <div className="text-[11px] text-muted-foreground truncate">{opt.sub}</div>}
+              {opt.isGroupHeader ? (
+                <div
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-right ${opt.className || 'font-bold bg-muted/50'}`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">{opt.label}</div>
+                    {opt.sub && <div className="text-[11px] text-muted-foreground truncate">{opt.sub}</div>}
+                  </div>
+                  {opt.badge && (
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${opt.badgeColor ?? 'bg-muted text-muted-foreground border-border'}`}>
+                      {opt.badge}
+                    </span>
+                  )}
                 </div>
-                {opt.badge && (
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${opt.badgeColor ?? 'bg-muted text-muted-foreground border-border'}`}>
-                    {opt.badge}
-                  </span>
-                )}
-              </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => pick(opt)}
+                  className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-right transition-colors ${opt.className ? opt.className : ''} ${opt.value === value ? 'bg-primary text-white font-medium' : 'hover:bg-accent hover:text-accent-foreground text-foreground'}`}
+                >
+                  {opt.value === value && <Check className="w-3.5 h-3.5 text-white flex-shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="truncate">{opt.label}</div>
+                    {opt.sub && <div className={`text-[11px] truncate ${opt.value === value ? 'text-white/80' : 'opacity-70'}`}>{opt.sub}</div>}
+                  </div>
+                  {opt.badge && (
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full border flex-shrink-0 ${opt.badgeColor ?? 'bg-muted text-muted-foreground border-border'}`}>
+                      {opt.badge}
+                    </span>
+                  )}
+                </button>
+              )}
             </li>
           ))
         )}
