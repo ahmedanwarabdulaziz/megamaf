@@ -161,7 +161,7 @@ export default async function ExpenseApprovalsPage({
                           </td>
                           {tab === 'pending' && (
                             <td className="px-4 py-2 text-center">
-                              <div className="flex justify-center items-center gap-2 transform scale-90 origin-center">
+                              <div className="flex justify-center items-center gap-2">
                                 {!expense.owner_id && (
                                   <EditExpenseModal 
                                     expense={expense} 
