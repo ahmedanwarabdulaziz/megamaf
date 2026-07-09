@@ -325,6 +325,7 @@ export default async function EmployeeExpensesPage({
             startDate={startDate}
             endDate={endDate}
             showAll={isShowAll}
+            activeTab="all"
           />
 
           <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
