@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 import { logAudit } from '@/lib/audit';
 import { sendPushNotification } from '@/lib/notifications';
@@ -163,7 +164,7 @@ export async function rejectInvoice(invoiceId: string) {
 
     const { error } = await supabase.rpc('reject_invoice', { p_invoice_id: invoiceId });
     if (error) return { error: error.message };
-    
+
     if (invoiceRecord) {
        await sendPushNotification(
          [invoiceRecord.employee_id],
@@ -175,6 +176,158 @@ export async function rejectInvoice(invoiceId: string) {
     }
 
     revalidatePath('/invoices');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ' };
+  }
+}
+
+const updateInvoiceSchema = z.object({
+  id: z.string().uuid(),
+  vendor_id: z.string().uuid(),
+  project_id: z.string().uuid(),
+  invoice_date: z.string(),
+  tax_enabled: z.boolean(),
+  tax_rate: z.coerce.number().min(0).max(1),
+  discount_rate: z.coerce.number().min(0).max(1),
+  notes: z.string().optional(),
+});
+
+export async function updateInvoice(formData: FormData, items: any[], attachmentUrls: string[]) {
+  try {
+    const supabase = await createClient();
+
+    const parsed = updateInvoiceSchema.safeParse({
+      id: formData.get('id'),
+      vendor_id: formData.get('vendor_id'),
+      project_id: formData.get('project_id'),
+      invoice_date: formData.get('invoice_date'),
+      tax_enabled: formData.get('tax_enabled') === 'true',
+      tax_rate: formData.get('tax_rate'),
+      discount_rate: formData.get('discount_rate'),
+      notes: formData.get('notes'),
+    });
+
+    if (!parsed.success) return { error: 'Invalid invoice data' };
+    if (!items || items.length === 0) return { error: 'At least one item is required' };
+
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id, is_super_admin').eq('auth_user_id', userData.user?.id).single();
+    if (!emp) return { error: 'Employee not found' };
+
+    const { data: existing } = await supabase.from('invoices').select('status').eq('id', parsed.data.id).single();
+    if (!existing) return { error: 'الفاتورة غير موجودة' };
+    if (existing.status === 'approved') return { error: 'لا يمكن تعديل فاتورة معتمدة' };
+
+    const { data: hasAccess } = await supabase.rpc('has_project_access', { p_project_id: parsed.data.project_id });
+    if (!hasAccess && !emp.is_super_admin) return { error: 'لا تملك صلاحية على هذا المشروع' };
+
+    const { data: vendorAccess } = await supabase
+      .from('vendors')
+      .select('kind, all_projects, vendor_project_access(project_id)')
+      .eq('id', parsed.data.vendor_id)
+      .single();
+
+    if (!vendorAccess) return { error: 'Vendor not found' };
+
+    if (vendorAccess.kind !== 'vendor') {
+      return { error: 'لا يمكن إنشاء فاتورة لمقاول — الفواتير مخصصة للموردين (توريدات) فقط' };
+    }
+
+    if (!vendorAccess.all_projects) {
+      const allowedProjects = vendorAccess.vendor_project_access?.map((p: any) => p.project_id) || [];
+      if (!allowedProjects.includes(parsed.data.project_id)) {
+        return { error: 'هذا المورد غير مصرح له بالعمل في هذا المشروع' };
+      }
+    }
+
+    const adminClient = createAdminClient();
+    const { id, ...invoiceFields } = parsed.data;
+
+    // Editing a rejected invoice resubmits it for approval
+    const { error: updateError } = await adminClient
+      .from('invoices')
+      .update({ ...invoiceFields, status: 'pending', approved_by: null, approved_at: null })
+      .eq('id', id);
+
+    if (updateError) return { error: updateError.message };
+
+    // Replace items (trigger recalculates totals)
+    const { error: deleteItemsError } = await adminClient.from('invoice_items').delete().eq('invoice_id', id);
+    if (deleteItemsError) return { error: deleteItemsError.message };
+
+    const dbItems = items.map(item => ({
+      invoice_id: id,
+      description: item.description,
+      qty: item.qty,
+      unit_price: item.unit_price,
+      line_total: item.qty * item.unit_price,
+      warehouse_id: item.warehouse_id || null,
+      item_id: item.item_id || null,
+    }));
+
+    const { error: itemsError } = await adminClient.from('invoice_items').insert(dbItems);
+    if (itemsError) return { error: itemsError.message };
+
+    if (attachmentUrls && attachmentUrls.length > 0) {
+      const attachRows = attachmentUrls.map(url => ({
+        entity_type: 'invoice',
+        entity_id: id,
+        r2_key: url,
+        file_name: url,
+        uploaded_by: emp.id,
+      }));
+      await adminClient.from('attachments').insert(attachRows);
+    }
+
+    await logAudit({
+      employee_id: emp.id,
+      action: 'update',
+      entity_type: 'invoice',
+      entity_id: id,
+      after: { ...invoiceFields, items: dbItems },
+    });
+
+    revalidatePath('/invoices');
+    revalidatePath(`/invoices/${id}`);
+    revalidatePath('/projects', 'layout');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'An error occurred' };
+  }
+}
+
+export async function deleteInvoice(invoiceId: string) {
+  try {
+    const supabase = await createClient();
+
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id, is_super_admin').eq('auth_user_id', userData.user?.id).single();
+    if (!emp) return { error: 'Employee not found' };
+
+    const { data: existing } = await supabase.from('invoices').select('status, project_id').eq('id', invoiceId).single();
+    if (!existing) return { error: 'الفاتورة غير موجودة' };
+    if (existing.status === 'approved') return { error: 'لا يمكن حذف فاتورة معتمدة' };
+
+    const { data: hasAccess } = await supabase.rpc('has_project_access', { p_project_id: existing.project_id });
+    if (!hasAccess && !emp.is_super_admin) return { error: 'لا تملك صلاحية على هذا المشروع' };
+
+    const adminClient = createAdminClient();
+
+    await adminClient.from('attachments').delete().eq('entity_type', 'invoice').eq('entity_id', invoiceId);
+
+    const { error } = await adminClient.from('invoices').delete().eq('id', invoiceId);
+    if (error) return { error: error.message };
+
+    await logAudit({
+      employee_id: emp.id,
+      action: 'delete',
+      entity_type: 'invoice',
+      entity_id: invoiceId,
+    });
+
+    revalidatePath('/invoices');
+    revalidatePath('/projects', 'layout');
     return { success: true };
   } catch (e: any) {
     return { error: e.message || 'حدث خطأ' };

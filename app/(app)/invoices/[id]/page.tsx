@@ -3,8 +3,9 @@ import { getProfile } from '@/lib/supabase/get-profile';
 import { notFound } from 'next/navigation';
 import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
-import { ArrowRight, Receipt, Phone, Building2, Calendar, CreditCard, Clock, FileText } from 'lucide-react';
+import { ArrowRight, Receipt, Phone, Building2, Calendar, CreditCard, Clock, FileText, Pencil } from 'lucide-react';
 import { InvoiceApproveRejectButtons } from '@/components/invoices/approve-reject-buttons';
+import { DeleteInvoiceButton } from '@/components/invoices/delete-invoice-button';
 import { getBatchSignedUrls } from '@/lib/r2';
 import { ImageLightbox } from '@/components/ui/image-lightbox';
 import { Button } from '@/components/ui/button';
@@ -53,6 +54,18 @@ export default async function InvoiceDetailsPage({ params }: { params: Promise<{
             <Link href={`/treasury/pay/${invoice.vendor_id}`}>
               <Button>تسديد دفعة</Button>
             </Link>
+          )}
+          {!isApproved && (
+            <div className="flex items-center gap-1">
+              <Link
+                href={`/invoices/${invoice.id}/edit`}
+                title="تعديل"
+                className="h-9 w-9 flex items-center justify-center rounded-md border hover:bg-muted transition-colors"
+              >
+                <Pencil className="w-4 h-4 text-blue-500" />
+              </Link>
+              <DeleteInvoiceButton invoiceId={invoice.id} redirectTo="/invoices" />
+            </div>
           )}
           <span className={`px-4 py-1.5 rounded-full text-sm font-semibold border ${isApproved ? 'bg-primary/10 text-primary border-primary/20' : isRejected ? 'bg-destructive/10 text-destructive border-destructive/20' : 'bg-yellow-500/10 text-yellow-600 border-yellow-500/20'}`}>
             {isApproved ? 'معتمدة' : isRejected ? 'مرفوضة' : 'قيد المراجعة'}

@@ -4,7 +4,7 @@ import React, { useState, useTransition, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
-import { createInvoice } from '@/lib/actions/invoices';
+import { createInvoice, updateInvoice } from '@/lib/actions/invoices';
 import { uploadFile } from '@/lib/upload';
 import { saveVendor } from '@/lib/actions/vendors';
 import { Plus, Trash2, X } from 'lucide-react';
@@ -13,35 +13,48 @@ import { QuickAddItemModal } from './quick-add-item-modal';
 import { SearchableItemSelect } from './searchable-item-select';
 
 interface InventoryItem { id: string; name: string; unit: string; code?: string | null; }
+interface LineItem { id: string; description: string; qty: number; unit_price: number; warehouse_id: string; item_id: string; }
 
 export function CreateInvoiceForm({
   vendors,
   projects,
   warehouses,
   inventoryItems: initialItems,
+  invoice,
 }: {
   vendors: any[];
   projects: any[];
   warehouses: any[];
   inventoryItems: InventoryItem[];
+  invoice?: any;
 }) {
+  const isEditMode = !!invoice;
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false); // synchronous guard – immune to React re-render timing
   const router = useRouter();
 
-  const [taxEnabled, setTaxEnabled]     = useState(false);
-  const [taxRate, setTaxRate]           = useState(0.14);
-  const [discountRate, setDiscountRate] = useState(0);
+  const [taxEnabled, setTaxEnabled]     = useState(invoice?.tax_enabled ?? false);
+  const [taxRate, setTaxRate]           = useState(invoice?.tax_rate ?? 0.14);
+  const [discountRate, setDiscountRate] = useState(invoice?.discount_rate ?? 0);
 
-  const [lineItems, setLineItems] = useState([
-    { id: crypto.randomUUID(), description: '', qty: 1, unit_price: 0, warehouse_id: '', item_id: '' },
-  ]);
+  const [lineItems, setLineItems] = useState<LineItem[]>(
+    invoice?.items && invoice.items.length > 0
+      ? invoice.items.map((item: any) => ({
+          id: item.id || crypto.randomUUID(),
+          description: item.description,
+          qty: item.qty,
+          unit_price: item.unit_price,
+          warehouse_id: item.warehouse_id || '',
+          item_id: item.item_id || '',
+        }))
+      : [{ id: crypto.randomUUID(), description: '', qty: 1, unit_price: 0, warehouse_id: '', item_id: '' }]
+  );
   const [files, setFiles] = useState<File[]>([]);
 
   // ► Inventory items held in state so newly created items appear instantly
   const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>(initialItems);
 
-  const [selectedVendorNav, setSelectedVendorNav] = useState('');
+  const [selectedVendorNav, setSelectedVendorNav] = useState(invoice?.vendor_id || '');
   const [isAddingVendor, setIsAddingVendor] = useState(false);
   const [vendorPending, startVendorTransition] = useTransition();
   const [vendorError, setVendorError] = useState('');
@@ -99,9 +112,16 @@ export function CreateInvoiceForm({
       formData.append('tax_rate',       taxRate.toString());
       formData.append('discount_rate',  discountRate.toString());
 
-      const result = await createInvoice(formData, lineItems, attachmentUrls);
-      if (result?.error) { alert(result.error); return; }
-      router.push('/invoices');
+      if (isEditMode) {
+        formData.append('id', invoice.id);
+        const result = await updateInvoice(formData, lineItems, attachmentUrls);
+        if (result?.error) { alert(result.error); return; }
+        router.push(`/invoices/${invoice.id}`);
+      } else {
+        const result = await createInvoice(formData, lineItems, attachmentUrls);
+        if (result?.error) { alert(result.error); return; }
+        router.push('/invoices');
+      }
     } catch (e: any) {
       alert(e.message || 'حدث خطأ');
     } finally {
@@ -159,7 +179,7 @@ export function CreateInvoiceForm({
 
         <div>
           <label className="block text-sm font-medium mb-1">المشروع</label>
-          <select required name="project_id" className="w-full p-2 rounded border bg-background">
+          <select required name="project_id" defaultValue={invoice?.project_id || ''} className="w-full p-2 rounded border bg-background">
             <option value="">اختر المشروع...</option>
             {(() => {
               // Build a parent→children map for depth-first tree walk
@@ -199,7 +219,7 @@ export function CreateInvoiceForm({
             required
             type="date"
             name="invoice_date"
-            defaultValue={new Date().toISOString().split('T')[0]}
+            defaultValue={invoice?.invoice_date || new Date().toISOString().split('T')[0]}
             className="w-full p-2 rounded border bg-background"
           />
         </div>
@@ -331,17 +351,24 @@ export function CreateInvoiceForm({
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">المرفقات</label>
+            <label className="block text-sm font-medium mb-1">
+              {isEditMode ? 'إضافة مرفقات جديدة' : 'المرفقات'}
+            </label>
             <input
               type="file" multiple accept="image/*,.pdf"
               onChange={e => setFiles(Array.from(e.target.files || []))}
               className="w-full p-2 rounded border bg-background text-sm"
             />
+            {isEditMode && invoice.attachments?.length > 0 && (
+              <p className="text-xs text-muted-foreground mt-1">
+                يوجد {invoice.attachments.length} مرفق محفوظ مسبقاً وسيبقى كما هو. يمكنك إضافة مرفقات جديدة هنا.
+              </p>
+            )}
           </div>
 
           <div>
             <label className="block text-sm font-medium mb-1">ملاحظات</label>
-            <textarea name="notes" className="w-full p-2 rounded border bg-background" rows={2} />
+            <textarea name="notes" defaultValue={invoice?.notes || ''} className="w-full p-2 rounded border bg-background" rows={2} />
           </div>
         </div>
 
@@ -371,7 +398,7 @@ export function CreateInvoiceForm({
 
       <div className="flex justify-end border-t pt-6">
         <Button type="submit" disabled={loading} className="w-full md:w-auto">
-          {loading ? 'جاري الحفظ...' : 'حفظ الفاتورة'}
+          {loading ? 'جاري الحفظ...' : isEditMode ? 'تحديث الفاتورة' : 'حفظ الفاتورة'}
         </Button>
       </div>
     </form>

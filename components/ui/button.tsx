@@ -28,16 +28,18 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           return
         }
 
-        // For submit buttons, engage the guard immediately and synchronously
         const isSubmit = props.type === "submit" || (!props.type && e.currentTarget.form !== null)
-        if (isSubmit) {
-          submittingRef.current = true
-          // Visually disable the button right away (before React re-renders)
-          e.currentTarget.setAttribute("data-submitting", "true")
-          e.currentTarget.disabled = true
-        }
 
         if (onClick) {
+          // For submit buttons with an onClick, engage the guard immediately
+          // and synchronously — disabling here is safe because we invoke
+          // onClick ourselves below, it isn't gated by the native click's
+          // default action.
+          if (isSubmit) {
+            submittingRef.current = true
+            e.currentTarget.setAttribute("data-submitting", "true")
+            e.currentTarget.disabled = true
+          }
           try {
             const result = onClick(e) as any
             if (result instanceof Promise) {
@@ -54,9 +56,22 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             }
           }
         } else if (isSubmit) {
-          // For form-action submits (no onClick), release the guard after a
-          // generous timeout so the navigation/re-render can happen first.
-          // If the page navigates away, the timeout is a no-op.
+          // Native <form action={...}> submit with no onClick: the browser's
+          // default action (submitting the form) runs right after this
+          // handler finishes. Disabling the button synchronously here would
+          // make it disabled at that point, which cancels the pending
+          // submission per the HTML spec. Set the ref guard immediately
+          // (blocks an instant second click) but defer the visual disable to
+          // the next tick so THIS click's submission still goes through.
+          submittingRef.current = true
+          const btn = e.currentTarget
+          setTimeout(() => {
+            btn.setAttribute("data-submitting", "true")
+            btn.disabled = true
+          }, 0)
+          // Release the guard after a generous timeout so the
+          // navigation/re-render can happen first. If the page navigates
+          // away, the timeout is a no-op.
           setTimeout(() => {
             submittingRef.current = false
           }, 3000)
