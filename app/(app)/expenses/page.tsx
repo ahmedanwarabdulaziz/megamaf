@@ -10,6 +10,7 @@ import { formatMoney } from '@/lib/money';
 import { CreateExpenseModal, EditExpenseModal, DeleteExpenseButton } from '@/components/expenses/create-expense-modal';
 import { CreateOwnerExpenseModal } from '@/components/expenses/create-owner-expense-modal';
 import { AllExpensesFilters } from '@/components/expenses/all-expenses-filters';
+import { AttachmentViewer } from '@/components/ui/attachment-viewer';
 
 export const metadata = {
   title: 'المصروفات',
@@ -339,6 +340,7 @@ export default async function EmployeeExpensesPage({
                   <th className="p-4 font-medium">المبلغ</th>
                   <th className="p-4 font-medium">الحالة</th>
                   <th className="p-4 font-medium">البيان</th>
+                  <th className="p-4 font-medium text-center">المرفقات</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -359,10 +361,10 @@ export default async function EmployeeExpensesPage({
                         {formatMoney(expense.amount)}
                         {expense.status !== 'approved' && !expense.owner_id && (
                           <>
-                            <EditExpenseModal 
-                              expense={expense} 
-                              categories={categories || []} 
-                              projects={projects || []} 
+                            <EditExpenseModal
+                              expense={expense}
+                              categories={categories || []}
+                              projects={projects || []}
                             />
                             <DeleteExpenseButton expenseId={expense.id} />
                           </>
@@ -371,11 +373,14 @@ export default async function EmployeeExpensesPage({
                     </td>
                     <td className="p-4"><StatusBadge status={expense.status} /></td>
                     <td className="p-4 text-muted-foreground">{expense.notes || '-'}</td>
+                    <td className="p-4 text-center">
+                      <AttachmentViewer attachments={expense.attachments} />
+                    </td>
                   </tr>
                 ))}
                 {(!allExpensesData || allExpensesData.length === 0) && (
                   <tr>
-                    <td colSpan={7} className="p-8 text-center text-muted-foreground">لا توجد مصروفات مسجلة</td>
+                    <td colSpan={8} className="p-8 text-center text-muted-foreground">لا توجد مصروفات مسجلة</td>
                   </tr>
                 )}
               </tbody>

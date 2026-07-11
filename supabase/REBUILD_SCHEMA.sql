@@ -562,6 +562,7 @@ CREATE POLICY "Ledger scoped select" ON public.ledger_entries
         public.is_super_admin()
         OR (bank_account_id IS NOT NULL AND public.has_page_access('banks'))
         OR (project_id IS NOT NULL AND public.has_project_access(project_id))
+        OR employee_id = public.current_employee_id()
     );
 
 -- banks & bank_accounts

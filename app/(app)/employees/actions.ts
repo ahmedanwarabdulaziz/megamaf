@@ -117,7 +117,11 @@ export async function saveEmployee(formData: FormData) {
       })
     } else {
       // Update
-      const payload: any = { full_name, username, role, is_active, can_approve, is_super_admin, has_custody_access }
+      // username is intentionally excluded: it's readOnly in the edit form and
+      // is baked into the employee's auth email (`${username}@megamaf.local`),
+      // which is never kept in sync — changing it here silently locks the
+      // employee out of login.
+      const payload: any = { full_name, role, is_active, can_approve, is_super_admin, has_custody_access }
       if (pin) {
         const pin_hash = await hashPin(pin)
         await adminClient.from('employee_secrets')
