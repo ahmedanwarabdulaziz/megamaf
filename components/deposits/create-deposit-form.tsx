@@ -4,15 +4,35 @@ import { useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
-import { createDeposit } from '@/lib/actions/deposits';
+import { createDeposit, renewDeposit } from '@/lib/actions/deposits';
 import { formatMoney } from '@/lib/money';
 
-export function CreateDepositForm({ bankAccounts }: { bankAccounts: any[] }) {
+type DepositInitialValues = {
+  name?: string;
+  bank_name?: string;
+  principal_amount?: number;
+  start_date?: string;
+  term_months?: number;
+  profit_type?: string;
+  profit_value?: number;
+  payout_frequency?: string;
+  default_bank_account_id?: string;
+};
+
+export function CreateDepositForm({
+  bankAccounts,
+  renewFromId,
+  initialValues,
+}: {
+  bankAccounts: any[];
+  renewFromId?: string;
+  initialValues?: DepositInitialValues;
+}) {
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
   const router = useRouter();
 
-  const [profitType, setProfitType] = useState('annual_rate');
+  const [profitType, setProfitType] = useState(initialValues?.profit_type ?? 'annual_rate');
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -20,8 +40,9 @@ export function CreateDepositForm({ bankAccounts }: { bankAccounts: any[] }) {
     submittingRef.current = true;
     setLoading(true);
     const formData = new FormData(e.currentTarget);
+    if (renewFromId) formData.append('old_deposit_id', renewFromId);
     try {
-      const result = await createDeposit(formData);
+      const result = renewFromId ? await renewDeposit(formData) : await createDeposit(formData);
       if (result.error) {
         alert(result.error);
       } else {
@@ -40,26 +61,26 @@ export function CreateDepositForm({ bankAccounts }: { bankAccounts: any[] }) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1">اسم الوديعة / الشهادة</label>
-          <input required name="name" className="w-full p-2 rounded border bg-background" placeholder="مثال: شهادة استثمار ثلاثية" />
+          <input required name="name" defaultValue={initialValues?.name} className="w-full p-2 rounded border bg-background" placeholder="مثال: شهادة استثمار ثلاثية" />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">اسم البنك المصدر</label>
-          <input required name="bank_name" className="w-full p-2 rounded border bg-background" placeholder="مثال: البنك الأهلي المصري" />
+          <input required name="bank_name" defaultValue={initialValues?.bank_name} className="w-full p-2 rounded border bg-background" placeholder="مثال: البنك الأهلي المصري" />
         </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div>
           <label className="block text-sm font-medium mb-1">أصل المبلغ (رأس المال)</label>
-          <input required type="number" step="0.01" min="1" name="principal_amount" className="w-full p-2 rounded border bg-background" placeholder="0.00" />
+          <input required type="number" step="0.01" min="1" name="principal_amount" defaultValue={initialValues?.principal_amount} className="w-full p-2 rounded border bg-background" placeholder="0.00" />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">تاريخ الإصدار</label>
-          <input required type="date" name="start_date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
+          <input required type="date" name="start_date" defaultValue={initialValues?.start_date ?? new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">مدة الشهادة (بالأشهر)</label>
-          <input required type="number" min="1" name="term_months" className="w-full p-2 rounded border bg-background" placeholder="مثال: 12 أو 36" />
+          <input required type="number" min="1" name="term_months" defaultValue={initialValues?.term_months} className="w-full p-2 rounded border bg-background" placeholder="مثال: 12 أو 36" />
         </div>
       </div>
 
@@ -75,11 +96,11 @@ export function CreateDepositForm({ bankAccounts }: { bankAccounts: any[] }) {
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">{profitType === 'annual_rate' ? 'نسبة العائد السنوي (%)' : 'إجمالي مبلغ العائد'}</label>
-            <input required type="number" step="0.01" min="0" name="profit_value" className="w-full p-2 rounded border bg-background" placeholder="مثال: 12.5" />
+            <input required type="number" step="0.01" min="0" name="profit_value" defaultValue={initialValues?.profit_value} className="w-full p-2 rounded border bg-background" placeholder="مثال: 12.5" />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">دورية صرف العائد</label>
-            <select required name="payout_frequency" className="w-full p-2 rounded border bg-background">
+            <select required name="payout_frequency" defaultValue={initialValues?.payout_frequency ?? 'monthly'} className="w-full p-2 rounded border bg-background">
               <option value="monthly">شهري</option>
               <option value="quarterly">ربع سنوي</option>
               <option value="semiannual">نصف سنوي</option>
@@ -93,7 +114,7 @@ export function CreateDepositForm({ bankAccounts }: { bankAccounts: any[] }) {
       <div className="border-t pt-4 space-y-4">
         <div>
           <label className="block text-sm font-medium mb-1">الحساب البنكي الافتراضي للتحصيل (اختياري)</label>
-          <select name="default_bank_account_id" className="w-full p-2 rounded border bg-background">
+          <select name="default_bank_account_id" defaultValue={initialValues?.default_bank_account_id ?? ''} className="w-full p-2 rounded border bg-background">
             <option value="">-- اختر الحساب (يمكن تحديده وقت التحصيل) --</option>
             {bankAccounts.map((b: any) => (
               <option key={b.bank_account_id} value={b.bank_account_id}>
@@ -112,7 +133,7 @@ export function CreateDepositForm({ bankAccounts }: { bankAccounts: any[] }) {
       <div className="flex justify-end border-t pt-4">
         <Button type="submit" disabled={loading}>
           {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-          إصدار الشهادة وإنشاء جدول العوائد
+          {renewFromId ? 'تجديد الشهادة وإنشاء جدول العوائد' : 'إصدار الشهادة وإنشاء جدول العوائد'}
         </Button>
       </div>
     </form>

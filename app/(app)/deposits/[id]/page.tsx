@@ -1,37 +1,87 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
+import Link from 'next/link';
 import { formatMoney } from '@/lib/money';
 import { CollectModal } from '@/components/deposits/collect-modal';
 import { EditDueDateModal } from '@/components/deposits/edit-due-date-modal';
+import { RenewDepositModal } from '@/components/deposits/renew-deposit-modal';
+import { ReturnPrincipalModal } from '@/components/deposits/return-principal-modal';
+import { requirePageAccess } from '@/lib/require-page-access';
 
 export const metadata = { title: 'تفاصيل الشهادة/الوديعة' };
 
+const STATUS_LABEL: Record<string, string> = {
+  returned: 'تم إرجاعها للبنك',
+  renewed: 'تم تجديدها',
+};
+
 export default async function DepositDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  await requirePageAccess('deposits');
   const { id } = await params;
   const supabase = await createClient();
 
-  const { data: deposit } = await supabase
-    .from('deposits')
-    .select(`
-      *,
-      deposit_payouts (*),
-      bank_accounts!deposits_default_bank_account_id_fkey(account_name, banks(name))
-    `)
-    .eq('id', id)
-    .single();
+  const [{ data: deposit }, { data: bankAccounts }] = await Promise.all([
+    supabase
+      .from('deposits')
+      .select(`
+        *,
+        deposit_payouts (*),
+        bank_accounts!deposits_default_bank_account_id_fkey(account_name, banks(name))
+      `)
+      .eq('id', id)
+      .single(),
+    supabase.from('v_bank_account_balances').select('*').order('account_name'),
+  ]);
 
   if (!deposit) notFound();
 
-  const { data: bankAccounts } = await supabase.from('v_bank_account_balances').select('*').order('account_name');
+  const { data: renewedFrom } = deposit.renewed_from_id
+    ? await supabase.from('deposits').select('id, name, bank_name').eq('id', deposit.renewed_from_id).single()
+    : { data: null };
 
   const payouts = deposit.deposit_payouts?.sort((a: any, b: any) => a.seq - b.seq) || [];
+
+  const maturityDate = new Date(deposit.start_date + 'T00:00:00Z');
+  maturityDate.setUTCMonth(maturityDate.getUTCMonth() + deposit.term_months);
+  const todayUTC = new Date();
+  todayUTC.setUTCHours(0, 0, 0, 0);
+  const isMatured = todayUTC >= maturityDate;
+  const isEligibleForClosure = deposit.status === 'active' && isMatured;
 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold">{deposit.name}</h1>
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          {deposit.name}
+          {deposit.status !== 'active' && (
+            <span className="text-xs font-medium bg-muted text-muted-foreground px-2 py-1 rounded-full">
+              {STATUS_LABEL[deposit.status]}
+            </span>
+          )}
+        </h1>
         <p className="text-muted-foreground mt-1">{deposit.bank_name}</p>
+        {renewedFrom && (
+          <p className="text-sm text-muted-foreground mt-1">
+            تجديد لِـ{' '}
+            <Link href={`/deposits/${renewedFrom.id}`} className="text-primary hover:underline">
+              {renewedFrom.name} ({renewedFrom.bank_name})
+            </Link>
+          </p>
+        )}
       </div>
+
+      {isEligibleForClosure && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-800 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="font-bold text-amber-800 dark:text-amber-400">هذه الشهادة وصلت لتاريخ الاستحقاق</p>
+            <p className="text-sm text-amber-700 dark:text-amber-500 mt-0.5">قم بإرجاع أصل المبلغ للبنك أو تجديد الشهادة</p>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <ReturnPrincipalModal deposit={deposit} bankAccounts={bankAccounts || []} />
+            <RenewDepositModal deposit={deposit} bankAccounts={bankAccounts || []} />
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="md:col-span-1 space-y-6">
@@ -44,6 +94,10 @@ export default async function DepositDetailPage({ params }: { params: Promise<{ 
             <div className="flex justify-between">
               <span className="text-muted-foreground">تاريخ الإصدار:</span>
               <span className="font-medium">{new Date(deposit.start_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">تاريخ الاستحقاق:</span>
+              <span className="font-medium">{maturityDate.toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span>
             </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">المدة:</span>

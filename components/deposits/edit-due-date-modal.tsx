@@ -50,6 +50,9 @@ export function EditDueDateModal({ payout }: { payout: any }) {
                   defaultValue={payout.due_date}
                   className="w-full p-2 rounded border bg-background"
                 />
+                <p className="text-xs text-muted-foreground mt-1">
+                  سيتم تحديث كل الاستحقاقات القادمة (غير المحصّلة) تلقائياً بناءً على هذا التاريخ
+                </p>
               </div>
 
               <div className="flex justify-end gap-2 pt-4 border-t">

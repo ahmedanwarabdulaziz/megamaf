@@ -19,30 +19,121 @@ const createDepositSchema = z.object({
   default_bank_account_id: z.string().uuid().optional().or(z.literal('')),
 });
 
+type ParsedDeposit = z.infer<typeof createDepositSchema>;
+
+function parseDepositFormData(formData: FormData) {
+  // FormData.get() returns null for missing fields; convert to undefined/empty string
+  // so Zod's .optional() and .or(z.literal('')) work correctly.
+  const getRaw = (key: string) => {
+    const val = formData.get(key);
+    return val === null ? undefined : val;
+  };
+
+  return createDepositSchema.safeParse({
+    name: getRaw('name'),
+    bank_name: getRaw('bank_name'),
+    description: getRaw('description') ?? '',
+    notes: getRaw('notes') ?? '',
+    start_date: getRaw('start_date'),
+    term_months: getRaw('term_months'),
+    profit_type: getRaw('profit_type'),
+    profit_value: getRaw('profit_value'),
+    payout_frequency: getRaw('payout_frequency'),
+    principal_amount: getRaw('principal_amount'),
+    default_bank_account_id: getRaw('default_bank_account_id') ?? '',
+  });
+}
+
+// Inserts a deposit header plus its generated payout schedule. Used by both
+// createDeposit and renewDeposit. On payout insert failure, rolls back the header.
+async function insertDepositWithPayouts(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  d: ParsedDeposit,
+  createdBy: string,
+  renewedFromId?: string
+) {
+  let period_months = 1;
+  if (d.payout_frequency === 'monthly') period_months = 1;
+  else if (d.payout_frequency === 'quarterly') period_months = 3;
+  else if (d.payout_frequency === 'semiannual') period_months = 6;
+  else if (d.payout_frequency === 'annual') period_months = 12;
+  else if (d.payout_frequency === 'at_maturity') period_months = d.term_months;
+
+  if (d.term_months % period_months !== 0) {
+    return { error: `Term (${d.term_months} months) must be evenly divisible by the selected frequency (${period_months} months).` };
+  }
+
+  const total_periods = d.term_months / period_months;
+  let expected_amount_per_period = 0;
+
+  if (d.profit_type === 'annual_rate') {
+    expected_amount_per_period = d.principal_amount * (d.profit_value / 100) * (period_months / 12);
+  } else if (d.profit_type === 'fixed_total') {
+    expected_amount_per_period = Math.round((d.profit_value / total_periods) * 100) / 100;
+  }
+
+  const { data: depositData, error: depositError } = await supabase
+    .from('deposits')
+    .insert({
+      name: d.name,
+      bank_name: d.bank_name,
+      description: d.description,
+      notes: d.notes,
+      start_date: d.start_date,
+      term_months: d.term_months,
+      profit_type: d.profit_type,
+      profit_value: d.profit_value,
+      payout_frequency: d.payout_frequency,
+      principal_amount: d.principal_amount,
+      default_bank_account_id: d.default_bank_account_id || null,
+      created_by: createdBy,
+      renewed_from_id: renewedFromId || null,
+    })
+    .select('id')
+    .single();
+
+  if (depositError) return { error: depositError.message };
+
+  const payouts = [];
+  let currentUtcDate = new Date(d.start_date + 'T00:00:00Z');
+
+  for (let seq = 1; seq <= total_periods; seq++) {
+    const due_date = new Date(currentUtcDate);
+    due_date.setUTCMonth(due_date.getUTCMonth() + period_months);
+
+    let expected_amount = expected_amount_per_period;
+
+    // Push any rounding drift onto the final period
+    if (d.profit_type === 'fixed_total' && seq === total_periods) {
+      expected_amount = d.profit_value - (expected_amount_per_period * (total_periods - 1));
+    }
+
+    // Ensure strictly 2 decimal places
+    expected_amount = Math.round(expected_amount * 100) / 100;
+
+    payouts.push({
+      deposit_id: depositData.id,
+      seq: seq,
+      due_date: due_date.toISOString().split('T')[0],
+      expected_amount: expected_amount,
+    });
+
+    currentUtcDate = due_date; // for next iteration
+  }
+
+  const { error: payoutsError } = await supabase.from('deposit_payouts').insert(payouts);
+  if (payoutsError) {
+    await supabase.from('deposits').delete().eq('id', depositData.id);
+    return { error: payoutsError.message };
+  }
+
+  return { id: depositData.id as string, payoutsGenerated: payouts.length };
+}
+
 export async function createDeposit(formData: FormData) {
   try {
     const supabase = await createClient();
-    
-    // FormData.get() returns null for missing fields; convert to undefined/empty string
-    // so Zod's .optional() and .or(z.literal('')) work correctly.
-    const getRaw = (key: string) => {
-      const val = formData.get(key);
-      return val === null ? undefined : val;
-    };
-
-    const parsed = createDepositSchema.safeParse({
-      name: getRaw('name'),
-      bank_name: getRaw('bank_name'),
-      description: getRaw('description') ?? '',
-      notes: getRaw('notes') ?? '',
-      start_date: getRaw('start_date'),
-      term_months: getRaw('term_months'),
-      profit_type: getRaw('profit_type'),
-      profit_value: getRaw('profit_value'),
-      payout_frequency: getRaw('payout_frequency'),
-      principal_amount: getRaw('principal_amount'),
-      default_bank_account_id: getRaw('default_bank_account_id') ?? '',
-    });
+    const parsed = parseDepositFormData(formData);
 
     if (!parsed.success) {
         const messages = parsed.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
@@ -51,102 +142,96 @@ export async function createDeposit(formData: FormData) {
 
     const d = parsed.data;
 
-    let period_months = 1;
-    if (d.payout_frequency === 'monthly') period_months = 1;
-    else if (d.payout_frequency === 'quarterly') period_months = 3;
-    else if (d.payout_frequency === 'semiannual') period_months = 6;
-    else if (d.payout_frequency === 'annual') period_months = 12;
-    else if (d.payout_frequency === 'at_maturity') period_months = d.term_months;
-
-    if (d.term_months % period_months !== 0) {
-        return { error: `Term (${d.term_months} months) must be evenly divisible by the selected frequency (${period_months} months).` };
-    }
-
-    const total_periods = d.term_months / period_months;
-    let expected_amount_per_period = 0;
-
-    if (d.profit_type === 'annual_rate') {
-        expected_amount_per_period = d.principal_amount * (d.profit_value / 100) * (period_months / 12);
-    } else if (d.profit_type === 'fixed_total') {
-        expected_amount_per_period = Math.round((d.profit_value / total_periods) * 100) / 100;
-    }
-
     const { data: userData } = await supabase.auth.getUser();
     const { data: emp } = await supabase.from('employees').select('id, is_super_admin').eq('auth_user_id', userData.user?.id).single();
-    
+
     if (!emp) return { error: 'Employee not found' };
 
-    // Insert Header
-    const { data: depositData, error: depositError } = await supabase
-      .from('deposits')
-      .insert({
-        name: d.name,
-        bank_name: d.bank_name,
-        description: d.description,
-        notes: d.notes,
-        start_date: d.start_date,
-        term_months: d.term_months,
-        profit_type: d.profit_type,
-        profit_value: d.profit_value,
-        payout_frequency: d.payout_frequency,
-        principal_amount: d.principal_amount,
-        default_bank_account_id: d.default_bank_account_id || null,
-        created_by: emp.id,
-      })
-      .select('id')
-      .single();
-
-    if (depositError) return { error: depositError.message };
-
-    // Insert Payouts
-    const payouts = [];
-    let currentUtcDate = new Date(d.start_date + 'T00:00:00Z');
-
-    for (let seq = 1; seq <= total_periods; seq++) {
-        const due_date = new Date(currentUtcDate);
-        due_date.setUTCMonth(due_date.getUTCMonth() + period_months);
-        
-        let expected_amount = expected_amount_per_period;
-        
-        // Push any rounding drift onto the final period
-        if (d.profit_type === 'fixed_total' && seq === total_periods) {
-            expected_amount = d.profit_value - (expected_amount_per_period * (total_periods - 1));
-        }
-        
-        // Ensure strictly 2 decimal places
-        expected_amount = Math.round(expected_amount * 100) / 100;
-
-        payouts.push({
-            deposit_id: depositData.id,
-            seq: seq,
-            due_date: due_date.toISOString().split('T')[0],
-            expected_amount: expected_amount,
-        });
-
-        currentUtcDate = due_date; // for next iteration
-    }
-
-    const { error: payoutsError } = await supabase.from('deposit_payouts').insert(payouts);
-    if (payoutsError) {
-        await supabase.from('deposits').delete().eq('id', depositData.id);
-        return { error: payoutsError.message };
-    }
+    const result = await insertDepositWithPayouts(supabase, d, emp.id);
+    if ('error' in result) return { error: result.error };
 
     await logAudit({
       employee_id: emp.id,
       action: 'create',
       entity_type: 'deposit',
-      entity_id: depositData.id,
-      after: { ...d, payouts_generated: payouts.length },
+      entity_id: result.id,
+      after: { ...d, payouts_generated: result.payoutsGenerated },
     });
 
     revalidatePath('/deposits');
-    return { success: true, id: depositData.id };
+    return { success: true, id: result.id };
   } catch (e: any) {
     return { error: e.message || 'An error occurred' };
   }
 }
 
+export async function renewDeposit(formData: FormData) {
+  try {
+    const supabase = await createClient();
+    const old_deposit_id = formData.get('old_deposit_id') as string;
+    if (!old_deposit_id) return { error: 'الشهادة الأصلية غير محددة' };
+
+    const parsed = parseDepositFormData(formData);
+    if (!parsed.success) {
+        const messages = parsed.error.issues.map(e => `${e.path.join('.')}: ${e.message}`).join(', ');
+        return { error: `بيانات الوديعة غير صالحة: ${messages}` };
+    }
+
+    const d = parsed.data;
+
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id, is_super_admin').eq('auth_user_id', userData.user?.id).single();
+    if (!emp) return { error: 'Employee not found' };
+
+    const { data: oldDeposit } = await supabase
+      .from('deposits')
+      .select('id, status, start_date, term_months')
+      .eq('id', old_deposit_id)
+      .single();
+
+    if (!oldDeposit) return { error: 'الشهادة الأصلية غير موجودة' };
+    if (oldDeposit.status !== 'active') return { error: 'هذه الشهادة مغلقة بالفعل' };
+
+    const maturityDate = new Date(oldDeposit.start_date + 'T00:00:00Z');
+    maturityDate.setUTCMonth(maturityDate.getUTCMonth() + oldDeposit.term_months);
+    if (new Date() < maturityDate) return { error: 'لم يحن بعد تاريخ استحقاق هذه الشهادة' };
+
+    const result = await insertDepositWithPayouts(supabase, d, emp.id, old_deposit_id);
+    if ('error' in result) return { error: result.error };
+
+    const { error: closeError } = await supabase
+      .from('deposits')
+      .update({ status: 'renewed', closed_at: new Date().toISOString() })
+      .eq('id', old_deposit_id);
+    if (closeError) return { error: closeError.message };
+
+    await logAudit({
+      employee_id: emp.id,
+      action: 'create',
+      entity_type: 'deposit',
+      entity_id: result.id,
+      after: { ...d, renewed_from_id: old_deposit_id, payouts_generated: result.payoutsGenerated },
+    });
+    await logAudit({
+      employee_id: emp.id,
+      action: 'update',
+      entity_type: 'deposit',
+      entity_id: old_deposit_id,
+      before: { status: 'active' },
+      after: { status: 'renewed', renewed_into: result.id },
+    });
+
+    revalidatePath('/deposits');
+    revalidatePath(`/deposits/${old_deposit_id}`);
+    return { success: true, id: result.id };
+  } catch (e: any) {
+    return { error: e.message || 'An error occurred' };
+  }
+}
+
+// Editing a payout's due date shifts the whole rest of the schedule: every later,
+// not-yet-collected payout is recalculated from the new date using the deposit's
+// payout period, so the app matches what actually happens with a real certificate.
 export async function updateDepositPayoutDueDate(formData: FormData) {
     try {
         const supabase = await createClient();
@@ -160,10 +245,50 @@ export async function updateDepositPayoutDueDate(formData: FormData) {
 
         const { data: emp } = await supabase.from('employees').select('id').eq('auth_user_id', user.id).single();
 
-        const { data: before } = await supabase.from('deposit_payouts').select('due_date').eq('id', payout_id).single();
+        const { data: payout } = await supabase
+            .from('deposit_payouts')
+            .select('id, seq, due_date, deposit_id, deposits(payout_frequency, term_months)')
+            .eq('id', payout_id)
+            .single();
 
-        const { error } = await supabase.from('deposit_payouts').update({ due_date }).eq('id', payout_id);
+        if (!payout) return { error: 'الاستحقاق غير موجود' };
+
+        const before_due_date = payout.due_date;
+        const deposit = payout.deposits as any;
+
+        let period_months = 1;
+        if (deposit?.payout_frequency === 'monthly') period_months = 1;
+        else if (deposit?.payout_frequency === 'quarterly') period_months = 3;
+        else if (deposit?.payout_frequency === 'semiannual') period_months = 6;
+        else if (deposit?.payout_frequency === 'annual') period_months = 12;
+        else if (deposit?.payout_frequency === 'at_maturity') period_months = deposit.term_months;
+
+        const [{ error }, { data: laterPayouts }] = await Promise.all([
+            supabase.from('deposit_payouts').update({ due_date }).eq('id', payout_id),
+            supabase
+                .from('deposit_payouts')
+                .select('id, seq')
+                .eq('deposit_id', payout.deposit_id)
+                .gt('seq', payout.seq)
+                .eq('is_collected', false)
+                .order('seq', { ascending: true }),
+        ]);
         if (error) return { error: error.message };
+
+        let cursor = new Date(due_date + 'T00:00:00Z');
+        const cascadedUpdates = (laterPayouts || []).map(p => {
+            cursor = new Date(cursor);
+            cursor.setUTCMonth(cursor.getUTCMonth() + period_months);
+            return { id: p.id, due_date: cursor.toISOString().split('T')[0] };
+        });
+
+        if (cascadedUpdates.length > 0) {
+            const results = await Promise.all(
+                cascadedUpdates.map(u => supabase.from('deposit_payouts').update({ due_date: u.due_date }).eq('id', u.id))
+            );
+            const cascadeError = results.find(r => r.error)?.error;
+            if (cascadeError) return { error: cascadeError.message };
+        }
 
         if (emp) {
             await logAudit({
@@ -171,12 +296,13 @@ export async function updateDepositPayoutDueDate(formData: FormData) {
                 action: 'update',
                 entity_type: 'deposit_payout',
                 entity_id: payout_id,
-                before: { due_date: before?.due_date },
-                after: { due_date },
+                before: { due_date: before_due_date },
+                after: { due_date, cascaded_payouts: cascadedUpdates },
             });
         }
 
         revalidatePath('/deposits');
+        revalidatePath(`/deposits/${payout.deposit_id}`);
         return { success: true };
     } catch (e: any) {
         return { error: e.message || 'An error occurred' };
@@ -203,6 +329,33 @@ export async function collectDepositPayout(formData: FormData) {
         if (error) return { error: error.message };
 
         revalidatePath('/deposits');
+        return { success: true };
+    } catch (e: any) {
+        return { error: e.message || 'An error occurred' };
+    }
+}
+
+export async function returnDepositPrincipal(formData: FormData) {
+    try {
+        const supabase = await createClient();
+        const p_deposit_id = formData.get('deposit_id') as string;
+        const p_actual_amount = parseFloat(formData.get('actual_amount') as string);
+        const p_date = formData.get('return_date') as string;
+        const p_bank_account_id = formData.get('bank_account_id') as string;
+        const p_notes = formData.get('notes') as string;
+
+        const { error } = await supabase.rpc('return_deposit_principal', {
+            p_deposit_id,
+            p_actual_amount,
+            p_date,
+            p_bank_account_id,
+            p_notes: p_notes || ''
+        });
+
+        if (error) return { error: error.message };
+
+        revalidatePath('/deposits');
+        revalidatePath(`/deposits/${p_deposit_id}`);
         return { success: true };
     } catch (e: any) {
         return { error: e.message || 'An error occurred' };

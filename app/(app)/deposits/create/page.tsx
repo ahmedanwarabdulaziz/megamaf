@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
 import { CreateDepositForm } from '@/components/deposits/create-deposit-form';
+import { requirePageAccess } from '@/lib/require-page-access';
 
 export const metadata = { title: 'إصدار شهادة بنكية' };
 
 export default async function CreateDepositPage() {
+  await requirePageAccess('deposits');
   const supabase = await createClient();
   const { data: bankAccounts } = await supabase.from('v_bank_account_balances').select('*').order('account_name');
 
