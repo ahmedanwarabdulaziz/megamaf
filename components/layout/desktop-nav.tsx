@@ -6,6 +6,9 @@ import {
   Home, Landmark, Receipt, CheckSquare, Users,
   Wallet, FileText, FileSignature, Contact, Warehouse, ArrowLeftRight
 } from 'lucide-react';
+import { usePendingApprovalsCount } from './use-pending-approvals-count';
+import { usePendingClaimsCount } from './use-pending-claims-count';
+import { usePendingInvoicesCount } from './use-pending-invoices-count';
 
 interface DesktopNavProps {
   canSeeProjects: boolean;
@@ -39,6 +42,9 @@ export function DesktopNav({
   isSuperAdmin,
 }: DesktopNavProps) {
   const pathname = usePathname();
+  const pendingApprovalsCount = usePendingApprovalsCount(isSuperAdmin || canApprove);
+  const pendingClaimsCount = usePendingClaimsCount(canSeeClaims && (isSuperAdmin || canApprove));
+  const pendingInvoicesCount = usePendingInvoicesCount(canSeeVendors && (isSuperAdmin || canApprove));
 
   const isActive = (href: string) => {
     if (href === '/') return pathname === '/';
@@ -136,7 +142,12 @@ export function DesktopNav({
       {(isSuperAdmin || canApprove) && (
         <Link href="/expenses/approvals" className={navClass('/expenses/approvals')}>
           <CheckSquare className="h-5 w-5" />
-          اعتمادات المصروفات
+          <span className="flex-1">اعتمادات المصروفات</span>
+          {pendingApprovalsCount > 0 && (
+            <span className="flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-red-600 text-white text-xs font-bold">
+              {pendingApprovalsCount > 99 ? '99+' : pendingApprovalsCount}
+            </span>
+          )}
         </Link>
       )}
       
@@ -150,14 +161,24 @@ export function DesktopNav({
       {canSeeVendors && (
         <Link href="/invoices" className={navClass('/invoices')}>
           <FileText className="h-5 w-5" />
-          فواتير الموردين
+          <span className="flex-1">فواتير الموردين</span>
+          {pendingInvoicesCount > 0 && (
+            <span className="flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-red-600 text-white text-xs font-bold">
+              {pendingInvoicesCount > 99 ? '99+' : pendingInvoicesCount}
+            </span>
+          )}
         </Link>
       )}
       
       {canSeeClaims && (
         <Link href="/claims" className={navClass('/claims')}>
           <FileSignature className="h-5 w-5" />
-          المستخلصات
+          <span className="flex-1">المستخلصات</span>
+          {pendingClaimsCount > 0 && (
+            <span className="flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full bg-red-600 text-white text-xs font-bold">
+              {pendingClaimsCount > 99 ? '99+' : pendingClaimsCount}
+            </span>
+          )}
         </Link>
       )}
       

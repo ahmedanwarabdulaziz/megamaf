@@ -8,6 +8,9 @@ import {
   Wallet, FileText, FileSignature, Contact, Warehouse, ArrowLeftRight,
   X, Menu, ChevronLeft, BarChart3, FolderKanban,
 } from 'lucide-react';
+import { usePendingApprovalsCount } from './use-pending-approvals-count';
+import { usePendingClaimsCount } from './use-pending-claims-count';
+import { usePendingInvoicesCount } from './use-pending-invoices-count';
 
 /* ─── nav structure (mirrors the sidebar) ────────────────────────────────── */
 interface NavItem {
@@ -15,6 +18,7 @@ interface NavItem {
   label: string;
   icon: React.ReactNode;
   subLabel?: string;
+  badge?: number;
 }
 
 interface NavGroup {
@@ -59,6 +63,9 @@ export function MobileNav({
 }: MobileNavProps) {
   const [isOpen, setIsOpen] = useState(false);
   const pathname = usePathname();
+  const pendingApprovalsCount = usePendingApprovalsCount(isSuperAdmin || canApprove);
+  const pendingClaimsCount = usePendingClaimsCount(canSeeClaims && (isSuperAdmin || canApprove));
+  const pendingInvoicesCount = usePendingInvoicesCount(canSeeVendors && (isSuperAdmin || canApprove));
 
   // Close on route change
   useEffect(() => { setIsOpen(false); }, [pathname]);
@@ -97,12 +104,12 @@ export function MobileNav({
       title: 'العمليات',
       items: [
         ...(canSeeExpenses ? [{ href: '/expenses', label: 'المصروفات والعهد', icon: <Receipt className="w-5 h-5" /> }] : []),
-        ...(canApprove ? [{ href: '/expenses/approvals', label: 'اعتمادات المصروفات', icon: <CheckSquare className="w-5 h-5" /> }] : []),
+        ...(canApprove ? [{ href: '/expenses/approvals', label: 'اعتمادات المصروفات', icon: <CheckSquare className="w-5 h-5" />, badge: pendingApprovalsCount }] : []),
         ...(canSeeVendors ? [
           { href: '/vendors', label: 'المقاولون والموردون', icon: <Users className="w-5 h-5" /> },
-          { href: '/invoices', label: 'فواتير الموردين', icon: <FileText className="w-5 h-5" /> },
+          { href: '/invoices', label: 'فواتير الموردين', icon: <FileText className="w-5 h-5" />, badge: pendingInvoicesCount },
         ] : []),
-        ...(canSeeClaims ? [{ href: '/claims', label: 'المستخلصات', icon: <FileSignature className="w-5 h-5" /> }] : []),
+        ...(canSeeClaims ? [{ href: '/claims', label: 'المستخلصات', icon: <FileSignature className="w-5 h-5" />, badge: pendingClaimsCount }] : []),
         ...(canSeeInventory ? [{ href: '/inventory', label: 'المخازن', icon: <Warehouse className="w-5 h-5" /> }] : []),
       ],
     },
@@ -215,7 +222,14 @@ export function MobileNav({
                         </p>
                       )}
                     </div>
-                    {!active && <ChevronLeft className="w-3.5 h-3.5 mr-auto text-muted-foreground/40 flex-shrink-0" />}
+                    <div className="mr-auto flex items-center gap-2 flex-shrink-0">
+                      {!!item.badge && item.badge > 0 && (
+                        <span className={`flex items-center justify-center min-w-[1.25rem] h-5 px-1.5 rounded-full text-xs font-bold ${active ? 'bg-white/20 text-primary-foreground' : 'bg-red-600 text-white'}`}>
+                          {item.badge > 99 ? '99+' : item.badge}
+                        </span>
+                      )}
+                      {!active && <ChevronLeft className="w-3.5 h-3.5 text-muted-foreground/40" />}
+                    </div>
                   </Link>
                 );
               })}

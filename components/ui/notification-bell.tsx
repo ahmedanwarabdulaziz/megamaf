@@ -138,7 +138,7 @@ export function NotificationBell() {
           )}
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-80">
+      <DropdownMenuContent align="start" className="w-80">
         <DropdownMenuLabel className="flex items-center justify-between">
           <span>الإشعارات</span>
           {pushSupported && Notification.permission !== 'granted' && (
