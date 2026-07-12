@@ -81,7 +81,10 @@ export function MobileNav({
     {
       title: 'المالية',
       items: [
-        ...(canSeeBanks ? [{ href: '/banks', label: 'البنوك والحسابات', icon: <Landmark className="w-5 h-5" /> }] : []),
+        ...(canSeeBanks ? [
+          { href: '/banks', label: 'البنوك والحسابات', icon: <Landmark className="w-5 h-5" /> },
+          { href: '/banks/transactions', label: 'كل المعاملات البنكية', icon: <ArrowLeftRight className="w-5 h-5" /> },
+        ] : []),
         ...(canSeeDeposits ? [{ href: '/deposits', label: 'الودائع والشهادات', icon: <Wallet className="w-5 h-5" /> }] : []),
         ...(canSeeTreasury ? [
           { href: '/treasury?tab=receivables', label: 'سندات القبض', subLabel: 'تحصيل من الملاك', icon: <FileText className="w-5 h-5" /> },

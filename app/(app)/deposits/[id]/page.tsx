@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import { formatMoney } from '@/lib/money';
 import { CollectModal } from '@/components/deposits/collect-modal';
+import { EditDueDateModal } from '@/components/deposits/edit-due-date-modal';
 
 export const metadata = { title: 'تفاصيل الشهادة/الوديعة' };
 
@@ -115,7 +116,12 @@ export default async function DepositDetailPage({ params }: { params: Promise<{ 
                       return (
                         <tr key={p.id} className={`hover:bg-muted/30 ${isOutOfWindow && !p.is_collected ? 'opacity-40' : ''}`}>
                           <td className="p-3 font-medium">{p.seq}</td>
-                          <td className="p-3">{new Date(p.due_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</td>
+                          <td className="p-3">
+                            <div className="flex items-center gap-2">
+                              <span>{new Date(p.due_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span>
+                              {!p.is_collected && <EditDueDateModal payout={p} />}
+                            </div>
+                          </td>
                           <td className="p-3 font-semibold text-primary">{formatMoney(p.expected_amount)}</td>
                           <td className="p-3">
                             {p.is_collected ? (
@@ -131,7 +137,7 @@ export default async function DepositDetailPage({ params }: { params: Promise<{ 
                           <td className="p-3">{p.collected_date ? new Date(p.collected_date).toLocaleDateString('en-GB', { timeZone: 'UTC' }) : '-'}</td>
                           <td className="p-3 font-bold text-green-600">{p.is_collected ? formatMoney(p.collected_amount) : '-'}</td>
                           <td className="p-3 text-left">
-                            {!p.is_collected && !isTooOld && (
+                            {!p.is_collected && (
                               <CollectModal
                                 payout={p}
                                 bankAccounts={bankAccounts || []}

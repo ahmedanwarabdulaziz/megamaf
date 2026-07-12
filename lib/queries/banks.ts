@@ -49,6 +49,81 @@ export async function getBankStatement(accountId: string, limit = 50, offset = 0
   };
 }
 
+export async function getAllBanksLedgerSummary({
+  startDate,
+  endDate,
+  showAll,
+  bankAccountId,
+}: {
+  startDate?: string;
+  endDate?: string;
+  showAll?: boolean;
+  bankAccountId?: string;
+}) {
+  const supabase = await createClient();
+
+  let q = supabase
+    .from('ledger_entries')
+    .select('direction, amount')
+    .not('bank_account_id', 'is', null);
+
+  if (bankAccountId) q = q.eq('bank_account_id', bankAccountId);
+  if (!showAll) {
+    if (startDate) q = q.gte('entry_date', startDate);
+    if (endDate) q = q.lte('entry_date', endDate);
+  }
+
+  const { data, error } = await q;
+  if (error) throw error;
+
+  let totalIn = 0;
+  let totalOut = 0;
+  for (const row of data ?? []) {
+    if (row.direction === 'in') totalIn += Number(row.amount);
+    else totalOut += Number(row.amount);
+  }
+
+  return { totalIn, totalOut };
+}
+
+export async function getAllBanksLedger({
+  startDate,
+  endDate,
+  showAll,
+  bankAccountId,
+  limit = 50,
+  offset = 0,
+}: {
+  startDate?: string;
+  endDate?: string;
+  showAll?: boolean;
+  bankAccountId?: string;
+  limit?: number;
+  offset?: number;
+}) {
+  const supabase = await createClient();
+
+  let q = supabase
+    .from('ledger_entries')
+    .select('id, entry_date, direction, amount, category, memo, bank_account_id, bank_accounts(account_name, banks(name))', { count: 'exact' })
+    .not('bank_account_id', 'is', null)
+    .order('entry_date', { ascending: false })
+    .order('created_at', { ascending: false });
+
+  if (bankAccountId) q = q.eq('bank_account_id', bankAccountId);
+  if (!showAll) {
+    if (startDate) q = q.gte('entry_date', startDate);
+    if (endDate) q = q.lte('entry_date', endDate);
+  }
+
+  q = q.range(offset, offset + limit - 1);
+
+  const { data, error, count } = await q;
+  if (error) throw error;
+
+  return { items: data ?? [], totalCount: count || 0 };
+}
+
 export async function getBankAccountDetails(accountId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase

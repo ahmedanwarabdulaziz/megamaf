@@ -81,7 +81,14 @@ export function DesktopNav({
           البنوك
         </Link>
       )}
-      
+
+      {canSeeBanks && (
+        <Link href="/banks/transactions" className={navClass('/banks/transactions') + " pr-8"}>
+          <ArrowLeftRight className="h-4 w-4" />
+          كل المعاملات البنكية
+        </Link>
+      )}
+
       {canSeeDeposits && (
         <Link href="/deposits" className={navClass('/deposits')}>
           <Wallet className="h-5 w-5" />

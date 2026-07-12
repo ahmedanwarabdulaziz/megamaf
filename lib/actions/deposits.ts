@@ -147,6 +147,42 @@ export async function createDeposit(formData: FormData) {
   }
 }
 
+export async function updateDepositPayoutDueDate(formData: FormData) {
+    try {
+        const supabase = await createClient();
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { error: 'Unauthorized' };
+
+        const payout_id = formData.get('payout_id') as string;
+        const due_date = formData.get('due_date') as string;
+
+        if (!payout_id || !due_date) return { error: 'بيانات غير صالحة' };
+
+        const { data: emp } = await supabase.from('employees').select('id').eq('auth_user_id', user.id).single();
+
+        const { data: before } = await supabase.from('deposit_payouts').select('due_date').eq('id', payout_id).single();
+
+        const { error } = await supabase.from('deposit_payouts').update({ due_date }).eq('id', payout_id);
+        if (error) return { error: error.message };
+
+        if (emp) {
+            await logAudit({
+                employee_id: emp.id,
+                action: 'update',
+                entity_type: 'deposit_payout',
+                entity_id: payout_id,
+                before: { due_date: before?.due_date },
+                after: { due_date },
+            });
+        }
+
+        revalidatePath('/deposits');
+        return { success: true };
+    } catch (e: any) {
+        return { error: e.message || 'An error occurred' };
+    }
+}
+
 export async function collectDepositPayout(formData: FormData) {
     try {
         const supabase = await createClient();

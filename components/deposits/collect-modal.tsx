@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { collectDepositPayout } from '@/lib/actions/deposits';
@@ -9,7 +10,10 @@ import { formatMoney } from '@/lib/money';
 export function CollectModal({ payout, bankAccounts, defaultBankAccountId }: { payout: any, bankAccounts: any[], defaultBankAccountId?: string }) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
   const submittingRef = useRef(false);
+
+  useEffect(() => { setMounted(true); }, []);
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -33,16 +37,13 @@ export function CollectModal({ payout, bankAccounts, defaultBankAccountId }: { p
     }
   }
 
-  return (
-    <>
-      <Button size="sm" onClick={() => setIsOpen(true)}>تحصيل</Button>
-
-      {isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+  const dialog = isOpen && mounted
+    ? createPortal(
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-4">
           <div className="bg-card p-6 rounded-lg shadow-lg w-full max-w-md">
             <h2 className="text-xl font-bold mb-4">تحصيل استحقاق #{payout.seq}</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
-              
+
               <div>
                 <label className="block text-sm font-medium mb-1">المبلغ المحصل فعلياً (ج.م)</label>
                 <input required type="number" step="0.01" name="actual_amount" defaultValue={payout.expected_amount} className="w-full p-2 rounded border bg-background text-lg font-bold text-primary" />
@@ -80,8 +81,15 @@ export function CollectModal({ payout, bankAccounts, defaultBankAccountId }: { p
               </div>
             </form>
           </div>
-        </div>
-      )}
+        </div>,
+        document.body
+      )
+    : null;
+
+  return (
+    <>
+      <Button size="sm" onClick={() => setIsOpen(true)}>تحصيل</Button>
+      {dialog}
     </>
   );
 }
