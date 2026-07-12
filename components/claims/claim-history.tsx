@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { ChevronDown, ChevronUp } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronDown, ChevronUp, Eye } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 
 interface HistoryClaim {
@@ -91,6 +92,13 @@ export function ClaimHistory({
               <div className="flex items-center gap-4 text-muted-foreground">
                 <span>إجمالي: <span className="font-medium">{formatMoney(c.v_claim_totals?.[0]?.claim_cumulative_total || 0)}</span></span>
                 <span>الصافي: <span className="font-semibold text-foreground">{formatMoney(c.v_claim_totals?.[0]?.claim_cumulative_payable || 0)}</span></span>
+                <Link
+                  href={`/claims/${c.id}`}
+                  title="عرض المستخلص"
+                  className="inline-flex items-center justify-center w-6 h-6 rounded border text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+                >
+                  <Eye className="w-3.5 h-3.5" />
+                </Link>
               </div>
             </div>
           ))}

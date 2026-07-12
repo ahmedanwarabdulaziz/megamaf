@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
@@ -71,6 +71,22 @@ export function EditClaimForm({
   const [taxRate, setTaxRate] = useState(initTaxRate || 0.14);
   const [openingPaidAmount, setOpeningPaidAmount] = useState(initOpeningPaid);
   const [files, setFiles] = useState<File[]>([]);
+  const [alreadyPaidAmount, setAlreadyPaidAmount] = useState(0);
+
+  // Same "already paid" source the create form uses, so the remaining-balance
+  // summary here matches /claims/create exactly.
+  useEffect(() => {
+    const supabase = createClient();
+    const accountView = claimType === 'owner' ? 'v_owner_account' : 'v_vendor_account';
+    supabase
+      .from(accountView)
+      .select('amount_paid')
+      .eq('party_id', partyId)
+      .eq('project_id', projectId)
+      .then(({ data }) => {
+        setAlreadyPaidAmount((data || []).reduce((sum: number, row: any) => sum + Number(row.amount_paid || 0), 0));
+      });
+  }, [claimType, partyId, projectId]);
 
   // Pre-populate items from DB — map existing bundles or legacy single-item fields
   const [items, setItems] = useState<ClaimItem[]>(
@@ -162,6 +178,7 @@ export function EditClaimForm({
   const netPayable = currentCumulativePayable;
   const taxAmount = taxEnabled ? netPayable * taxRate : 0;
   const totalDue = netPayable + taxAmount;
+  const remaining = Math.max(0, totalDue - alreadyPaidAmount);
 
   // ── Submit ───────────────────────────────────────────────────
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
@@ -385,10 +402,12 @@ export function EditClaimForm({
                         />
                       </td>
                       <td className="py-2 px-1 w-8">
-                        <Button type="button" variant="ghost" size="icon"
-                          onClick={() => setItems(items.filter(i => i.id !== item.id))}>
-                          <Trash2 className="w-4 h-4 text-destructive" />
-                        </Button>
+                        {!isReadOnlyItem && (
+                          <Button type="button" variant="ghost" size="icon"
+                            onClick={() => setItems(items.filter(i => i.id !== item.id))}>
+                            <Trash2 className="w-4 h-4 text-destructive" />
+                          </Button>
+                        )}
                       </td>
                     </tr>
 
@@ -573,33 +592,60 @@ export function EditClaimForm({
           </div>
         </div>
 
-        <div className="bg-muted/30 p-4 rounded-lg space-y-3">
-          <div className="flex justify-between text-sm">
+        <div className="bg-muted/30 p-4 rounded-lg space-y-2.5">
+
+          {/* ── Claim #0 Paid Amount (reference) ── */}
+          {openingPaidAmount > 0 && (
+            <div className="flex justify-between text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
+              <span>المدفوع قبل النظام (مرجع):</span>
+              <span className="font-semibold">- {formatMoney(openingPaidAmount)}</span>
+            </div>
+          )}
+
+          {/* Gross */}
+          <div className="flex justify-between text-sm text-muted-foreground">
             <span>إجمالي الأعمال التراكمي:</span>
-            <span>{formatMoney(currentCumulativePayable + currentCumulativeRetained)}</span>
+            <span className="font-medium">{formatMoney(currentCumulativePayable + currentCumulativeRetained)}</span>
           </div>
-          <div className="flex justify-between text-sm text-amber-600">
-            <span>المحتجز التراكمي (تأمين):</span>
-            <span>{formatMoney(currentCumulativeRetained)}</span>
-          </div>
-          <div className="flex justify-between text-sm font-medium">
+
+          {/* Retention */}
+          {currentCumulativeRetained > 0 && (
+            <div className="flex justify-between text-sm text-amber-600">
+              <span>المحتجز التراكمي (تأمين):</span>
+              <span className="font-medium">- {formatMoney(currentCumulativeRetained)}</span>
+            </div>
+          )}
+
+          {/* Net cumulative */}
+          <div className="flex justify-between text-sm text-muted-foreground border-t border-muted/30 pt-1">
             <span>الصافي التراكمي (قابل للدفع):</span>
-            <span>{formatMoney(currentCumulativePayable)}</span>
+            <span className="font-medium">{formatMoney(netPayable)}</span>
           </div>
-          <div className="border-t border-muted-foreground/20 my-2" />
-          <div className="flex justify-between text-sm font-bold text-primary">
-            <span>الصافي الحالي:</span>
-            <span>{formatMoney(netPayable)}</span>
-          </div>
+
+          {/* Tax */}
           {taxEnabled && (
-            <div className="flex justify-between text-sm">
+            <div className="flex justify-between text-sm text-muted-foreground">
               <span>الضريبة ({(taxRate * 100).toFixed(1)}%):</span>
               <span>+ {formatMoney(taxAmount)}</span>
             </div>
           )}
-          <div className="border-t border-primary/20 pt-3 flex justify-between font-bold text-xl">
-            <span>إجمالي المستحق:</span>
-            <span>{formatMoney(totalDue)}</span>
+
+          {/* Collected (prior paid) */}
+          {alreadyPaidAmount > 0 && (
+            <div className="flex justify-between text-sm text-green-700 dark:text-green-400 font-medium">
+              <span>المحصّل فعلياً (جميع المستخلصات السابقة):</span>
+              <span>- {formatMoney(alreadyPaidAmount)}</span>
+            </div>
+          )}
+
+          {/* Remaining headline */}
+          <div className="border-t border-primary/20 pt-3 flex justify-between items-center font-bold text-xl">
+            <span className="text-sm font-semibold">
+              {remaining <= 0 ? '✓ تم السداد بالكامل' : 'المتبقي المستحق:'}
+            </span>
+            <span className={remaining <= 0 ? 'text-green-600' : ''}>
+              {formatMoney(remaining)}
+            </span>
           </div>
         </div>
       </div>

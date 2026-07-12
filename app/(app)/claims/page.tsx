@@ -1,4 +1,6 @@
+import { Fragment } from 'react';
 import Link from 'next/link';
+import { Eye } from 'lucide-react';
 import { getClaims } from '@/lib/queries/claims';
 import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
@@ -9,7 +11,7 @@ export const dynamic = 'force-dynamic';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
 import { computeClaimFinancials, remainingLabel, remainingColorClass } from '@/lib/claim-financials';
-import { ClaimApproveRejectButtons } from '@/components/claims/approve-reject-buttons';
+import { ClaimApproveRejectButtons, RevertClaimToPendingButton } from '@/components/claims/approve-reject-buttons';
 import { ClaimHistory } from '@/components/claims/claim-history';
 import { ClaimsFilters } from '@/components/claims/claims-filters';
 
@@ -30,18 +32,79 @@ export default async function ClaimsPage({
   const { createClient } = await import('@/lib/supabase/server');
   const supabase = await createClient();
 
-  const [allClaims, projects, { data: accountData }] = await Promise.all([
+  const [allClaims, projects] = await Promise.all([
     getClaims('vendor', { projectId: project_id }),
     getProjects(),
-    supabase
-      .from('v_vendor_account')
-      .select('party_id, project_id, amount_paid')
+  ]);
+
+  // Build "how much has actually been paid" per vendor+project purely from
+  // allocation-tracking views (v_claim_paid / v_invoice_paid / v_retention_paid),
+  // each grouped by the document's OWN project_id, plus claim#0's opening_paid_amount —
+  // NOT from the payment ledger row's project tag. A single payment can be split (via
+  // payment_allocations) across documents in different projects, and the ledger row's
+  // project_id — a single value — can't represent that split correctly.
+  const realClaims = allClaims.filter((c: any) => !c.is_prior_only);
+  const claimIdsForPaid = realClaims.map((c: any) => c.id);
+  const partyIds = [...new Set(realClaims.map((c: any) => c.party_id))];
+
+  const [
+    { data: claimPaidData },
+    { data: vendorInvoices },
+    { data: vendorRetentions },
+  ] = await Promise.all([
+    claimIdsForPaid.length > 0
+      ? supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', claimIdsForPaid)
+      : Promise.resolve({ data: [] as any[] }),
+    partyIds.length > 0
+      ? supabase.from('invoices').select('id, vendor_id, project_id').in('vendor_id', partyIds).eq('status', 'approved')
+      : Promise.resolve({ data: [] as any[] }),
+    partyIds.length > 0
+      ? supabase.from('retention_releases').select('id, party_id, project_id').in('party_id', partyIds).eq('claim_type', 'vendor')
+      : Promise.resolve({ data: [] as any[] }),
+  ]);
+
+  const invoiceIds = (vendorInvoices || []).map((i: any) => i.id);
+  const retentionIds = (vendorRetentions || []).map((r: any) => r.id);
+
+  const [
+    { data: invoicePaidData },
+    { data: retentionPaidData },
+  ] = await Promise.all([
+    invoiceIds.length > 0
+      ? supabase.from('v_invoice_paid').select('invoice_id, paid_amount').in('invoice_id', invoiceIds)
+      : Promise.resolve({ data: [] as any[] }),
+    retentionIds.length > 0
+      ? supabase.from('v_retention_paid').select('retention_id, paid_amount').in('retention_id', retentionIds)
+      : Promise.resolve({ data: [] as any[] }),
   ]);
 
   const vendorProjectPaid = new Map<string, number>();
-  for (const row of (accountData || [])) {
-    const k = `${row.party_id}__${row.project_id}`;
-    vendorProjectPaid.set(k, (vendorProjectPaid.get(k) || 0) + Number(row.amount_paid || 0));
+  const addPaid = (partyId: string, projectId: string | null | undefined, amount: number) => {
+    if (!projectId || !amount) return;
+    const k = `${partyId}__${projectId}`;
+    vendorProjectPaid.set(k, (vendorProjectPaid.get(k) || 0) + amount);
+  };
+
+  // NOTE: v_claim_paid already folds claim#0's opening_paid_amount into its
+  // paid_amount on this database (confirmed against live data — this isn't in
+  // the local migration files, so treat the live view as ground truth). Do NOT
+  // add opening_paid_amount again here, or claim#0 rows get double-counted.
+  const claimById = new Map(realClaims.map((c: any) => [c.id, c]));
+  for (const row of claimPaidData || []) {
+    const c = claimById.get(row.claim_id);
+    if (c) addPaid((c as any).party_id, (c as any).project_id, Number(row.paid_amount || 0));
+  }
+
+  const invoiceById = new Map((vendorInvoices || []).map((i: any) => [i.id, i]));
+  for (const row of invoicePaidData || []) {
+    const inv = invoiceById.get(row.invoice_id);
+    if (inv) addPaid((inv as any).vendor_id, (inv as any).project_id, Number(row.paid_amount || 0));
+  }
+
+  const retentionById = new Map((vendorRetentions || []).map((r: any) => [r.id, r]));
+  for (const row of retentionPaidData || []) {
+    const ret = retentionById.get(row.retention_id);
+    if (ret) addPaid((ret as any).party_id, (ret as any).project_id, Number(row.paid_amount || 0));
   }
 
   // Group by party_id + project_id; query is already DESC by claim_number
@@ -67,232 +130,188 @@ export default async function ClaimsPage({
         selectedProjectId={project_id || ''} 
       />
 
-      <div className="bg-card rounded-lg border shadow-sm divide-y">
-        {groups.length === 0 ? (
-          <div className="p-8 text-center text-muted-foreground">لا توجد مستخلصات</div>
-        ) : (
-          groups.map(group => {
-            const claim   = group[0];         // latest
-            const history = group.slice(1);   // older / superseded
-            const totals  = claim.v_claim_totals?.[0];
-            const prior   = (claim as any).vendor_prior_claim;
+      <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm text-right">
+            <thead className="bg-muted/50 border-b">
+              <tr>
+                <th className="p-3 font-medium">المستخلص</th>
+                <th className="p-3 font-medium">الجهة</th>
+                <th className="p-3 font-medium">المشروع</th>
+                <th className="p-3 font-medium">التاريخ</th>
+                <th className="p-3 font-medium">الحالة</th>
+                <th className="p-3 font-medium">الإجمالي التراكمي</th>
+                <th className="p-3 font-medium">المحتجز</th>
+                <th className="p-3 font-medium">الصافي التراكمي</th>
+                <th className="p-3 font-medium">المدفوع</th>
+                <th className="p-3 font-medium">المتبقي</th>
+                <th className="p-3 font-medium">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {groups.length === 0 ? (
+                <tr>
+                  <td colSpan={11} className="p-8 text-center text-muted-foreground">لا توجد مستخلصات</td>
+                </tr>
+              ) : (
+                groups.map(group => {
+                  const claim   = group[0];         // latest
+                  const history = group.slice(1);   // older / superseded
+                  const totals  = claim.v_claim_totals?.[0];
+                  const prior   = (claim as any).vendor_prior_claim;
+                  const rowKey  = `${claim.party_id}_${claim.project_id}`;
 
-            // ── Synthetic Claim #0-only card (vendor has prior but no in-system claims yet) ──
-            if ((claim as any).is_prior_only) {
-              const outstanding =
-                (prior?.prior_certified_amount || 0) -
-                (prior?.prior_paid_amount || 0) -
-                (prior?.prior_retention_held || 0);
-              return (
-                <div key={`${claim.party_id}_${claim.project_id}`}>
-                  <div className="p-4 flex flex-col sm:flex-row justify-between sm:items-start gap-6 bg-amber-50/40 dark:bg-amber-950/10">
-
-                    {/* Left: identity */}
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <h3 className="font-bold">رصيد افتتاحي — مستخلص #0</h3>
-                        <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200">
-                          تاريخي (قبل النظام)
-                        </span>
-                      </div>
-                      <p className="text-sm font-medium">{claim.party_name}</p>
-                      <p className="text-sm text-muted-foreground">{claim.project?.name}</p>
-                      <p className="text-xs text-muted-foreground mt-1">تاريخ القطع: {claim.claim_date}</p>
-                    </div>
-
-                    {/* Right: prior amounts + action */}
-                    <div className="flex flex-col items-end gap-1.5 min-w-[260px]">
-
-                      <div className="flex justify-between w-full gap-6 text-xs text-muted-foreground">
-                        <span>الإجمالي المعتمد التراكمي (قبل النظام):</span>
-                        <span className="font-medium">{formatMoney(prior?.prior_certified_amount || 0)}</span>
-                      </div>
-
-                      <div className="flex justify-between w-full gap-6 text-xs text-green-600">
-                        <span>المدفوع قبل النظام:</span>
-                        <span className="font-medium">- {formatMoney(prior?.prior_paid_amount || 0)}</span>
-                      </div>
-
-                      {(prior?.prior_retention_held || 0) > 0 && (
-                        <div className="flex justify-between w-full gap-6 text-xs text-amber-600">
-                          <span>المحتجز (تأمين):</span>
-                          <span className="font-medium">- {formatMoney(prior?.prior_retention_held || 0)}</span>
-                        </div>
-                      )}
-
-                      <div className="flex justify-between items-center w-full gap-6 border-t border-amber-300/50 pt-1.5 mt-0.5">
-                        <span className="text-sm font-semibold">المتبقي المستحق (قبل النظام):</span>
-                        <span className="text-xl font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">
-                          {formatMoney(outstanding)}
-                        </span>
-                      </div>
-
-                      {/* Action */}
-                      <div className="flex items-center gap-2 flex-wrap justify-end mt-1">
-                        <Link
-                          href={`/claims/create?party_id=${claim.party_id}&project_id=${claim.project_id}`}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
-                        >
-                          ➕ تسجيل مستخلص #1
-                        </Link>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            return (
-              <div key={`${claim.party_id}_${claim.project_id}`}>
-
-                {/* ── Latest claim card ── */}
-                <div className="p-4 flex flex-col sm:flex-row justify-between sm:items-start gap-6">
-
-                  {/* Left: identity */}
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      <h3 className="font-bold">
-                        {claim.claim_number === 0 ? 'مستخلص #0 — رصيد افتتاحي' : `مستخلص رقم ${claim.claim_number}`}
-                      </h3>
-                      <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${
-                        claim.status === 'approved'
-                          ? 'bg-primary text-primary-foreground'
-                          : claim.status === 'rejected'
-                          ? 'bg-destructive text-destructive-foreground'
-                          : 'bg-secondary text-secondary-foreground'
-                      }`}>
-                        {claim.status === 'approved' ? 'معتمد' : claim.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
-                      </span>
-                    </div>
-                    <p className="text-sm font-medium">{claim.party_name}</p>
-                    <p className="text-sm text-muted-foreground">{claim.project?.name}</p>
-                    <p className="text-xs text-muted-foreground mt-1">التاريخ: {claim.claim_date}</p>
-                  </div>
-
-                  {/* Right: financial summary + actions */}
-                  <div className="flex flex-col items-end gap-1.5 min-w-[300px]">
-                    {(() => {
-                      const vpc = (claim as any).vendor_prior_claim;
-                      // NOTE: v_vendor_account already folds opening_paid_amount into amount_paid
-                      // for Claim#0 rows, so paidInSystem already includes it.
-                      // We pass openingPaid:0 to avoid double-counting in the formula.
-                      // We still display it separately as an informational line.
-                      const fin = computeClaimFinancials({
-                        claimCumulativeTotal:    totals?.claim_cumulative_total    || 0,
-                        claimCumulativeRetained: totals?.claim_cumulative_retained || 0,
-                        priorCertifiedAmount: Number(vpc?.prior_certified_amount || 0),
-                        priorRetentionHeld:   Number(vpc?.prior_retention_held   || 0),
-                        taxEnabled: !!(claim as any).tax_enabled,
-                        taxRate:    Number((claim as any).tax_rate || 0),
-                        paidInSystem: vendorProjectPaid.get(`${claim.party_id}__${claim.project_id}`) || 0,
-                        openingPaid:  0,  // already folded into paidInSystem via v_vendor_account
-                        claimNumber:  (claim as any).claim_number ?? 0,
-                      });
-                      // Display-only: the pre-system paid amount for informational purposes
-                      const openingPaidDisplay = Number((claim as any).opening_paid_amount || 0);
-
-                      return (
-                        <>
-                          {/* Gross */}
-                          <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
-                            <span>إجمالي الأعمال التراكمي:</span>
-                            <span className="font-medium">{formatMoney(fin.grossTotal)}</span>
-                          </div>
-
-                          {/* Retention */}
-                          {fin.retained > 0 && (
-                            <div className="flex justify-between w-full gap-4 text-xs text-amber-600">
-                              <span>المحتجز التراكمي (تأمين):</span>
-                              <span className="font-medium">- {formatMoney(fin.retained)}</span>
-                            </div>
-                          )}
-
-                          {/* Net cumulative */}
-                          <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground border-t border-muted/30 pt-1">
-                            <span>الصافي التراكمي (قابل للدفع):</span>
-                            <span className="font-medium">{formatMoney(fin.netCumulative)}</span>
-                          </div>
-
-                          {/* Tax */}
-                          {fin.tax > 0 && (
-                            <div className="flex justify-between w-full gap-4 text-xs text-muted-foreground">
-                              <span>الضريبة ({(fin.tax_rate * 100).toFixed(1)}%):</span>
-                              <span>+ {formatMoney(fin.tax)}</span>
-                            </div>
-                          )}
-
-                          {/* Opening Paid (المدفوع قبل النظام) — display only */}
-                          {openingPaidDisplay > 0 && (
-                            <div className="flex justify-between w-full gap-4 text-xs text-amber-600 dark:text-amber-500">
-                              <span>المدفوع قبل النظام:</span>
-                              <span className="font-medium">- {formatMoney(openingPaidDisplay)}</span>
-                            </div>
-                          )}
-
-                          {/* In-system paid (includes opening_paid already) */}
-                          {fin.paidInSystem > 0 && (
-                            <div className="flex justify-between w-full gap-4 text-xs text-green-700 dark:text-green-400 font-medium">
-                              <span>المدفوع (إجمالي):</span>
-                              <span>- {formatMoney(fin.paidInSystem)}</span>
-                            </div>
-                          )}
-
-                          {/* Remaining / overpayment */}
-                          <div className="flex justify-between items-center w-full gap-4 border-t border-primary/20 pt-1.5 mt-0.5">
-                            <span className="text-sm font-semibold">
-                              {remainingLabel(fin.remaining)}
-                            </span>
-                            <span className={`text-xl font-bold whitespace-nowrap ${remainingColorClass(fin.remaining)}`}>
-                              {fin.remaining < 0 ? `(${formatMoney(Math.abs(fin.remaining))})` : formatMoney(fin.remaining)}
-                            </span>
-                          </div>
-                        </>
-                      );
-                    })()}
-
-                    {/* Action buttons */}
-                    <div className="flex items-center gap-2 flex-wrap justify-end mt-1">
-                      {claim.status === 'pending' && (
-                        <Link
-                          href={`/claims/${claim.id}/edit`}
-                          className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors"
-                        >
-                          ✏️ تعديل
-                        </Link>
-                      )}
-                      {claim.status === 'pending' && (profile.can_approve || profile.is_super_admin) && (
-                        <ClaimApproveRejectButtons claimId={claim.id} />
-                      )}
-                      {claim.status === 'approved' && (
-                        <>
-                          <Link
-                            href={claim.claim_type === 'owner' ? `/treasury/receive/${claim.party_id}` : `/treasury/pay/${claim.party_id}`}
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-green-50 text-green-700 border border-green-200 hover:bg-green-100 transition-colors"
-                          >
-                            {claim.claim_type === 'owner' ? '💰 تحصيل دفعة' : '💸 تسجيل دفعة'}
-                          </Link>
+                  // ── Synthetic Claim #0-only row (vendor has prior but no in-system claims yet) ──
+                  if ((claim as any).is_prior_only) {
+                    const outstanding =
+                      (prior?.prior_certified_amount || 0) -
+                      (prior?.prior_paid_amount || 0) -
+                      (prior?.prior_retention_held || 0);
+                    return (
+                      <tr key={rowKey} className="bg-amber-50/40 dark:bg-amber-950/10 hover:bg-amber-50/70 dark:hover:bg-amber-950/20 transition-colors">
+                        <td className="p-3">
+                          <div className="font-bold whitespace-nowrap">رصيد افتتاحي — #0</div>
+                          <span className="inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200 whitespace-nowrap">
+                            تاريخي (قبل النظام)
+                          </span>
+                        </td>
+                        <td className="p-3 font-medium">{claim.party_name}</td>
+                        <td className="p-3 text-muted-foreground">{claim.project?.name}</td>
+                        <td className="p-3 whitespace-nowrap">{claim.claim_date}</td>
+                        <td className="p-3">—</td>
+                        <td className="p-3 font-semibold whitespace-nowrap">{formatMoney(prior?.prior_certified_amount || 0)}</td>
+                        <td className="p-3 text-amber-600 whitespace-nowrap">{(prior?.prior_retention_held || 0) > 0 ? formatMoney(prior.prior_retention_held) : '-'}</td>
+                        <td className="p-3">-</td>
+                        <td className="p-3 text-green-600 font-medium whitespace-nowrap">{formatMoney(prior?.prior_paid_amount || 0)}</td>
+                        <td className="p-3 font-bold text-amber-600 dark:text-amber-400 whitespace-nowrap">{formatMoney(outstanding)}</td>
+                        <td className="p-3">
                           <Link
                             href={`/claims/create?party_id=${claim.party_id}&project_id=${claim.project_id}`}
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors"
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors whitespace-nowrap"
                           >
-                            المستخلص التالي ←
+                            ➕ تسجيل مستخلص #1
                           </Link>
-                        </>
+                        </td>
+                      </tr>
+                    );
+                  }
+
+                  const vpc = (claim as any).vendor_prior_claim;
+                  // NOTE: vendorProjectPaid (built above) already folds claim#0's
+                  // opening_paid_amount in, so paidInSystem already includes it.
+                  // We pass openingPaid:0 to avoid double-counting in the formula.
+                  // We still display it separately as an informational line.
+                  const fin = computeClaimFinancials({
+                    claimCumulativeTotal:    totals?.claim_cumulative_total    || 0,
+                    claimCumulativeRetained: totals?.claim_cumulative_retained || 0,
+                    priorCertifiedAmount: Number(vpc?.prior_certified_amount || 0),
+                    priorRetentionHeld:   Number(vpc?.prior_retention_held   || 0),
+                    taxEnabled: !!(claim as any).tax_enabled,
+                    taxRate:    Number((claim as any).tax_rate || 0),
+                    paidInSystem: vendorProjectPaid.get(`${claim.party_id}__${claim.project_id}`) || 0,
+                    openingPaid:  0,  // already folded into paidInSystem via v_vendor_account
+                    claimNumber:  (claim as any).claim_number ?? 0,
+                  });
+                  // Display-only: the pre-system paid amount for informational purposes
+                  const openingPaidDisplay = Number((claim as any).opening_paid_amount || 0);
+
+                  return (
+                    <Fragment key={rowKey}>
+                      <tr className="hover:bg-muted/30 transition-colors">
+                        <td className="p-3">
+                          <div className="font-bold whitespace-nowrap">
+                            {claim.claim_number === 0 ? 'مستخلص #0' : `مستخلص #${claim.claim_number}`}
+                          </div>
+                        </td>
+                        <td className="p-3 font-medium">{claim.party_name}</td>
+                        <td className="p-3 text-muted-foreground">{claim.project?.name}</td>
+                        <td className="p-3 whitespace-nowrap">{claim.claim_date}</td>
+                        <td className="p-3">
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${
+                            claim.status === 'approved'
+                              ? 'bg-primary text-primary-foreground'
+                              : claim.status === 'rejected'
+                              ? 'bg-destructive text-destructive-foreground'
+                              : 'bg-secondary text-secondary-foreground'
+                          }`}>
+                            {claim.status === 'approved' ? 'معتمد' : claim.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
+                          </span>
+                        </td>
+                        <td className="p-3 font-semibold whitespace-nowrap">{formatMoney(fin.grossTotal)}</td>
+                        <td className="p-3 text-amber-600 whitespace-nowrap">{fin.retained > 0 ? formatMoney(fin.retained) : '-'}</td>
+                        <td className="p-3 whitespace-nowrap">
+                          {formatMoney(fin.netCumulative)}
+                          {fin.tax > 0 && (
+                            <div className="text-xs text-muted-foreground">+ {formatMoney(fin.tax)} ضريبة</div>
+                          )}
+                        </td>
+                        <td className="p-3 text-green-700 dark:text-green-400 font-medium whitespace-nowrap">
+                          {fin.paidInSystem > 0 ? formatMoney(fin.paidInSystem) : '-'}
+                          {openingPaidDisplay > 0 && (
+                            <div className="text-xs text-amber-600 dark:text-amber-500">منها {formatMoney(openingPaidDisplay)} قبل النظام</div>
+                          )}
+                        </td>
+                        <td className="p-3">
+                          <div className={`font-bold whitespace-nowrap ${remainingColorClass(fin.remaining)}`}>
+                            {fin.remaining < 0 ? `(${formatMoney(Math.abs(fin.remaining))})` : formatMoney(fin.remaining)}
+                          </div>
+                          <div className="text-xs text-muted-foreground">{remainingLabel(fin.remaining)}</div>
+                        </td>
+                        <td className="p-3">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Link
+                              href={`/claims/${claim.id}`}
+                              title="عرض المستخلص"
+                              className="inline-flex items-center justify-center w-8 h-8 rounded-lg border text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+                            >
+                              <Eye className="w-4 h-4" />
+                            </Link>
+                            {claim.status === 'pending' && (
+                              <Link
+                                href={`/claims/${claim.id}/edit`}
+                                className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100 transition-colors whitespace-nowrap"
+                              >
+                                ✏️ تعديل
+                              </Link>
+                            )}
+                            {claim.status === 'pending' && (profile.can_approve || profile.is_super_admin) && (
+                              <ClaimApproveRejectButtons claimId={claim.id} />
+                            )}
+                            {claim.status === 'approved' && (
+                              <>
+                                <Link
+                                  href={`/claims/create?party_id=${claim.party_id}&project_id=${claim.project_id}`}
+                                  className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-primary/10 text-primary border border-primary/20 hover:bg-primary/20 transition-colors whitespace-nowrap"
+                                >
+                                  المستخلص التالي ←
+                                </Link>
+                                {claim.claim_number !== 0 && profile.is_super_admin && (
+                                  <RevertClaimToPendingButton claimId={claim.id} />
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+
+                      {/* ── Collapsible history of older claims ── */}
+                      {(history.length > 0 || !!(claim as any).vendor_prior_claim) && (
+                        <tr>
+                          <td colSpan={11} className="p-0">
+                            <ClaimHistory
+                              claims={history}
+                              priorClaim={(claim as any).vendor_prior_claim || null}
+                            />
+                          </td>
+                        </tr>
                       )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* ── Collapsible history of older claims ── */}
-                <ClaimHistory
-                  claims={history}
-                  priorClaim={(claim as any).vendor_prior_claim || null}
-                />
-              </div>
-            );
-          })
-
-        )}
+                    </Fragment>
+                  );
+                })
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
