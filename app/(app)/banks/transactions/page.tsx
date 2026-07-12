@@ -2,7 +2,7 @@ import { getBanks, getAllBanksLedger, getAllBanksLedgerSummary } from '@/lib/que
 import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
 import { requirePageAccess } from '@/lib/require-page-access';
-import { ChevronRight, Wallet, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { ChevronRight, Wallet, ArrowDownLeft, ArrowUpRight, FileDown } from 'lucide-react';
 import { AllTransactionsFilters } from '@/components/banks/all-transactions-filters';
 
 export const dynamic = 'force-dynamic';
@@ -59,6 +59,15 @@ export default async function AllBankTransactionsPage({
     }),
   ]);
 
+  const exportParams = new URLSearchParams();
+  if (account_id) exportParams.set('account_id', account_id);
+  if (isShowAll) {
+    exportParams.set('show_all', 'true');
+  } else {
+    exportParams.set('start_date', startDate);
+    exportParams.set('end_date', endDate);
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -67,11 +76,19 @@ export default async function AllBankTransactionsPage({
         <span className="text-foreground font-medium">كل المعاملات البنكية</span>
       </div>
 
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-3">
-          <Wallet className="w-7 h-7 text-primary" /> كل المعاملات البنكية
-        </h1>
-        <p className="text-muted-foreground mt-1">عرض موحّد لجميع حركات الإيداع والسحب عبر كل الحسابات البنكية</p>
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-3">
+            <Wallet className="w-7 h-7 text-primary" /> كل المعاملات البنكية
+          </h1>
+          <p className="text-muted-foreground mt-1">عرض موحّد لجميع حركات الإيداع والسحب عبر كل الحسابات البنكية</p>
+        </div>
+        <a
+          href={`/api/banks/transactions/export?${exportParams.toString()}`}
+          className="text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap"
+        >
+          <FileDown className="w-4 h-4" /> تصدير إلى Excel
+        </a>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
