@@ -2,7 +2,7 @@
 
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
-import { createR2Client, R2_BUCKET } from "@/lib/r2"
+import { createR2Client, R2_BUCKET, getBatchSignedUrls } from "@/lib/r2"
 
 export async function getUploadUrl(fileName: string, contentType: string) {
   try {
@@ -39,6 +39,15 @@ export async function getDownloadUrl(r2Key: string): Promise<{ url?: string; err
     console.error("Error generating signed download URL:", e)
     return { error: "Failed to generate download URL" }
   }
+}
+
+/**
+ * Batch-fetch signed download URLs for multiple files at once (cached — see
+ * getBatchSignedUrls in lib/r2.ts). Client components can't import lib/r2.ts
+ * directly (server-only env vars), so this action exposes it to them.
+ */
+export async function getDownloadUrls(r2Keys: string[]): Promise<Record<string, string>> {
+  return getBatchSignedUrls(r2Keys)
 }
 
 /**

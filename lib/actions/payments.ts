@@ -62,6 +62,64 @@ export async function payVendor(formData: FormData, allocations: any[]) {
   return { success: true };
 }
 
+export async function payVendorFromExpense(formData: FormData, allocations: any[]) {
+  const supabase = await createClient();
+
+  const employee_id = formData.get('employee_id') as string;
+  const expense_id = formData.get('expense_id') as string;
+  const vendor_id = formData.get('vendor_id') as string;
+  const amount = parseFloat(formData.get('amount') as string);
+  const memo = formData.get('memo') as string;
+  const project_id = formData.get('project_id') as string || null;
+
+  const priorClaimAllocations = allocations.filter(a => a.target_type === 'prior_claim');
+  const standardAllocations = allocations.filter(a => a.target_type !== 'prior_claim');
+
+  const { data, error } = await supabase.rpc('record_vendor_payment_from_expense', {
+    p_employee_id: employee_id,
+    p_expense_id: expense_id,
+    p_vendor_id: vendor_id,
+    p_amount: amount,
+    p_memo: memo || '',
+    p_allocations: standardAllocations,
+    p_project_id: project_id
+  });
+
+  if (error) {
+    return { error: error.message };
+  }
+
+  for (const alloc of priorClaimAllocations) {
+    if (alloc.amount > 0) {
+      const { error: priorError } = await supabase.rpc('pay_prior_claim', {
+        p_prior_claim_id: alloc.target_id,
+        p_vendor_id: vendor_id,
+        p_amount: alloc.amount,
+      });
+      if (priorError) {
+        return { error: priorError.message };
+      }
+    }
+  }
+
+  const { data: admins } = await supabase.from('employees').select('id').eq('is_super_admin', true);
+  if (admins && admins.length > 0) {
+    const adminIds = admins.map(a => a.id);
+    await sendPushNotification(
+      adminIds,
+      'تم صرف دفعة لمقاول من عهدة موظف',
+      `تم صرف ${amount} للمقاول من مصروف معتمد`,
+      `/vendors/${vendor_id}/statement`,
+      'payment_paid'
+    );
+  }
+
+  revalidatePath('/treasury');
+  revalidatePath(`/vendors/${vendor_id}/statement`);
+  revalidatePath('/expenses/statement');
+  return { data, success: true };
+}
+
 export async function receiveFromOwner(formData: FormData, allocations: any[], attachments: string[] = []) {
   const supabase = await createClient();
   
@@ -110,6 +168,47 @@ export async function receiveFromOwner(formData: FormData, allocations: any[], a
 
   revalidatePath('/treasury');
   revalidatePath(`/settings/owners/${owner_id}/statement`);
+  return { success: true };
+}
+
+/** Retroactively assign an unlinked (unallocated) vendor payment to a project + document allocations. */
+export async function assignVendorPayment(
+  ledgerEntryId: string,
+  projectId: string,
+  allocations: { target_type: string; target_id: string; amount: number }[]
+) {
+  const supabase = await createClient();
+
+  const priorClaimAllocations = allocations.filter(a => a.target_type === 'prior_claim');
+  const standardAllocations = allocations.filter(a => a.target_type !== 'prior_claim');
+
+  const { error } = await supabase.rpc('assign_vendor_payment', {
+    p_ledger_entry_id: ledgerEntryId,
+    p_project_id: projectId,
+    p_allocations: standardAllocations,
+  });
+
+  if (error) return { error: error.message };
+
+  for (const alloc of priorClaimAllocations) {
+    if (alloc.amount > 0) {
+      // prior_claim allocations aren't handled by assign_vendor_payment's own loop
+      // in the standard path above (it's filtered out here first); route them the
+      // same way payVendor() does.
+      const { data: entry } = await supabase.from('ledger_entries').select('counterparty_id').eq('id', ledgerEntryId).single();
+      if (entry) {
+        const { error: priorError } = await supabase.rpc('pay_prior_claim', {
+          p_prior_claim_id: alloc.target_id,
+          p_vendor_id: entry.counterparty_id,
+          p_amount: alloc.amount,
+        });
+        if (priorError) return { error: priorError.message };
+      }
+    }
+  }
+
+  revalidatePath('/treasury');
+  revalidatePath('/claims');
   return { success: true };
 }
 

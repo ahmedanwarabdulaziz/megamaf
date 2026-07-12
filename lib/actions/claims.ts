@@ -285,6 +285,20 @@ export async function approveClaim(claimId: string) {
   }
 }
 
+export async function revertClaimToPending(claimId: string) {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc('revert_claim_to_pending', { p_claim_id: claimId });
+    if (error) return { error: error.message };
+
+    revalidatePath('/claims');
+    revalidatePath('/projects', 'layout');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ' };
+  }
+}
+
 export async function rejectClaim(claimId: string) {
   try {
     const supabase = await createClient();

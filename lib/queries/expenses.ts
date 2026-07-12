@@ -151,6 +151,7 @@ export async function getAllExpenses(filters: { startDate?: string, endDate?: st
       *,
       project:projects(name),
       employee:employees!expenses_employee_id_fkey(full_name),
+      approver:employees!expenses_approved_by_fkey(full_name),
       owner:project_owners(name),
       category:expense_categories(name)
     `)

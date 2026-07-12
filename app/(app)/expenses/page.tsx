@@ -339,6 +339,7 @@ export default async function EmployeeExpensesPage({
                   <th className="p-4 font-medium">بند الصرف</th>
                   <th className="p-4 font-medium">المبلغ</th>
                   <th className="p-4 font-medium">الحالة</th>
+                  <th className="p-4 font-medium">اعتمد بواسطة</th>
                   <th className="p-4 font-medium">البيان</th>
                   <th className="p-4 font-medium text-center">المرفقات</th>
                 </tr>
@@ -372,6 +373,7 @@ export default async function EmployeeExpensesPage({
                       </div>
                     </td>
                     <td className="p-4"><StatusBadge status={expense.status} /></td>
+                    <td className="p-4 text-muted-foreground">{expense.approver?.full_name || '-'}</td>
                     <td className="p-4 text-muted-foreground">{expense.notes || '-'}</td>
                     <td className="p-4 text-center">
                       <AttachmentViewer attachments={expense.attachments} />
@@ -380,7 +382,7 @@ export default async function EmployeeExpensesPage({
                 ))}
                 {(!allExpensesData || allExpensesData.length === 0) && (
                   <tr>
-                    <td colSpan={8} className="p-8 text-center text-muted-foreground">لا توجد مصروفات مسجلة</td>
+                    <td colSpan={9} className="p-8 text-center text-muted-foreground">لا توجد مصروفات مسجلة</td>
                   </tr>
                 )}
               </tbody>

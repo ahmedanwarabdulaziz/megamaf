@@ -1,16 +1,18 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Download, Search, Trash2, Loader2, Paperclip, X, FileText, ExternalLink } from 'lucide-react';
+import { Download, Search, Trash2, Loader2, Paperclip } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { deleteCustodyDisbursement } from '@/lib/actions/expenses';
-import { getDownloadUrl } from '@/lib/actions/storage';
+import { getDownloadUrls } from '@/lib/actions/storage';
 import { exportToCsv } from '@/lib/export';
 import { Input } from '@/components/ui/input';
+import { AttachmentGalleryOverlay, type GalleryItem } from '@/components/ui/image-lightbox';
+import { isImageFile } from '@/lib/attachments';
 
-// ─── Attachment Viewer Dialog ───────────────────────────────────────────────
+// ─── Attachment Viewer Dialog — opens straight to the content, no file list ──
 function AttachmentDialog({
   attachments,
   onClose,
@@ -18,62 +20,37 @@ function AttachmentDialog({
   attachments: { r2_key: string; file_name: string }[];
   onClose: () => void;
 }) {
-  const [urls, setUrls] = useState<Record<string, string>>({});
-  const [loading, setLoading] = useState<Record<string, boolean>>({});
+  const [items, setItems] = useState<GalleryItem[] | null>(null);
+  const [index, setIndex] = useState(0);
 
-  const openAttachment = async (r2_key: string) => {
-    if (urls[r2_key]) {
-      window.open(urls[r2_key], '_blank');
-      return;
-    }
-    setLoading(prev => ({ ...prev, [r2_key]: true }));
-    const { url, error } = await getDownloadUrl(r2_key);
-    setLoading(prev => ({ ...prev, [r2_key]: false }));
-    if (error || !url) {
-      alert('فشل تحميل الملف');
-      return;
-    }
-    setUrls(prev => ({ ...prev, [r2_key]: url }));
-    window.open(url, '_blank');
-  };
+  useEffect(() => {
+    let cancelled = false;
+    getDownloadUrls(attachments.map(a => a.r2_key)).then(urls => {
+      if (cancelled) return;
+      const resolved = attachments
+        .filter(a => urls[a.r2_key])
+        .map(a => ({ src: urls[a.r2_key], name: a.file_name, isImage: isImageFile(a.file_name) }));
+      if (resolved.length === 0) {
+        alert('فشل تحميل المرفقات');
+        onClose();
+        return;
+      }
+      setItems(resolved);
+    });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const isPdf = (name: string) => name.toLowerCase().endsWith('.pdf');
+  if (!items) {
+    return (
+      <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   return (
-    <div className="fixed inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-card w-full max-w-sm p-6 rounded-xl border shadow-lg">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="text-lg font-semibold flex items-center gap-2">
-            <Paperclip className="w-4 h-4 text-blue-500" />
-            المرفقات
-          </h3>
-          <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        <ul className="space-y-2">
-          {attachments.map((att, i) => (
-            <li key={i}>
-              <button
-                onClick={() => openAttachment(att.r2_key)}
-                disabled={loading[att.r2_key]}
-                className="w-full flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors text-right"
-              >
-                {loading[att.r2_key]
-                  ? <Loader2 className="w-5 h-5 animate-spin text-muted-foreground shrink-0" />
-                  : isPdf(att.file_name)
-                    ? <FileText className="w-5 h-5 text-red-500 shrink-0" />
-                    : <FileText className="w-5 h-5 text-blue-500 shrink-0" />
-                }
-                <span className="flex-1 text-sm truncate">{att.file_name}</span>
-                <ExternalLink className="w-4 h-4 text-muted-foreground shrink-0" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      </div>
-    </div>
+    <AttachmentGalleryOverlay items={items} index={index} onIndexChange={setIndex} open onClose={onClose} />
   );
 }
 

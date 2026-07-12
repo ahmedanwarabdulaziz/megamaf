@@ -10,7 +10,13 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   const { data: vendor } = await supabase.from('vendors').select('*').eq('id', vendorId).single();
   if (!vendor) notFound();
 
-  const { data: bankAccounts } = await supabase.from('v_bank_account_balances').select('*').order('account_name');
+  const [
+    { data: bankAccounts },
+    { data: employees },
+  ] = await Promise.all([
+    supabase.from('v_bank_account_balances').select('*').order('account_name'),
+    supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name'),
+  ]);
 
   // Fetch all open vendor docs
   const { data: docs } = await supabase.from('v_vendor_account').select('*').eq('party_id', vendorId).order('document_date', { ascending: true });
@@ -113,32 +119,72 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   const [
     { data: claimTotalsData },
     { data: allClaimPaidData },
+    { data: vendorInvoices },
+    { data: vendorRetentions },
+    { data: zeroClaims },
   ] = await Promise.all([
     latestClaimIds.length > 0
       ? supabase.from('v_claim_totals')
           .select('claim_id, claim_cumulative_total, claim_cumulative_retained, claim_cumulative_payable')
           .in('claim_id', latestClaimIds)
       : { data: [] as any[] },
-    supabase.from('v_vendor_account').select('project_id, amount_paid').eq('party_id', vendorId)
+    allClaimIds.length > 0
+      ? supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', allClaimIds)
+      : { data: [] as any[] },
+    supabase.from('invoices').select('id, project_id').eq('vendor_id', vendorId).eq('status', 'approved'),
+    supabase.from('retention_releases').select('id, project_id').eq('party_id', vendorId).eq('claim_type', 'vendor'),
+    supabase.from('claims').select('project_id, opening_paid_amount').eq('party_id', vendorId).eq('claim_type', 'vendor').eq('claim_number', 0),
   ]);
 
-  // Sum paid_amount across ALL entries per project
+  const invoiceIdsAll = (vendorInvoices || []).map((i: any) => i.id);
+  const retentionIdsAll = (vendorRetentions || []).map((r: any) => r.id);
+
+  const [
+    { data: allInvoicePaidData },
+    { data: allRetentionPaidData },
+  ] = await Promise.all([
+    invoiceIdsAll.length > 0
+      ? supabase.from('v_invoice_paid').select('invoice_id, paid_amount').in('invoice_id', invoiceIdsAll)
+      : { data: [] as any[] },
+    retentionIdsAll.length > 0
+      ? supabase.from('v_retention_paid').select('retention_id, paid_amount').in('retention_id', retentionIdsAll)
+      : { data: [] as any[] },
+  ]);
+
+  // Build "how much has actually been paid" per project purely from
+  // allocation-tracking views (v_claim_paid / v_invoice_paid / v_retention_paid),
+  // each grouped by the document's OWN project_id — NOT from the payment ledger
+  // row's project tag. A single payment can be split (via payment_allocations)
+  // across documents in different projects, and the ledger row's project_id —
+  // a single value — can't represent that split correctly.
+  // NOTE: v_claim_paid already folds claim#0's opening_paid_amount into its
+  // paid_amount on this database (confirmed against live data — this isn't in
+  // the local migration files, so treat the live view as ground truth). Do NOT
+  // add opening_paid_amount again below, or claim#0 rows get double-counted.
   const paidByProject = new Map<string, number>();
+  const addPaid = (projectId: string | null | undefined, amount: number) => {
+    if (!projectId || !amount) return;
+    paidByProject.set(projectId, (paidByProject.get(projectId) || 0) + amount);
+  };
+
+  const claimProjectById = new Map((latestClaims || []).map((c: any) => [c.id, c.project_id]));
   for (const row of allClaimPaidData || []) {
-    if (!row.project_id) continue;
-    paidByProject.set(row.project_id, (paidByProject.get(row.project_id) || 0) + Number(row.amount_paid || 0));
+    addPaid(claimProjectById.get(row.claim_id), Number(row.paid_amount || 0));
   }
 
-  // Build a map: "project_id" → opening_paid_amount from Claim#0 (display only)
-  // NOTE: paidByProject (from v_vendor_account) already includes opening_paid_amount
-  // as amount_paid for Claim#0 rows. So we do NOT add openingPaid to paidInSystem again.
+  const invoiceProjectById = new Map((vendorInvoices || []).map((i: any) => [i.id, i.project_id]));
+  for (const row of allInvoicePaidData || []) {
+    addPaid(invoiceProjectById.get(row.invoice_id), Number(row.paid_amount || 0));
+  }
+
+  const retentionProjectById = new Map((vendorRetentions || []).map((r: any) => [r.id, r.project_id]));
+  for (const row of allRetentionPaidData || []) {
+    addPaid(retentionProjectById.get(row.retention_id), Number(row.paid_amount || 0));
+  }
+
+  // Build a map: "project_id" → opening_paid_amount from Claim#0 (display only —
+  // already included in paidByProject above via v_claim_paid, see note there).
   const openingPaidByProject = new Map<string, number>();
-  const { data: zeroClaims } = await supabase
-    .from('claims')
-    .select('project_id, opening_paid_amount')
-    .eq('party_id', vendorId)
-    .eq('claim_type', 'vendor')
-    .eq('claim_number', 0);
   for (const zc of zeroClaims || []) {
     openingPaidByProject.set(zc.project_id, Number(zc.opening_paid_amount || 0));
   }
@@ -157,7 +203,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
       taxEnabled: !!c.tax_enabled,
       taxRate:    Number(c.tax_rate || 0),
       paidInSystem: paidByProject.get(c.project_id) || 0,
-      openingPaid:  0,  // already included in paidByProject via v_vendor_account
+      openingPaid:  0,  // already included in paidByProject above
       claimNumber:  c.claim_number ?? 0,
     });
 
@@ -177,11 +223,37 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     };
   });
 
-  // Projects that now have an in-system claim — used to exclude prior_claim rows
-  const projectsWithInSystemClaim = new Set(claimSummaries.map(s => s.project_id));
+  // Projects where a REAL claim (#1 or later) exists — only these supersede the
+  // opening-balance document (claim #0 / legacy prior claim) for that project.
+  // A claim#0-only project must NOT be in this set, or its only payable document
+  // would be wrongly hidden below (this was the root cause of a bug where a
+  // claim#0-only vendor showed no open documents to pay at all).
+  const projectsWithHigherClaim = new Set(
+    claimSummaries.filter(s => s.claim_number > 0).map(s => s.project_id)
+  );
 
-  // Patch claim docs with cumulative remaining from claimSummaries so the
-  // openDocs filter uses the correct number (not the raw doc amount).
+  // Relabel in-system claim#0 rows — surfaced by v_vendor_account as document_type
+  // 'prior_claim' but actually backed by a real `claims` row, not the legacy
+  // `vendor_prior_claims` table — to 'claim' whenever no higher claim supersedes
+  // them. This lets them (a) get amount_due/amount_paid patched from claimSummaries
+  // below, consistent with what's shown elsewhere, and (b) submit as target_type
+  // 'claim' to record_vendor_payment(_from_expense), which those RPCs' 'prior_claim'
+  // branch can't handle (it only looks up the legacy vendor_prior_claims table,
+  // where an in-system claim#0's id doesn't exist). True legacy vendor_prior_claims
+  // rows (present in priorClaims) are left untouched — the existing 'prior_claim'
+  // RPC handling is correct for those.
+  allDocs.forEach(d => {
+    if (
+      d.document_type === 'prior_claim' &&
+      !projectsWithHigherClaim.has(d.project_id) &&
+      !priorClaims?.some(pc => pc.id === d.document_id)
+    ) {
+      d.document_type = 'claim';
+    }
+  });
+
+  // Patch claim docs (including relabeled claim#0 rows) with cumulative remaining
+  // from claimSummaries so the openDocs filter uses the correct number (not the raw doc amount).
   allDocs.forEach(d => {
     if (d.document_type === 'claim') {
       const s = claimSummaries.find(cs => cs.project_id === d.project_id);
@@ -193,12 +265,12 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   });
 
   // Filter for payables that still have a balance.
-  // Exclude prior_claim / opening_balance rows for projects that already have an in-system claim
-  // (their balance is already folded into the cumulative claim total).
+  // Exclude prior_claim / opening_balance rows for projects that have a higher claim
+  // (their balance is already folded into that claim's cumulative total).
   const openDocs = allDocs.filter(d => {
     if (d.document_type === 'payment') return false;
     if ((d.document_type === 'prior_claim' || d.document_type === 'opening_balance')
-        && projectsWithInSystemClaim.has(d.project_id)) return false;
+        && projectsWithHigherClaim.has(d.project_id)) return false;
     return (d.amount_due - d.amount_paid) > 0;
   });
 
@@ -210,7 +282,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
         <p className="text-muted-foreground mt-1">المقاول: {vendor.name}</p>
       </div>
 
-      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} bankAccounts={bankAccounts || []} projects={projects || []} claimSummaries={claimSummaries} />
+      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} bankAccounts={bankAccounts || []} employees={employees || []} projects={projects || []} claimSummaries={claimSummaries} />
     </div>
   );
 }

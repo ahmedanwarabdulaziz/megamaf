@@ -142,6 +142,52 @@ export async function createExpense(formData: FormData) {
   }
 }
 
+/** Approved expenses for one employee that still have an unused balance available
+ *  to fund a vendor payment (amount minus whatever's already been allocated via
+ *  record_vendor_payment_from_expense, tracked in v_expense_vendor_paid). */
+export async function getEmployeeAvailableExpenses(employeeId: string) {
+  try {
+    const supabase = await createClient();
+
+    const { data: expenses, error } = await supabase
+      .from('expenses')
+      .select('id, expense_date, amount, notes, category_id, project_id, expense_categories(name), projects(name)')
+      .eq('employee_id', employeeId)
+      .eq('status', 'approved')
+      .order('expense_date', { ascending: false });
+
+    if (error) return { error: error.message };
+    if (!expenses || expenses.length === 0) return { data: [] };
+
+    const ids = expenses.map(e => e.id);
+    const { data: paid, error: paidError } = await supabase
+      .from('v_expense_vendor_paid')
+      .select('expense_id, paid_amount')
+      .in('expense_id', ids);
+
+    if (paidError) return { error: paidError.message };
+
+    const paidMap = new Map((paid || []).map(p => [p.expense_id, Number(p.paid_amount || 0)]));
+
+    const result = expenses
+      .map(e => ({
+        id: e.id,
+        expense_date: e.expense_date,
+        amount: Number(e.amount),
+        notes: e.notes,
+        category_name: (e as any).expense_categories?.name || '',
+        project_id: e.project_id || '',
+        project_name: (e as any).projects?.name || '',
+        available: Number(e.amount) - (paidMap.get(e.id) || 0),
+      }))
+      .filter(e => e.available > 0);
+
+    return { data: result };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ غير متوقع' };
+  }
+}
+
 export async function deleteExpense(expenseId: string) {
   try {
     const supabase = await createClient();
