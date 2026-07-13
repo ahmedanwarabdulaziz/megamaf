@@ -256,6 +256,7 @@ export default async function EmployeeExpensesPage({
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
+                    <AttachmentViewer attachments={expense.attachments} />
                     <div className="text-xl font-bold whitespace-nowrap">
                       {formatMoney(expense.amount)}
                     </div>
@@ -304,8 +305,11 @@ export default async function EmployeeExpensesPage({
                     <StatusBadge status={expense.status} />
                   </div>
                 </div>
-                <div className="text-xl font-bold whitespace-nowrap">
-                  {formatMoney(expense.amount)}
+                <div className="flex items-center gap-2">
+                  <AttachmentViewer attachments={(expense as any).attachments} />
+                  <div className="text-xl font-bold whitespace-nowrap">
+                    {formatMoney(expense.amount)}
+                  </div>
                 </div>
               </div>
             ))
