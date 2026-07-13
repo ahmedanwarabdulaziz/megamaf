@@ -28,6 +28,7 @@ export default async function AppLayout({
   const canSeeSettings = isSuperAdmin || grantedPages.includes('settings')
   const canSeeVendors = isSuperAdmin || grantedPages.includes('vendors')
   const canSeeClaims = isSuperAdmin || grantedPages.includes('claims')
+  const canSeeSalary = isSuperAdmin || grantedPages.includes('salary')
   const canSeeDeposits = isSuperAdmin || grantedPages.includes('deposits')
   const canSeeInventory = isSuperAdmin || grantedPages.includes('inventory')
   const canSeeOwners = isSuperAdmin || grantedPages.includes('owners')
@@ -49,6 +50,7 @@ export default async function AppLayout({
           canApprove={isSuperAdmin || employee?.can_approve}
           canSeeVendors={canSeeVendors}
           canSeeClaims={canSeeClaims}
+          canSeeSalary={canSeeSalary}
           canSeeInventory={canSeeInventory}
           canSeeEmployees={canSeeEmployees}
           canSeeSettings={canSeeSettings}
@@ -96,6 +98,7 @@ export default async function AppLayout({
               canApprove={!!(isSuperAdmin || employee?.can_approve)}
               canSeeVendors={canSeeVendors}
               canSeeClaims={canSeeClaims}
+              canSeeSalary={canSeeSalary}
               canSeeInventory={canSeeInventory}
               canSeeEmployees={canSeeEmployees}
               canSeeSettings={canSeeSettings}

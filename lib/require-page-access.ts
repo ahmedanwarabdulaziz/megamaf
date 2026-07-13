@@ -11,6 +11,7 @@ const PAGE_SLUG_TO_PATH: Record<string, string> = {
   expenses: '/expenses',
   vendors: '/vendors',
   claims: '/claims',
+  salary: '/salary',
   inventory: '/inventory',
   employees: '/employees',
   settings: '/settings',

@@ -75,6 +75,8 @@ export default async function DepositsPage({
   const overdueSources = groupBySource(overdueRows, 'expected_amount');
   const upcomingSources = groupBySource(upcomingRows, 'expected_amount');
 
+  const totalDepositsAmount = deposits?.reduce((sum, d) => sum + Number(d.principal_amount), 0) || 0;
+
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between bg-card p-6 rounded-lg border shadow-sm">
@@ -93,8 +95,18 @@ export default async function DepositsPage({
       </div>
 
       <div className="bg-card rounded-lg border shadow-sm p-6">
-        <p className="text-sm text-muted-foreground mb-1">إجمالي العوائد المستحقة هذا الشهر</p>
-        <p className="text-3xl font-bold text-primary">{formatMoney(totalThisMonth)}</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">
+              إجمالي الودائع ({tab === 'old' ? 'القديمة' : 'الحالية'})
+            </p>
+            <p className="text-3xl font-bold">{formatMoney(totalDepositsAmount)}</p>
+          </div>
+          <div>
+            <p className="text-sm text-muted-foreground mb-1">إجمالي العوائد المستحقة هذا الشهر</p>
+            <p className="text-3xl font-bold text-primary">{formatMoney(totalThisMonth)}</p>
+          </div>
+        </div>
 
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 mt-4 pt-4 border-t">
           <div>

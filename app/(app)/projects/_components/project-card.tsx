@@ -59,10 +59,13 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
   const empExpBilled = Number(fin.employee_expenses_billed || 0)
   const empExpPaid   = Number(fin.employee_expenses_paid   || 0)
 
+  const salaryBilled = Number(fin.employee_salary_cost_billed || 0)
+  const salaryPaid   = Number(fin.employee_salary_cost_paid   || 0)
+
   const priorExpenses = Number(fin.prior_expenses || 0)
 
   // ── Totals ────────────────────────────────────────────────────────────────
-  const totalExpBilled  = priorExpenses + vendorGross + invoicesBilled + empExpBilled
+  const totalExpBilled  = priorExpenses + vendorGross + invoicesBilled + empExpBilled + salaryBilled
   const inventoryValue  = Number(fin.inventory_asset_value || 0)
 
   const netProfit    = ownerBilled - (totalExpBilled - inventoryValue)
@@ -182,7 +185,7 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
             <div className="w-2 h-2 rounded-full bg-amber-500" />
             تفاصيل المصروفات
           </h3>
-          <div className={`grid grid-cols-1 ${priorExpenses > 0 ? 'sm:grid-cols-2 md:grid-cols-4' : 'sm:grid-cols-3'} gap-3`}>
+          <div className={`grid grid-cols-1 ${priorExpenses > 0 ? 'sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5' : 'sm:grid-cols-2 md:grid-cols-4'} gap-3`}>
             {/* Prior Expenses */}
             {priorExpenses > 0 && (
               <div className="p-3 rounded-xl bg-background border border-border/50 shadow-sm flex flex-col justify-center bg-amber-50/30 dark:bg-amber-950/20">
@@ -269,6 +272,26 @@ export function ProjectCard({ project, onDelete }: { project: any; onDelete: () 
                 </span>
               </div>
               <Progress value={getPercentage(empExpPaid, empExpBilled)} className="h-1 mt-2" indicatorColor="bg-amber-500" />
+            </div>
+
+            {/* Salary Cost */}
+            <div className="p-3 rounded-xl bg-background border border-border/50 shadow-sm">
+              <p className="text-xs font-medium mb-2">تكلفة الرواتب</p>
+              <div className="flex justify-between items-baseline mb-1">
+                <span className="text-[10px] text-muted-foreground">مستحق:</span>
+                <span className="text-sm font-semibold">{formatMoney(salaryBilled)}</span>
+              </div>
+              <div className="flex justify-between items-baseline border-t border-border/50 pt-1.5 mt-1">
+                <span className="text-[10px] text-muted-foreground">مدفوع:</span>
+                <span className="text-sm font-bold text-amber-600 dark:text-amber-400">{formatMoney(salaryPaid)}</span>
+              </div>
+              <div className="flex justify-between items-baseline mt-1">
+                <span className="text-[10px] text-muted-foreground">متبقي للدفع:</span>
+                <span className="text-sm font-semibold text-red-600 dark:text-red-500">
+                  {formatMoney(Math.max(0, salaryBilled - salaryPaid))}
+                </span>
+              </div>
+              <Progress value={getPercentage(salaryPaid, salaryBilled)} className="h-1 mt-2" indicatorColor="bg-amber-500" />
             </div>
           </div>
         </div>

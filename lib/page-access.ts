@@ -8,6 +8,7 @@ export const EMPLOYEE_PAGES: { slug: string; name: string }[] = [
   { slug: 'expenses', name: 'المصروفات والعهد' },
   { slug: 'vendors', name: 'الموردون والفواتير' },
   { slug: 'claims', name: 'المستخلصات' },
+  { slug: 'salary', name: 'الرواتب' },
   { slug: 'inventory', name: 'المخازن' },
   { slug: 'employees', name: 'الموظفون' },
   { slug: 'settings', name: 'الإعدادات' },

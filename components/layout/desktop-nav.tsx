@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, Landmark, Receipt, CheckSquare, Users,
-  Wallet, FileText, FileSignature, Contact, Warehouse, ArrowLeftRight
+  Wallet, FileText, FileSignature, Contact, Warehouse, ArrowLeftRight, Banknote
 } from 'lucide-react';
 import { usePendingApprovalsCount } from './use-pending-approvals-count';
 import { usePendingClaimsCount } from './use-pending-claims-count';
@@ -19,6 +19,7 @@ interface DesktopNavProps {
   canApprove: boolean;
   canSeeVendors: boolean;
   canSeeClaims: boolean;
+  canSeeSalary: boolean;
   canSeeInventory: boolean;
   canSeeEmployees: boolean;
   canSeeSettings: boolean;
@@ -35,6 +36,7 @@ export function DesktopNav({
   canApprove,
   canSeeVendors,
   canSeeClaims,
+  canSeeSalary,
   canSeeInventory,
   canSeeEmployees,
   canSeeSettings,
@@ -182,6 +184,13 @@ export function DesktopNav({
         </Link>
       )}
       
+      {canSeeSalary && (
+        <Link href="/salary" className={navClass('/salary')}>
+          <Banknote className="h-5 w-5" />
+          الرواتب
+        </Link>
+      )}
+
       {canSeeInventory && (
         <Link href="/inventory" className={navClass('/inventory')}>
           <Warehouse className="h-5 w-5" />

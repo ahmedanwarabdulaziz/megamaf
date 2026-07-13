@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, LogOut, Landmark, Receipt, CheckSquare, Users, Settings,
   Wallet, FileText, FileSignature, Contact, Warehouse, ArrowLeftRight,
-  X, Menu, ChevronLeft, BarChart3, FolderKanban,
+  X, Menu, ChevronLeft, BarChart3, FolderKanban, Banknote,
 } from 'lucide-react';
 import { usePendingApprovalsCount } from './use-pending-approvals-count';
 import { usePendingClaimsCount } from './use-pending-claims-count';
@@ -37,6 +37,7 @@ interface MobileNavProps {
   canApprove: boolean;
   canSeeVendors: boolean;
   canSeeClaims: boolean;
+  canSeeSalary: boolean;
   canSeeInventory: boolean;
   canSeeEmployees: boolean;
   canSeeSettings: boolean;
@@ -55,6 +56,7 @@ export function MobileNav({
   canApprove,
   canSeeVendors,
   canSeeClaims,
+  canSeeSalary,
   canSeeInventory,
   canSeeEmployees,
   canSeeSettings,
@@ -110,6 +112,7 @@ export function MobileNav({
           { href: '/invoices', label: 'فواتير الموردين', icon: <FileText className="w-5 h-5" />, badge: pendingInvoicesCount },
         ] : []),
         ...(canSeeClaims ? [{ href: '/claims', label: 'المستخلصات', icon: <FileSignature className="w-5 h-5" />, badge: pendingClaimsCount }] : []),
+        ...(canSeeSalary ? [{ href: '/salary', label: 'الرواتب', icon: <Banknote className="w-5 h-5" /> }] : []),
         ...(canSeeInventory ? [{ href: '/inventory', label: 'المخازن', icon: <Warehouse className="w-5 h-5" /> }] : []),
       ],
     },

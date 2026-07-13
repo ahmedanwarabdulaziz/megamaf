@@ -17,6 +17,7 @@ export default async function EmployeesPage() {
     supabase
       .from('employees')
       .select('id, full_name, username, role, is_active, is_super_admin, can_approve')
+      .eq('employment_type', 'system_login')
       .order('created_at', { ascending: false }),
     supabase
       .from('projects')

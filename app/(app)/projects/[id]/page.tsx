@@ -255,6 +255,9 @@ export default async function ProjectDetailPage({
                 {hasOpeningBalance && (finances?.prior_expenses || 0) > 0 && (
                   <p className="text-xs text-muted-foreground mt-1">منها سابقة: {formatMoney(finances?.prior_expenses || 0)}</p>
                 )}
+                {(finances?.employee_salary_cost_billed || 0) > 0 && (
+                  <p className="text-xs text-muted-foreground mt-1">منها رواتب: {formatMoney(finances?.employee_salary_cost_billed || 0)}</p>
+                )}
               </CardContent>
             </Card>
 
