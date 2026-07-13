@@ -20,6 +20,16 @@ const categoryMap: Record<string, string> = {
   'deduction': 'خصومات/مصروفات',
   'transfer_in': 'تحويل وارد',
   'transfer_out': 'تحويل صادر',
+  'salary_payment': 'دفعة راتب',
+  'loan_disbursement': 'صرف سلفة',
+};
+
+const counterpartyTypeMap: Record<string, string> = {
+  vendor: 'مقاول/مورد',
+  owner: 'مالك',
+  employee: 'موظف',
+  bank: 'حساب بنكي',
+  internal: 'داخلي',
 };
 
 export default async function AllBankTransactionsPage({
@@ -129,8 +139,10 @@ export default async function AllBankTransactionsPage({
               <th className="p-4 font-medium">التاريخ</th>
               <th className="p-4 font-medium">الحساب البنكي</th>
               <th className="p-4 font-medium">التصنيف</th>
+              <th className="p-4 font-medium">لمن / من</th>
               <th className="p-4 font-medium">البيان</th>
               <th className="p-4 font-medium">المبلغ</th>
+              <th className="p-4 font-medium">بواسطة</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -145,17 +157,38 @@ export default async function AllBankTransactionsPage({
                     {categoryMap[entry.category] || entry.category}
                   </span>
                 </td>
+                <td className="p-4 whitespace-nowrap">
+                  {entry.counterparty_name ? (
+                    <div className="flex flex-col">
+                      <span className="text-xs text-muted-foreground">{counterpartyTypeMap[entry.counterparty_type] || entry.counterparty_type}</span>
+                      {entry.counterparty_type === 'vendor' ? (
+                        <Link href={`/vendors/${entry.counterparty_id}/statement`} className="font-medium hover:text-primary hover:underline">{entry.counterparty_name}</Link>
+                      ) : entry.counterparty_type === 'owner' ? (
+                        <Link href={`/settings/owners/${entry.counterparty_id}/statement`} className="font-medium hover:text-primary hover:underline">{entry.counterparty_name}</Link>
+                      ) : entry.counterparty_type === 'employee' ? (
+                        <Link href={`/employees/${entry.counterparty_id}`} className="font-medium hover:text-primary hover:underline">{entry.counterparty_name}</Link>
+                      ) : (
+                        <span className="font-medium">{entry.counterparty_name}</span>
+                      )}
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground">-</span>
+                  )}
+                </td>
                 <td className="p-4 max-w-[280px] truncate" title={entry.memo || ''}>
                   {entry.memo || '-'}
                 </td>
                 <td className={`p-4 font-bold whitespace-nowrap ${entry.direction === 'in' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
                   {entry.direction === 'in' ? '+' : '-'}{formatMoney(entry.amount)}
                 </td>
+                <td className="p-4 text-muted-foreground whitespace-nowrap">
+                  {entry.created_by_name || '-'}
+                </td>
               </tr>
             ))}
             {items.length === 0 && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-muted-foreground">
+                <td colSpan={7} className="p-8 text-center text-muted-foreground">
                   لا توجد معاملات مطابقة لخيارات التصفية المحددة
                 </td>
               </tr>

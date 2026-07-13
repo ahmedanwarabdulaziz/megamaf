@@ -105,7 +105,7 @@ export async function getAllBanksLedger({
 
   let q = supabase
     .from('ledger_entries')
-    .select('id, entry_date, direction, amount, category, memo, bank_account_id, bank_accounts(account_name, banks(name))', { count: 'exact' })
+    .select('id, entry_date, direction, amount, category, memo, bank_account_id, counterparty_type, counterparty_id, created_by, bank_accounts(account_name, banks(name))', { count: 'exact' })
     .not('bank_account_id', 'is', null)
     .order('entry_date', { ascending: false })
     .order('created_at', { ascending: false });
@@ -121,7 +121,45 @@ export async function getAllBanksLedger({
   const { data, error, count } = await q;
   if (error) throw error;
 
-  return { items: data ?? [], totalCount: count || 0 };
+  const items = await attachCounterpartyNames(supabase, data ?? []);
+
+  return { items, totalCount: count || 0 };
+}
+
+async function attachCounterpartyNames(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  rows: { counterparty_type: string | null; counterparty_id: string | null; created_by: string | null }[]
+) {
+  const idsByType: Record<string, Set<string>> = { vendor: new Set(), owner: new Set(), employee: new Set() };
+  for (const r of rows) {
+    if (r.counterparty_type && r.counterparty_id && idsByType[r.counterparty_type]) {
+      idsByType[r.counterparty_type].add(r.counterparty_id);
+    }
+    if (r.created_by) idsByType.employee.add(r.created_by);
+  }
+
+  const [{ data: vendors }, { data: owners }, { data: employees }] = await Promise.all([
+    idsByType.vendor.size
+      ? supabase.from('vendors').select('id, name').in('id', Array.from(idsByType.vendor))
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    idsByType.owner.size
+      ? supabase.from('project_owners').select('id, name').in('id', Array.from(idsByType.owner))
+      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
+    idsByType.employee.size
+      ? supabase.from('employees').select('id, full_name').in('id', Array.from(idsByType.employee))
+      : Promise.resolve({ data: [] as { id: string; full_name: string }[] }),
+  ]);
+
+  const nameById: Record<string, string> = {};
+  for (const v of vendors ?? []) nameById[v.id] = v.name;
+  for (const o of owners ?? []) nameById[o.id] = o.name;
+  for (const e of employees ?? []) nameById[e.id] = e.full_name;
+
+  return rows.map((r) => ({
+    ...r,
+    counterparty_name: r.counterparty_type && r.counterparty_id ? nameById[r.counterparty_id] || null : null,
+    created_by_name: r.created_by ? nameById[r.created_by] || null : null,
+  }));
 }
 
 export async function getBankAccountDetails(accountId: string) {

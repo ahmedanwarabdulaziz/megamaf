@@ -15,6 +15,16 @@ const categoryMap: Record<string, string> = {
   'deduction': 'خصومات/مصروفات',
   'transfer_in': 'تحويل وارد',
   'transfer_out': 'تحويل صادر',
+  'salary_payment': 'دفعة راتب',
+  'loan_disbursement': 'صرف سلفة',
+};
+
+const counterpartyTypeMap: Record<string, string> = {
+  vendor: 'مقاول/مورد',
+  owner: 'مالك',
+  employee: 'موظف',
+  bank: 'حساب بنكي',
+  internal: 'داخلي',
 };
 
 export async function GET(request: NextRequest) {
@@ -54,9 +64,11 @@ export async function GET(request: NextRequest) {
       { header: 'التاريخ', key: 'date', width: 14 },
       { header: 'الحساب البنكي', key: 'account', width: 30 },
       { header: 'التصنيف', key: 'category', width: 22 },
+      { header: 'لمن / من', key: 'counterparty', width: 26 },
       { header: 'البيان', key: 'memo', width: 45 },
       { header: 'الاتجاه', key: 'direction', width: 12 },
       { header: 'المبلغ', key: 'amount', width: 16 },
+      { header: 'بواسطة', key: 'created_by', width: 20 },
     ];
 
     const headerRow = sheet.getRow(1);
@@ -72,15 +84,19 @@ export async function GET(request: NextRequest) {
         date: entry.entry_date,
         account: `${entry.bank_accounts?.banks?.name || ''} - ${entry.bank_accounts?.account_name || ''}`,
         category: categoryMap[entry.category] || entry.category,
+        counterparty: entry.counterparty_name
+          ? `${counterpartyTypeMap[entry.counterparty_type] || entry.counterparty_type}: ${entry.counterparty_name}`
+          : '-',
         memo: entry.memo || '-',
         direction: entry.direction === 'in' ? 'إيداع' : 'سحب',
         amount: Number(entry.amount) * (entry.direction === 'out' ? -1 : 1),
+        created_by: entry.created_by_name || '-',
       });
       row.getCell('amount').numFmt = '#,##0.00';
       row.alignment = { horizontal: 'right' };
     }
 
-    sheet.autoFilter = { from: 'A1', to: 'F1' };
+    sheet.autoFilter = { from: 'A1', to: 'H1' };
 
     const buffer = await workbook.xlsx.writeBuffer();
     const filename = `bank-transactions-${new Date().toISOString().slice(0, 10)}.xlsx`;
