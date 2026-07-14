@@ -26,29 +26,6 @@ export async function getBanks() {
   }));
 }
 
-export async function getBankStatement(accountId: string, limit = 50, offset = 0) {
-  const supabase = await createClient();
-  
-  const { data, error, count } = await supabase
-    .from('v_bank_statement')
-    .select('*', { count: 'exact' })
-    .eq('bank_account_id', accountId)
-    .order('entry_date', { ascending: false })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1);
-    
-  if (error) throw error;
-  
-  // We want to return the statement. Usually statements are viewed chronological,
-  // but if we do infinite scroll, descending (newest first) is common for grids.
-  // The query above sorts descending.
-  
-  return {
-    items: data,
-    totalCount: count || 0,
-  };
-}
-
 export async function getAllBanksLedgerSummary({
   startDate,
   endDate,

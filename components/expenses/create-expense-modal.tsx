@@ -107,7 +107,7 @@ export function CreateExpenseModal({
 
   const allProjectOptions = [
     { value: '00000000-0000-0000-0000-000000000001', label: '-- ميجاماف (الشركة الرئيسية) --' },
-    ...projects.map((p: any) => ({ value: p.id, label: p.name }))
+    ...projects.filter((p: any) => p.id !== '00000000-0000-0000-0000-000000000001').map((p: any) => ({ value: p.id, label: p.name }))
   ];
 
   const employeeOptions = [
@@ -419,7 +419,7 @@ export function EditExpenseModal({
 
   const editAllProjectOptions = [
     { value: '00000000-0000-0000-0000-000000000001', label: '-- ميجاماف (الشركة الرئيسية) --' },
-    ...projects.map((p: any) => ({ value: p.id, label: p.name }))
+    ...projects.filter((p: any) => p.id !== '00000000-0000-0000-0000-000000000001').map((p: any) => ({ value: p.id, label: p.name }))
   ];
 
   async function action(formData: FormData) {
@@ -475,7 +475,7 @@ export function EditExpenseModal({
               onChange={e => setSelectedProjectId(e.target.value)}
             >
               <option value="00000000-0000-0000-0000-000000000001">-- ميجاماف (الشركة الرئيسية) --</option>
-              {projects.map(p => (
+              {projects.filter((p: any) => p.id !== '00000000-0000-0000-0000-000000000001').map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
