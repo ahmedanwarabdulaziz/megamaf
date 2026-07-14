@@ -142,9 +142,105 @@ export async function createExpense(formData: FormData) {
   }
 }
 
+const createDirectExpenseSchema = z.object({
+  project_id:      z.string().regex(uuidRegex, 'Invalid UUID'),
+  category_id:     z.string().regex(uuidRegex, 'Invalid UUID'),
+  bank_account_id: z.string().regex(uuidRegex, 'Invalid UUID'),
+  expense_date:    z.string(),
+  amount:          z.coerce.number().positive(),
+  notes:           z.string().optional(),
+});
+
+/** Admin-only: create an expense that is already approved and settled from a
+ *  bank account on the spot, bypassing the approval queue and custody entirely. */
+export async function createDirectExpense(formData: FormData) {
+  try {
+    const supabase = await createClient();
+
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: employeeData } = await supabase
+      .from('employees')
+      .select('id, is_super_admin')
+      .eq('auth_user_id', userData.user?.id)
+      .single();
+
+    if (!employeeData) return { error: 'Employee profile not found' };
+    if (!employeeData.is_super_admin) return { error: 'غير مصرح لك بهذا الإجراء' };
+
+    // Blank target employee = the admin themselves (same convention as createExpense)
+    const targetEmployeeIdRaw = (formData.get('target_employee_id') as string | null)?.trim();
+    let targetEmployeeId = employeeData.id;
+    if (targetEmployeeIdRaw) {
+      const { data: targetEmp } = await supabase
+        .from('employees')
+        .select('id')
+        .eq('id', targetEmployeeIdRaw)
+        .single();
+      if (!targetEmp) return { error: 'الموظف المحدد غير موجود' };
+      targetEmployeeId = targetEmp.id;
+    }
+
+    const parsed = createDirectExpenseSchema.safeParse({
+      project_id: (formData.get('project_id') as string) || MAIN_COMPANY_PROJECT_ID,
+      category_id: formData.get('category_id'),
+      bank_account_id: formData.get('bank_account_id'),
+      expense_date: formData.get('expense_date'),
+      amount: formData.get('amount'),
+      notes: formData.get('notes'),
+    });
+
+    if (!parsed.success) {
+      return { error: 'بيانات المصروف غير صالحة: ' + parsed.error.issues.map(e => e.path.join('.') + ': ' + e.message).join(' | ') };
+    }
+
+    const { data: expenseId, error } = await supabase.rpc('create_direct_expense', {
+      p_employee_id: targetEmployeeId,
+      p_project_id: parsed.data.project_id,
+      p_category_id: parsed.data.category_id,
+      p_bank_account_id: parsed.data.bank_account_id,
+      p_amount: parsed.data.amount,
+      p_expense_date: parsed.data.expense_date,
+      p_notes: parsed.data.notes,
+    });
+
+    if (error) return { error: error.message };
+
+    const attachmentUrls = formData.getAll('attachment_url') as string[];
+    if (attachmentUrls.length > 0 && expenseId) {
+      const attachmentRows = attachmentUrls.map(url => ({
+        entity_type: 'expense',
+        entity_id: expenseId as string,
+        r2_key: url,
+        file_name: url,
+        uploaded_by: employeeData.id,
+      }));
+      const { error: attachError } = await supabase.from('attachments').insert(attachmentRows);
+      if (attachError) console.error('Attachment insert failed:', attachError);
+    }
+
+    await logAudit({
+      employee_id: employeeData.id,
+      action: 'create',
+      entity_type: 'direct_expense',
+      entity_id: expenseId as string,
+      after: { ...parsed.data, employee_id: targetEmployeeId },
+    });
+
+    revalidatePath('/expenses');
+    revalidatePath('/expenses/statement');
+    revalidatePath('/reports/employee-custody');
+    revalidatePath('/banks');
+    return { data: { id: expenseId } };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ غير متوقع' };
+  }
+}
+
 /** Approved expenses for one employee that still have an unused balance available
  *  to fund a vendor payment (amount minus whatever's already been allocated via
- *  record_vendor_payment_from_expense, tracked in v_expense_vendor_paid). */
+ *  record_vendor_payment_from_expense, tracked in v_expense_vendor_paid). Direct
+ *  expenses are excluded — their cash is already spent at creation, so they have
+ *  nothing left to reallocate. */
 export async function getEmployeeAvailableExpenses(employeeId: string) {
   try {
     const supabase = await createClient();
@@ -154,6 +250,7 @@ export async function getEmployeeAvailableExpenses(employeeId: string) {
       .select('id, expense_date, amount, notes, category_id, project_id, expense_categories(name), projects(name)')
       .eq('employee_id', employeeId)
       .eq('status', 'approved')
+      .eq('is_direct', false)
       .order('expense_date', { ascending: false });
 
     if (error) return { error: error.message };

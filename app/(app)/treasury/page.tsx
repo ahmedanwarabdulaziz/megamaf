@@ -443,10 +443,10 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                       <td className="p-4">{entry.entry_date}</td>
                       <td className="p-4 font-semibold">{ownerMap.get(entry.counterparty_id) || 'غير معروف'}</td>
                       <td className="p-4">
-                        {isUnassigned ? (
-                          <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span>🟡</span> غير محدد</span>
-                        ) : (
+                        {entry.project_id ? (
                           <span className="text-muted-foreground">{(entry.projects as any)?.name || '-'}</span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium"><span>🟡</span> غير محدد</span>
                         )}
                       </td>
                       <td className="p-4 text-muted-foreground">{(entry.bank_accounts as any)?.banks?.name || ''} - {(entry.bank_accounts as any)?.account_name || ''}</td>

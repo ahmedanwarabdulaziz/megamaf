@@ -56,6 +56,7 @@ export default async function EmployeeCustodyPage({
       .select('id, expense_date, amount, notes, status, settled_amount, projects(name), expense_categories(name)')
       .eq('employee_id', employee_id)
       .eq('status', 'approved')
+      .eq('is_direct', false)
       .gte('expense_date', startDate)
       .lte('expense_date', endDate);
       

@@ -1,5 +1,6 @@
 import { getEmployeeExpenses, getOwnerExpenses, getExpenseCategories, getAllExpenses } from '@/lib/queries/expenses';
 import { getProjects } from '@/lib/queries/projects';
+import { getBanks } from '@/lib/queries/banks';
 import { getProfile } from '@/lib/supabase/get-profile';
 import { Wallet, CheckCircle, AlertCircle, TrendingDown } from 'lucide-react';
 
@@ -39,12 +40,22 @@ export default async function EmployeeExpensesPage({
   const endDate = end_date || defaultEnd;
   const isShowAll = show_all === 'true';
 
-  const [categories, projects] = await Promise.all([
+  const [categories, projects, banks] = await Promise.all([
     getExpenseCategories(),
     getProjects(),
+    isSuperAdmin ? getBanks() : Promise.resolve([]),
   ]);
 
   const activeCategories = categories.filter(c => c.is_active);
+
+  const bankAccounts = (banks || []).flatMap((b: any) =>
+    (b.accounts || []).map((a: any) => ({
+      bank_account_id: a.bank_account_id,
+      bank_name: b.name,
+      account_name: a.account_name,
+      current_balance: a.current_balance,
+    }))
+  );
 
   // Load data based on tab
   const myExpenses = tab === 'mine' ? await getAllExpenses({
@@ -113,6 +124,7 @@ export default async function EmployeeExpensesPage({
               projects={projects || []}
               isSuperAdmin={employee.is_super_admin}
               employees={allEmployees}
+              bankAccounts={bankAccounts}
             />
           )}
           {tab === 'owners' && isApprover && (

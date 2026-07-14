@@ -3,23 +3,27 @@
 
 import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { createExpense, updateExpense, deleteExpense } from '@/lib/actions/expenses';
+import { createExpense, createDirectExpense, updateExpense, deleteExpense } from '@/lib/actions/expenses';
 import { uploadFile } from '@/lib/upload';
 import { AlertCircle, Pencil, Trash2 } from 'lucide-react';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { formatMoney } from '@/lib/money';
 
 interface Employee { id: string; full_name: string; }
+interface BankAccount { bank_account_id: string; bank_name: string; account_name: string; current_balance: number; }
 
 export function CreateExpenseModal({
   categories,
   projects,
   isSuperAdmin,
   employees = [],
+  bankAccounts = [],
 }: {
   categories: any[];
   projects: any[];
   isSuperAdmin: boolean;
   employees?: Employee[];
+  bankAccounts?: BankAccount[];
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -29,6 +33,8 @@ export function CreateExpenseModal({
   const [selectedProjectId, setSelectedProjectId] = useState('00000000-0000-0000-0000-000000000001');
   const [categoryId, setCategoryId] = useState('');
   const [targetEmployeeId, setTargetEmployeeId] = useState('');
+  const [payDirectly, setPayDirectly] = useState(false);
+  const [bankAccountId, setBankAccountId] = useState('');
 
   const close = () => {
     setOpen(false);
@@ -37,6 +43,8 @@ export function CreateExpenseModal({
     setSelectedProjectId('00000000-0000-0000-0000-000000000001');
     setCategoryId('');
     setTargetEmployeeId('');
+    setPayDirectly(false);
+    setBankAccountId('');
   };
 
   if (!open) return <Button onClick={() => setOpen(true)}>تسجيل مصروف</Button>;
@@ -115,6 +123,11 @@ export function CreateExpenseModal({
       setLoading(true);
       setError('');
 
+      if (payDirectly && !bankAccountId) {
+        setError('يجب اختيار الحساب البنكي عند الدفع المباشر');
+        return;
+      }
+
       for (const file of files) {
         const ext = file.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
@@ -123,7 +136,7 @@ export function CreateExpenseModal({
         formData.append('attachment_url', fileName);
       }
 
-      const result = await createExpense(formData);
+      const result = payDirectly ? await createDirectExpense(formData) : await createExpense(formData);
       if (result && result.error) {
         setError(result.error);
         return;
@@ -172,6 +185,44 @@ export function CreateExpenseModal({
                   placeholder="-- نفسي (أنا) --"
                 />
               </div>
+            </div>
+          )}
+
+          {/* Direct payment toggle — only visible to super admins with bank accounts */}
+          {isSuperAdmin && bankAccounts.length > 0 && (
+            <div className="space-y-2 p-3 rounded-md border bg-muted/30">
+              <label className="flex items-center gap-2 text-sm font-medium cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={payDirectly}
+                  onChange={e => setPayDirectly(e.target.checked)}
+                />
+                دفع مباشر الآن (اعتماد وتسوية فوراً من حساب بنكي)
+              </label>
+              {payDirectly && (
+                <div>
+                  <label className="block text-sm font-medium mb-1">الحساب البنكي</label>
+                  <select
+                    name="bank_account_id"
+                    required
+                    value={bankAccountId}
+                    onChange={e => setBankAccountId(e.target.value)}
+                    className="w-full p-2 rounded-md border bg-background"
+                  >
+                    <option value="">-- اختر الحساب البنكي --</option>
+                    {bankAccounts.map(b => (
+                      <option key={b.bank_account_id} value={b.bank_account_id}>
+                        {b.bank_name} - {b.account_name} ({formatMoney(b.current_balance)})
+                      </option>
+                    ))}
+                  </select>
+                  {bankAccountId && (
+                    <p className="text-xs text-muted-foreground mt-1">
+                      الرصيد الحالي: {formatMoney(bankAccounts.find(b => b.bank_account_id === bankAccountId)?.current_balance ?? 0)}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
           )}
 

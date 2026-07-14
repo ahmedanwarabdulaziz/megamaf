@@ -74,6 +74,9 @@ export function StatementGrid({
     'deduction': 'خصومات/مصروفات',
     'transfer_in': 'تحويل وارد',
     'transfer_out': 'تحويل صادر',
+    'salary_payment': 'دفعة راتب',
+    'loan_disbursement': 'صرف سلفة',
+    'expense_direct': 'مصروف مباشر',
   };
 
   return (

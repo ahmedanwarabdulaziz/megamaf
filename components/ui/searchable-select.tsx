@@ -230,7 +230,7 @@ export function SearchableSelect({
   return (
     <div className={`relative ${className}`}>
       {/* Hidden input for native required validation */}
-      <input type="hidden" value={value} required={required} aria-hidden />
+      <input type="hidden" value={value} required={required} aria-hidden suppressHydrationWarning />
 
       {/* Trigger */}
       <button

@@ -66,6 +66,7 @@ export async function getEmployeeExpenses(employeeId: string) {
     .from('expenses')
     .select('id, expense_date, amount, notes, status, settled_amount, employee_id, project_id, category_id, project:projects(name), category:expense_categories(name)')
     .eq('employee_id', employeeId)
+    .eq('is_direct', false)
     .order('expense_date', { ascending: false })
     .limit(300);
 
