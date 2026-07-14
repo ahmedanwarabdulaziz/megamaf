@@ -84,8 +84,9 @@ export default async function OwnerStatementPage({ params }: { params: Promise<{
     amount_paid: number;
     document_type: string;
     document_id: string;
-    is_unassigned?: boolean; // receipt with no project or no allocations
-    entry_amount?: number;   // original receipt amount (for assign form)
+    is_unassigned?: boolean;  // receipt with no project or no allocations (drives highlight + assign button)
+    has_no_project?: boolean; // receipt with no project specifically (drives the project column)
+    entry_amount?: number;    // original receipt amount (for assign form)
   };
 
   const rows: StatementRow[] = [];
@@ -139,6 +140,7 @@ export default async function OwnerStatementPage({ params }: { params: Promise<{
       document_type: 'receipt',
       document_id: receipt.id,
       is_unassigned: isUnassigned,
+      has_no_project: !receipt.project_id,
       entry_amount: receipt.amount,
     });
   }
@@ -225,7 +227,7 @@ export default async function OwnerStatementPage({ params }: { params: Promise<{
                 >
                   <td className="p-3 whitespace-nowrap">{row.date}</td>
                   <td className="p-3 text-muted-foreground">
-                    {row.is_unassigned ? (
+                    {row.has_no_project ? (
                       <span className="inline-flex items-center gap-1 text-amber-600 font-medium">
                         <span className="text-xs">🟡</span> غير محدد
                       </span>
