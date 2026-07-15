@@ -30,6 +30,31 @@ export async function getVendor(id: string) {
   return data;
 }
 
+export async function getVendorsDirectory(filters?: { projectId?: string, kind?: string, search?: string }) {
+  const supabase = await createClient();
+
+  let vQuery = supabase.from('vendors').select(`
+    *,
+    vendor_project_access(project_id, project:projects(name))
+  `).order('name');
+
+  if (filters?.kind) vQuery = vQuery.eq('kind', filters.kind);
+  if (filters?.search) vQuery = vQuery.ilike('name', `%${filters.search}%`);
+
+  const { data: vendors, error } = await vQuery;
+  if (error) throw error;
+  if (!vendors) return [];
+
+  if (filters?.projectId) {
+    return vendors.filter(v =>
+      v.all_projects ||
+      v.vendor_project_access?.some((acc: any) => acc.project_id === filters.projectId)
+    );
+  }
+
+  return vendors;
+}
+
 export async function getVendorsWithSummary(filters?: { startDate?: string, endDate?: string, projectId?: string, kind?: string, search?: string }) {
   const supabase = await createClient();
   

@@ -1,4 +1,4 @@
-import { getVendorsWithSummary } from '@/lib/queries/vendors';
+import { getVendorsWithSummary, getVendorsDirectory } from '@/lib/queries/vendors';
 import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
 import { createClient } from '@/lib/supabase/server';
@@ -39,7 +39,7 @@ export default async function VendorsPage({
   const projects = await getProjects();
 
   // ── Claims sub-tab: vendor cards ──────────────────────────────────────────
-  const vendors = subtab !== 'invoices'
+  const vendors = subtab !== 'invoices' && subtab !== 'directory'
     ? await getVendorsWithSummary({
         projectId: project_id,
         kind,
@@ -47,6 +47,11 @@ export default async function VendorsPage({
         startDate: isShowAll ? undefined : startDate,
         endDate: isShowAll ? undefined : endDate,
       })
+    : [];
+
+  // ── Directory sub-tab: every vendor/supplier, regardless of transactions ──
+  const directoryVendors = subtab === 'directory'
+    ? await getVendorsDirectory({ projectId: project_id, kind, search })
     : [];
 
   // ── Invoices sub-tab: approved invoices with remaining balance ────────────
@@ -98,8 +103,9 @@ export default async function VendorsPage({
   if (start_date) baseParams.set('start_date', start_date);
   if (end_date)   baseParams.set('end_date', end_date);
 
-  const claimsUrl   = `/vendors?${new URLSearchParams({ ...Object.fromEntries(baseParams), subtab: 'claims' })}`;
-  const invoicesUrl = `/vendors?${new URLSearchParams({ ...Object.fromEntries(baseParams), subtab: 'invoices' })}`;
+  const claimsUrl    = `/vendors?${new URLSearchParams({ ...Object.fromEntries(baseParams), subtab: 'claims' })}`;
+  const invoicesUrl  = `/vendors?${new URLSearchParams({ ...Object.fromEntries(baseParams), subtab: 'invoices' })}`;
+  const directoryUrl = `/vendors?${new URLSearchParams({ ...Object.fromEntries(baseParams), subtab: 'directory' })}`;
 
   return (
     <div className="space-y-6">
@@ -118,6 +124,7 @@ export default async function VendorsPage({
         startDate={startDate}
         endDate={endDate}
         showAll={isShowAll}
+        subtab={subtab}
       />
 
       {/* ── Sub-tabs ── */}
@@ -125,7 +132,7 @@ export default async function VendorsPage({
         <Link
           href={claimsUrl}
           className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
-            subtab !== 'invoices'
+            subtab !== 'invoices' && subtab !== 'directory'
               ? 'bg-card shadow text-foreground'
               : 'text-muted-foreground hover:text-foreground'
           }`}
@@ -142,10 +149,20 @@ export default async function VendorsPage({
         >
           🧾 فواتير الموردين
         </Link>
+        <Link
+          href={directoryUrl}
+          className={`px-4 py-1.5 rounded-md text-sm font-medium transition-colors ${
+            subtab === 'directory'
+              ? 'bg-card shadow text-foreground'
+              : 'text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          📇 دليل المقاولين والموردين
+        </Link>
       </div>
 
       {/* ── CLAIMS sub-tab: vendor rows ── */}
-      {subtab !== 'invoices' && (
+      {subtab !== 'invoices' && subtab !== 'directory' && (
         <div className="bg-card rounded-lg border shadow-sm overflow-x-auto">
           <table className="w-full text-sm text-right">
             <thead className="bg-muted/50 border-b whitespace-nowrap">
@@ -296,6 +313,79 @@ export default async function VendorsPage({
                 <tr>
                   <td colSpan={8} className="p-8 text-center text-muted-foreground">
                     لا توجد فواتير معتمدة برصيد متبقي
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* ── DIRECTORY sub-tab: every vendor/supplier, no date filtering ── */}
+      {subtab === 'directory' && (
+        <div className="bg-card rounded-lg border shadow-sm overflow-x-auto">
+          <table className="w-full text-sm text-right">
+            <thead className="bg-muted/50 border-b whitespace-nowrap">
+              <tr>
+                <th className="p-4 font-medium">الاسم</th>
+                <th className="p-4 font-medium">النوع</th>
+                <th className="p-4 font-medium">الهاتف</th>
+                <th className="p-4 font-medium">المشاريع</th>
+                <th className="p-4 font-medium">ملاحظات</th>
+                <th className="p-4 font-medium w-40">إجراءات</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-border">
+              {directoryVendors.map((vendor: any) => (
+                <tr key={vendor.id} className="hover:bg-muted/30 transition-colors">
+                  <td className="p-4 align-top font-bold">
+                    <Link href={`/vendors/${vendor.id}/statement`} className="hover:text-primary transition-colors">
+                      {vendor.name}
+                    </Link>
+                  </td>
+                  <td className="p-4 align-top">
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-semibold whitespace-nowrap ${vendor.kind === 'contractor' ? 'bg-primary/10 text-primary' : 'bg-secondary text-secondary-foreground'}`}>
+                      {vendor.kind === 'contractor' ? 'مقاول' : 'مورد'}
+                    </span>
+                  </td>
+                  <td className="p-4 align-top text-muted-foreground whitespace-nowrap">{vendor.phone || '-'}</td>
+                  <td className="p-4 align-top">
+                    {vendor.all_projects ? (
+                      <span className="text-green-600 font-medium text-xs whitespace-nowrap">كل المشاريع</span>
+                    ) : vendor.vendor_project_access?.length > 0 ? (
+                      <div className="flex flex-wrap gap-1 min-w-[120px] max-w-[250px]">
+                        {vendor.vendor_project_access.map((acc: any) => (
+                          <span key={acc.project_id} className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-medium bg-muted text-muted-foreground">
+                            {acc.project?.name || 'غير معروف'}
+                          </span>
+                        ))}
+                      </div>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">-</span>
+                    )}
+                  </td>
+                  <td className="p-4 align-top max-w-[220px] text-xs text-muted-foreground line-clamp-2" title={vendor.notes || ''}>
+                    {vendor.notes || '-'}
+                  </td>
+                  <td className="p-4 align-top">
+                    <div className="flex items-center gap-2">
+                      <Link
+                        href={`/vendors/${vendor.id}/statement`}
+                        className="text-xs bg-muted hover:bg-muted/80 text-foreground px-3 py-2 rounded-md font-medium whitespace-nowrap transition-colors"
+                      >
+                        كشف حساب
+                      </Link>
+                      {(profile.is_super_admin || profile.can_approve) && (
+                        <VendorModal vendor={vendor} projects={projects} />
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              ))}
+              {directoryVendors.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="p-8 text-center text-muted-foreground">
+                    لا يوجد مقاولين أو موردين مطابقين لخيارات البحث المحددة.
                   </td>
                 </tr>
               )}

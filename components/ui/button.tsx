@@ -56,22 +56,16 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             }
           }
         } else if (isSubmit) {
-          // Native <form action={...}> submit with no onClick: the browser's
-          // default action (submitting the form) runs right after this
-          // handler finishes. Disabling the button synchronously here would
-          // make it disabled at that point, which cancels the pending
-          // submission per the HTML spec. Set the ref guard immediately
-          // (blocks an instant second click) but defer the visual disable to
-          // the next tick so THIS click's submission still goes through.
+          // Native <form action={...}> submit with no onClick: rely on the
+          // ref guard (blocks an instant second click via the check above)
+          // and on useFormStatus()'s `pending` for the visual disabled
+          // state. We deliberately do NOT mutate `disabled` on the DOM node
+          // directly here — React only re-syncs a DOM attribute when its
+          // computed prop value changes from what it last rendered, so an
+          // imperative `btn.disabled = true` with nothing symmetric to
+          // restore it left the button permanently disabled after the
+          // surrounding form's `pending`/`disabled` returned to false.
           submittingRef.current = true
-          const btn = e.currentTarget
-          setTimeout(() => {
-            btn.setAttribute("data-submitting", "true")
-            btn.disabled = true
-          }, 0)
-          // Release the guard after a generous timeout so the
-          // navigation/re-render can happen first. If the page navigates
-          // away, the timeout is a no-op.
           setTimeout(() => {
             submittingRef.current = false
           }, 3000)
