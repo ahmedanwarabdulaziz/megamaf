@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase/client';
 import { createClaim } from '@/lib/actions/claims';
 import { uploadFile } from '@/lib/upload';
-import { Plus, Trash2, Loader2, Package, X } from 'lucide-react';
+import { Plus, Trash2, Loader2, Package, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 
@@ -301,6 +301,16 @@ export function CreateClaimForm({
         : item
     ));
 
+  const moveItem = (index: number, direction: -1 | 1) => {
+    setItems(prev => {
+      const newIndex = index + direction;
+      if (newIndex < 0 || newIndex >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[newIndex]] = [next[newIndex], next[index]];
+      return next;
+    });
+  };
+
   const toggleStockIssue = (itemId: string, checked: boolean) =>
     setItems(items.map(item =>
       item.id === itemId
@@ -446,11 +456,11 @@ export function CreateClaimForm({
                 </th>
                 <th className="pb-2 px-2 font-medium text-left w-32">الإجمالي (ج.م)</th>
                 <th className="pb-2 px-2 font-medium text-right">ملاحظة البند</th>
-                <th className="w-8"></th>
+                <th className="w-16"></th>
               </tr>
             </thead>
             <tbody>
-              {items.map((item) => {
+              {items.map((item, index) => {
                 const cumQty = (item.previous_qty || 0) + (item.current_qty || 0);
                 const lineTotal = cumQty * (item.unit_price || 0);
                 const isReadOnlyItem = !!item.item_ref;
@@ -538,13 +548,27 @@ export function CreateClaimForm({
                           className="w-full min-w-[140px] p-2 rounded border bg-background text-sm"
                         />
                       </td>
-                      <td className="py-2 px-1 w-8">
-                        {!isReadOnlyItem && (
-                          <Button type="button" variant="ghost" size="icon"
-                            onClick={() => setItems(items.filter(i => i.id !== item.id))}>
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
-                        )}
+                      <td className="py-2 px-1 w-16">
+                        <div className="flex items-center gap-0.5">
+                          <div className="flex flex-col">
+                            <button type="button" onClick={() => moveItem(index, -1)} disabled={index === 0}
+                              title="نقل لأعلى"
+                              className="text-muted-foreground hover:text-foreground disabled:opacity-25 disabled:cursor-not-allowed">
+                              <ChevronUp className="w-3.5 h-3.5" />
+                            </button>
+                            <button type="button" onClick={() => moveItem(index, 1)} disabled={index === items.length - 1}
+                              title="نقل لأسفل"
+                              className="text-muted-foreground hover:text-foreground disabled:opacity-25 disabled:cursor-not-allowed">
+                              <ChevronDown className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                          {!isReadOnlyItem && (
+                            <Button type="button" variant="ghost" size="icon"
+                              onClick={() => setItems(items.filter(i => i.id !== item.id))}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          )}
+                        </div>
                       </td>
                     </tr>
 

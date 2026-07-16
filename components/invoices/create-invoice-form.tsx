@@ -233,11 +233,20 @@ export function CreateInvoiceForm({
 
       {/* ── Line items ────────────────────────────────────── */}
       <div className="space-y-4">
-        <div className="flex justify-between items-center border-b pb-2">
+        <div className="sticky top-0 z-10 bg-card flex justify-between items-center border-b pb-2">
           <h3 className="font-bold">البنود</h3>
           <Button type="button" size="sm" variant="outline" onClick={addLine}>
             <Plus className="w-4 h-4 mr-2" /> إضافة بند
           </Button>
+        </div>
+
+        {/* Column labels — mirrors the input widths below so it's always clear what each field expects */}
+        <div className="hidden md:flex gap-3 px-4 text-xs font-medium text-muted-foreground">
+          <div className="flex-1">الوصف</div>
+          <div className="w-24">الكمية</div>
+          <div className="w-32">سعر الوحدة</div>
+          <div className="w-28 text-left">الإجمالي</div>
+          <div className="w-9" />
         </div>
 
         {lineItems.map((item, _index) => (

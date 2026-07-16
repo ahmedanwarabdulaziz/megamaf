@@ -22,9 +22,9 @@ export const metadata = {
 export default async function ClaimsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project_id?: string }>;
+  searchParams: Promise<{ project_id?: string; vendor?: string }>;
 }) {
-  const { project_id } = await searchParams;
+  const { project_id, vendor } = await searchParams;
   await requirePageAccess('claims');
   const { profile } = await getProfile();
   if (!profile) return null;
@@ -114,7 +114,23 @@ export default async function ClaimsPage({
     if (!groupMap.has(key)) groupMap.set(key, []);
     groupMap.get(key)!.push(claim);
   }
-  const groups = Array.from(groupMap.values());
+  let groups = Array.from(groupMap.values());
+
+  // Filter by vendor/party name (case-insensitive, partial match)
+  if (vendor?.trim()) {
+    const needle = vendor.trim().toLowerCase();
+    groups = groups.filter(group => (group[0].party_name || '').toLowerCase().includes(needle));
+  }
+
+  // Claims needing approval first, then alphabetically by party name (A→Z)
+  groups.sort((a, b) => {
+    const latestA = a[0];
+    const latestB = b[0];
+    const pendingA = latestA.status === 'pending' ? 0 : 1;
+    const pendingB = latestB.status === 'pending' ? 0 : 1;
+    if (pendingA !== pendingB) return pendingA - pendingB;
+    return (latestA.party_name || '').localeCompare(latestB.party_name || '', 'ar');
+  });
 
   return (
     <div className="space-y-6">
@@ -125,9 +141,10 @@ export default async function ClaimsPage({
         </Link>
       </div>
 
-      <ClaimsFilters 
-        projects={projects || []} 
-        selectedProjectId={project_id || ''} 
+      <ClaimsFilters
+        projects={projects || []}
+        selectedProjectId={project_id || ''}
+        selectedVendor={vendor || ''}
       />
 
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">

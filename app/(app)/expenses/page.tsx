@@ -8,10 +8,13 @@ export const dynamic = 'force-dynamic';
 
 import { createClient } from '@/lib/supabase/server';
 import { formatMoney } from '@/lib/money';
-import { CreateExpenseModal, EditExpenseModal, DeleteExpenseButton } from '@/components/expenses/create-expense-modal';
+import { CreateExpenseModal } from '@/components/expenses/create-expense-modal';
 import { CreateOwnerExpenseModal } from '@/components/expenses/create-owner-expense-modal';
 import { AllExpensesFilters } from '@/components/expenses/all-expenses-filters';
 import { AttachmentViewer } from '@/components/ui/attachment-viewer';
+import { MyExpensesList } from '@/components/expenses/my-expenses-list';
+import { AllExpensesTable } from '@/components/expenses/all-expenses-table';
+import { StatusBadge } from '@/components/expenses/status-badge';
 
 export const metadata = {
   title: 'المصروفات',
@@ -246,47 +249,11 @@ export default async function EmployeeExpensesPage({
             activeTab="mine"
             hideEmployeeFilter={true}
           />
-          <div className="bg-card rounded-lg border shadow-sm divide-y">
-            {myExpenses.length === 0 ? (
-              <div className="p-8 text-center text-muted-foreground">لا توجد مصروفات</div>
-            ) : (
-              myExpenses.map((expense: any) => (
-                <div key={expense.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-                  <div>
-                    <p className="font-bold">{expense.project?.name} - {expense.category?.name}</p>
-                    <p className="text-sm text-muted-foreground">{expense.notes}</p>
-                    <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                      <span>{expense.expense_date}</span>
-                      <span>•</span>
-                      <StatusBadge status={expense.status} />
-                      {expense.status === 'approved' && (
-                        <>
-                          <span>•</span>
-                          <span className="text-primary">تمت التسوية: {formatMoney(expense.settled_amount)}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <AttachmentViewer attachments={expense.attachments} />
-                    <div className="text-xl font-bold whitespace-nowrap">
-                      {formatMoney(expense.amount)}
-                    </div>
-                    {expense.status !== 'approved' && (
-                      <>
-                        <EditExpenseModal 
-                          expense={expense} 
-                          categories={activeCategories} 
-                          projects={projects || []} 
-                        />
-                        <DeleteExpenseButton expenseId={expense.id} />
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+          <MyExpensesList
+            expenses={myExpenses}
+            categories={activeCategories}
+            projects={projects || []}
+          />
         </div>
       )}
 
@@ -345,81 +312,13 @@ export default async function EmployeeExpensesPage({
             activeTab="all"
           />
 
-          <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
-            <table className="w-full text-sm text-right">
-              <thead className="bg-muted/50 border-b">
-                <tr>
-                  <th className="p-4 font-medium">التاريخ</th>
-                  <th className="p-4 font-medium">الموظف / المالك</th>
-                  <th className="p-4 font-medium">المشروع</th>
-                  <th className="p-4 font-medium">بند الصرف</th>
-                  <th className="p-4 font-medium">المبلغ</th>
-                  <th className="p-4 font-medium">الحالة</th>
-                  <th className="p-4 font-medium">اعتمد بواسطة</th>
-                  <th className="p-4 font-medium">البيان</th>
-                  <th className="p-4 font-medium text-center">المرفقات</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {allExpensesData?.map((expense: any) => (
-                  <tr key={expense.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="p-4 whitespace-nowrap">{expense.expense_date}</td>
-                    <td className="p-4 font-semibold">
-                      {expense.owner_id ? (
-                        <span className="text-orange-600">مالك: {expense.owner?.name}</span>
-                      ) : (
-                        <span className="text-primary">{expense.employee?.full_name}</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-muted-foreground">{expense.project?.name || '-'}</td>
-                    <td className="p-4 text-muted-foreground">{expense.category?.name || '-'}</td>
-                    <td className="p-4 font-bold">
-                      <div className="flex items-center gap-2 justify-end">
-                        {formatMoney(expense.amount)}
-                        {expense.status !== 'approved' && !expense.owner_id && (
-                          <>
-                            <EditExpenseModal
-                              expense={expense}
-                              categories={categories || []}
-                              projects={projects || []}
-                            />
-                            <DeleteExpenseButton expenseId={expense.id} />
-                          </>
-                        )}
-                      </div>
-                    </td>
-                    <td className="p-4"><StatusBadge status={expense.status} /></td>
-                    <td className="p-4 text-muted-foreground">{expense.approver?.full_name || '-'}</td>
-                    <td className="p-4 text-muted-foreground">{expense.notes || '-'}</td>
-                    <td className="p-4 text-center">
-                      <AttachmentViewer attachments={expense.attachments} />
-                    </td>
-                  </tr>
-                ))}
-                {(!allExpensesData || allExpensesData.length === 0) && (
-                  <tr>
-                    <td colSpan={9} className="p-8 text-center text-muted-foreground">لا توجد مصروفات مسجلة</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <AllExpensesTable
+            expenses={allExpensesData || []}
+            categories={categories || []}
+            projects={projects || []}
+          />
         </div>
       )}
     </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const map: Record<string, { label: string; classes: string }> = {
-    pending:  { label: 'قيد المراجعة', classes: 'bg-yellow-500/10 text-yellow-600' },
-    approved: { label: 'معتمد',        classes: 'bg-green-500/10 text-green-600'  },
-    rejected: { label: 'مرفوض',        classes: 'bg-red-500/10 text-red-600'     },
-  };
-  const config = map[status] || { label: status, classes: 'bg-accent text-foreground' };
-  return (
-    <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${config.classes}`}>
-      {config.label}
-    </span>
   );
 }
