@@ -22,11 +22,32 @@ export default async function VendorStatementPage({ params }: { params: Promise<
     { data: ledgerPayments },
     { data: claimZero }
   ] = await Promise.all([
-    supabase.from('claims').select('id, project_id, claim_number, created_at, v_claim_totals(claim_cumulative_payable), projects(name)').eq('party_id', id).eq('claim_type', 'vendor').eq('status', 'approved'),
+    // NOTE: v_claim_totals is a VIEW with no FK to `claims`, so it can't be embedded
+    // via `.select('v_claim_totals(...)')` — PostgREST has no relationship to detect
+    // and the whole query silently errors out (data comes back null). Fetch it as a
+    // separate query below instead, same pattern as /treasury/pay/[vendorId]/page.tsx.
+    supabase.from('claims').select('id, project_id, claim_number, created_at, projects(name)').eq('party_id', id).eq('claim_type', 'vendor').eq('status', 'approved'),
     supabase.from('vendor_prior_claims').select('*').eq('vendor_id', id),
     supabase.from('ledger_entries').select('id, entry_date, amount, memo, project_id, projects(name), created_at').eq('counterparty_id', id).eq('counterparty_type', 'vendor').eq('direction', 'out'),
     supabase.from('claims').select('id, opening_paid_amount, created_at, project_id, projects(name)').eq('party_id', id).eq('claim_type', 'vendor').eq('claim_number', 0).eq('status', 'approved')
   ]);
+
+  // claim_cumulative_payable is already cumulative for the whole project, so only the
+  // LATEST claim per project should contribute a "due" row — summing every approved
+  // claim's cumulative_payable would double-count work already folded into the latest one.
+  const claimIds = (claims || []).map((c: any) => c.id);
+  const { data: claimTotals } = claimIds.length > 0
+    ? await supabase.from('v_claim_totals').select('claim_id, claim_cumulative_payable').in('claim_id', claimIds)
+    : { data: [] as any[] };
+  const payableByClaimId = new Map((claimTotals || []).map((t: any) => [t.claim_id, Number(t.claim_cumulative_payable || 0)]));
+
+  const latestClaimPerProject = new Map<string, any>();
+  for (const c of claims || []) {
+    const existing = latestClaimPerProject.get(c.project_id);
+    if (!existing || c.claim_number > existing.claim_number) {
+      latestClaimPerProject.set(c.project_id, c);
+    }
+  }
 
   // Attachments (payment receipts) live in a separate bucket — fetch them keyed by ledger entry
   const ledgerPaymentIds = (ledgerPayments || []).map((lp: any) => lp.id);
@@ -82,9 +103,9 @@ export default async function VendorStatementPage({ params }: { params: Promise<
     }
   }
 
-  // Claims
-  for (const c of claims || []) {
-    const due = Number((c as any).v_claim_totals?.[0]?.claim_cumulative_payable || 0);
+  // Claims — only the latest claim per project (see note above)
+  for (const c of latestClaimPerProject.values()) {
+    const due = payableByClaimId.get(c.id) || 0;
     if (due > 0) {
       rows.push({
         document_date: c.created_at?.split('T')[0] || '',

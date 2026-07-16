@@ -82,30 +82,41 @@ export default async function ViewClaimPage({ params }: { params: Promise<{ id: 
           <table className="w-full text-sm text-right">
             <thead className="bg-muted/50 border-b">
               <tr>
-                <th className="p-3 font-medium">البيان</th>
-                <th className="p-3 font-medium">الكمية السابقة</th>
-                <th className="p-3 font-medium">الكمية الحالية (تراكمي)</th>
+                <th className="p-3 font-medium">البند</th>
+                <th className="p-3 font-medium">الوحدة</th>
+                <th className="p-3 font-medium">السابق</th>
+                <th className="p-3 font-medium">الحالي</th>
+                <th className="p-3 font-medium">الإجمالي (كمية)</th>
                 <th className="p-3 font-medium">سعر الوحدة</th>
-                <th className="p-3 font-medium">الإجمالي</th>
-                <th className="p-3 font-medium">ملاحظات</th>
+                <th className="p-3 font-medium">نسبة الصرف</th>
+                <th className="p-3 font-medium text-left">الإجمالي (ج.م)</th>
+                <th className="p-3 font-medium">ملاحظة البند</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
               {items.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground">لا توجد بنود</td>
+                  <td colSpan={9} className="p-8 text-center text-muted-foreground">لا توجد بنود</td>
                 </tr>
               ) : (
-                items.map((item) => (
-                  <tr key={item.id} className="hover:bg-muted/30">
-                    <td className="p-3 font-medium">{item.description}</td>
-                    <td className="p-3 text-muted-foreground whitespace-nowrap">{item.previous_qty} {item.unit || ''}</td>
-                    <td className="p-3 whitespace-nowrap">{item.current_qty} {item.unit || ''}</td>
-                    <td className="p-3 whitespace-nowrap">{formatMoney(item.unit_price)}</td>
-                    <td className="p-3 font-semibold whitespace-nowrap">{formatMoney(item.line_total)}</td>
-                    <td className="p-3 text-muted-foreground">{item.notes || '-'}</td>
-                  </tr>
-                ))
+                items.map((item) => {
+                  const cumQty = Number(item.previous_qty || 0) + Number(item.current_qty || 0);
+                  const disbursementPct = Number(item.disbursement_pct ?? 1.0);
+                  const netTotal = Number(item.line_total || 0) * disbursementPct;
+                  return (
+                    <tr key={item.id} className="hover:bg-muted/30">
+                      <td className="p-3 font-medium">{item.description}</td>
+                      <td className="p-3 text-center text-muted-foreground">{item.unit || '-'}</td>
+                      <td className="p-3 text-center text-muted-foreground whitespace-nowrap">{item.previous_qty}</td>
+                      <td className="p-3 text-center whitespace-nowrap">{item.current_qty}</td>
+                      <td className="p-3 text-center font-medium whitespace-nowrap">{cumQty}</td>
+                      <td className="p-3 whitespace-nowrap">{formatMoney(item.unit_price)}</td>
+                      <td className="p-3 whitespace-nowrap">{(disbursementPct * 100).toFixed(1)}%</td>
+                      <td className="p-3 font-semibold text-left text-primary whitespace-nowrap">{formatMoney(netTotal)}</td>
+                      <td className="p-3 text-muted-foreground">{item.notes || '-'}</td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>

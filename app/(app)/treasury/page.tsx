@@ -13,6 +13,7 @@ import { getAllCustodyBalances, getAllOwnerCustodyBalances } from '@/lib/queries
 import { getBanks } from '@/lib/queries/banks';
 import { DisburseCustodyModal } from '@/components/treasury/disburse-custody-modal';
 import { DisburseOwnerCustodyModal } from '@/components/treasury/disburse-owner-custody-modal';
+import { VendorPayablesTable } from '@/components/treasury/vendor-payables-table';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الخزينة والمدفوعات والعهد' };
@@ -73,7 +74,7 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     ownerCustodyBalances,
     banks
   ] = await Promise.all([
-    supabase.from('v_vendor_balances').select('vendor_id, vendor_name, gross_total, total_due, total_paid, balance, total_retention_held').order('balance', { ascending: false }),
+    supabase.from('v_vendor_balances').select('vendor_id, vendor_name, gross_total, total_due, total_paid, balance, total_retention_held').order('vendor_name', { ascending: true }),
     supabase.from('v_owner_balances').select('owner_id, owner_name, total_due, total_paid, balance').order('balance', { ascending: false }),
     supabase.from('vendors').select('id, name').order('name'),
     supabase.from('project_owners').select('id, name').order('name'),
@@ -200,56 +201,7 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
           {/* ── CLAIMS sub-tab ── */}
           {subtab !== 'invoices' && (
         <div className="space-y-4">
-          <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
-            <table className="w-full text-sm text-right">
-              <thead className="bg-muted/50 border-b">
-                <tr>
-                  <th className="p-4 font-medium">المقاول</th>
-                  <th className="p-4 font-medium text-muted-foreground">إجمالي الأعمال التراكمي</th>
-                  <th className="p-4 font-medium text-amber-600">المحتجز التراكمي (تأمين)</th>
-                  <th className="p-4 font-medium">الصافي التراكمي (قابل للدفع)</th>
-                  <th className="p-4 font-medium text-green-600">المدفوع</th>
-                  <th className="p-4 font-medium text-primary">المتبقي المستحق</th>
-                  <th className="p-4 font-medium w-32"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-border">
-                {adjustedVendors.map(v => {
-                  const grossTotal    = Number((v as any).gross_total          || 0);
-                  const retention     = Number((v as any).total_retention_held || 0);
-                  const netCumulative = Number(v.total_due                    || 0);
-                  const totalPaid     = Number(v.total_paid                   || 0);
-                  const remaining     = Math.max(0, netCumulative - totalPaid);
-                  return (
-                    <tr key={v.vendor_id} className="hover:bg-muted/30 transition-colors">
-                      <td className="p-4 font-semibold">{v.vendor_name}</td>
-                      <td className="p-4">{formatMoney(grossTotal)}</td>
-                      <td className="p-4 text-amber-600">
-                        {retention > 0 ? `- ${formatMoney(retention)}` : '-'}
-                      </td>
-                      <td className="p-4 font-medium">{formatMoney(netCumulative)}</td>
-                      <td className="p-4 text-green-700">
-                        {totalPaid > 0 ? `- ${formatMoney(totalPaid)}` : '-'}
-                      </td>
-                      <td className="p-4">
-                        <span className={`font-bold ${remaining <= 0 ? 'text-green-600' : 'text-primary'}`}>
-                          {remaining <= 0 ? '✓ مسدد' : formatMoney(remaining)}
-                        </span>
-                      </td>
-                      <td className="p-4">
-                        <Link href={`/vendors/${v.vendor_id}/statement`} className="text-xs bg-secondary text-secondary-foreground hover:bg-secondary/80 px-3 py-1.5 rounded-md font-medium">كشف حساب</Link>
-                      </td>
-                    </tr>
-                  );
-                })}
-                {adjustedVendors.length === 0 && (
-                  <tr>
-                    <td colSpan={7} className="p-8 text-center text-muted-foreground">لا يوجد مقاولون بأرصدة مستحقة</td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+          <VendorPayablesTable vendors={adjustedVendors} />
 
           <div className="mt-8">
             <h2 className="text-lg font-bold mb-4">أحدث المدفوعات للمقاولين</h2>
