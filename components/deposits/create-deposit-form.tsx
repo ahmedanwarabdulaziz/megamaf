@@ -76,7 +76,7 @@ export function CreateDepositForm({
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">تاريخ الإصدار</label>
-          <input required type="date" name="start_date" defaultValue={initialValues?.start_date ?? new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
+          <input required type="date" name="start_date" autoComplete="off" defaultValue={initialValues?.start_date ?? new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">مدة الشهادة (بالأشهر)</label>

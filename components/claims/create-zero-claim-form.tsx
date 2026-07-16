@@ -256,6 +256,15 @@ export function CreateZeroClaimForm({
             <select required name="project_id" value={projectId} onChange={e => setProjectId(e.target.value)} className="w-full p-2 rounded border bg-background">
               <option value="">اختر المشروع...</option>
               {(() => {
+                // Root of the visible tree = projects whose parent is main_company or null
+                const rootParentId = projects.find(p => p.node_type === 'main_company')?.id ?? null;
+                // RLS only returns projects the employee has been explicitly granted —
+                // a non-admin may see a phase without seeing its parent branch. Treat
+                // such orphaned projects as top-level instead of dropping them silently.
+                const idsPresent = new Set(projects.map((p: any) => p.id));
+                function effectiveParentId(p: any): string | null {
+                  return p.parent_id && idsPresent.has(p.parent_id) ? p.parent_id : rootParentId;
+                }
                 // Build a hierarchical ordered list: parent → children → grandchildren
                 function flattenTree(
                   nodes: any[],
@@ -263,14 +272,12 @@ export function CreateZeroClaimForm({
                   depth: number
                 ): { project: any; depth: number }[] {
                   return nodes
-                    .filter(p => (p.parent_id ?? null) === parentId && p.node_type !== 'main_company')
+                    .filter(p => effectiveParentId(p) === parentId && p.node_type !== 'main_company')
                     .flatMap(p => [
                       { project: p, depth },
                       ...flattenTree(nodes, p.id, depth + 1),
                     ]);
                 }
-                // Root of the visible tree = projects whose parent is main_company or null
-                const rootParentId = projects.find(p => p.node_type === 'main_company')?.id ?? null;
                 const ordered = flattenTree(projects, rootParentId, 0);
 
                 return ordered.map(({ project: p, depth }) => {
@@ -289,7 +296,7 @@ export function CreateZeroClaimForm({
 
         <div>
           <label className="block text-sm font-medium mb-1">تاريخ المستخلص</label>
-          <input required type="date" name="claim_date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
+          <input required type="date" name="claim_date" autoComplete="off" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
         </div>
 
         <div>

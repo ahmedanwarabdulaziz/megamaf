@@ -112,7 +112,7 @@ export function DisburseOwnerCustodyModal({
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-1">التاريخ</label>
-                  <input name="date" type="date" required defaultValue={today} className="w-full p-2 rounded-md border bg-background" />
+                  <input name="date" type="date" autoComplete="off" required defaultValue={today} className="w-full p-2 rounded-md border bg-background" />
                 </div>
               </div>
 

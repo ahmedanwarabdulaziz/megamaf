@@ -74,10 +74,11 @@ export function TransferModal({ banks, currentAccountId }: { banks: any[], curre
 
           <div>
             <label className="text-sm font-medium">التاريخ</label>
-            <input 
-              name="date" 
+            <input
+              name="date"
               type="date"
-              required 
+              autoComplete="off"
+              required
               defaultValue={new Date().toISOString().split('T')[0]}
               className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm mt-1" 
             />

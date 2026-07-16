@@ -64,20 +64,22 @@ export function AuditLogReport({
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">من تاريخ</label>
-          <input 
-            type="date" 
-            value={from} 
-            onChange={e => setFrom(e.target.value)} 
-            className="w-full p-2 rounded border bg-background" 
+          <input
+            type="date"
+            autoComplete="off"
+            value={from}
+            onChange={e => setFrom(e.target.value)}
+            className="w-full p-2 rounded border bg-background"
           />
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">إلى تاريخ</label>
-          <input 
-            type="date" 
-            value={to} 
-            onChange={e => setTo(e.target.value)} 
-            className="w-full p-2 rounded border bg-background" 
+          <input
+            type="date"
+            autoComplete="off"
+            value={to}
+            onChange={e => setTo(e.target.value)}
+            className="w-full p-2 rounded border bg-background"
           />
         </div>
         <Button onClick={handleSearch}>

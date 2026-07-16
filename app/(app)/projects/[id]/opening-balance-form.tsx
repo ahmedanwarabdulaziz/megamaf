@@ -118,7 +118,7 @@ function FinancialSection({ projectId, balance, ownerZeroClaimExists }: { projec
         <div>
           <label className="block text-sm font-medium mb-1.5 text-foreground/90">تاريخ بداية التتبع (التاريخ المرجعي) <span className="text-destructive">*</span></label>
           <input
-            type="date" name="cutoff_date" required
+            type="date" name="cutoff_date" autoComplete="off" required
             defaultValue={balance?.cutoff_date || new Date().toISOString().split('T')[0]}
             className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none shadow-sm transition-shadow"
           />
@@ -747,7 +747,7 @@ function InventorySection({
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">تاريخ التقطيع *</label>
-              <input type="date" name="cutoff_date" required defaultValue={cutoffDate}
+              <input type="date" name="cutoff_date" autoComplete="off" required defaultValue={cutoffDate}
                 className="w-full border rounded-lg px-3 py-2 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none" />
             </div>
             <div>

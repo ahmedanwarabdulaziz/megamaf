@@ -211,6 +211,7 @@ export function CreateOwnerExpenseModal({
                   <input
                     name="expense_date"
                     type="date"
+                    autoComplete="off"
                     required
                     defaultValue={today}
                     className="w-full p-2 rounded-md border bg-background"

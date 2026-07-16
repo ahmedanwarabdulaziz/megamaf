@@ -282,6 +282,7 @@ export function CreateExpenseModal({
               <input
                 name="expense_date"
                 type="date"
+                autoComplete="off"
                 required
                 defaultValue={today.toISOString().split('T')[0]}
                 min={isSuperAdmin ? undefined : minDateStr}
@@ -520,6 +521,7 @@ export function EditExpenseModal({
               <input
                 name="expense_date"
                 type="date"
+                autoComplete="off"
                 required
                 value={expenseDate}
                 onChange={(e) => setExpenseDate(e.target.value)}

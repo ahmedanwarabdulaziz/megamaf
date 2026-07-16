@@ -75,7 +75,7 @@ export function DisburseLoanModal({ employeeId, bankAccounts }: { employeeId: st
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">تاريخ الصرف</label>
-                <input required type="date" name="date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
+                <input required type="date" name="date" autoComplete="off" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">الحساب البنكي</label>
@@ -114,7 +114,7 @@ export function DisburseLoanModal({ employeeId, bankAccounts }: { employeeId: st
                   </div>
                   {customRows.map((row, i) => (
                     <div key={i} className="flex items-center gap-2">
-                      <input required type="date" value={row.due_date} onChange={e => updateCustomRow(i, { due_date: e.target.value })} className="flex-1 p-2 rounded border bg-background" />
+                      <input required type="date" autoComplete="off" value={row.due_date} onChange={e => updateCustomRow(i, { due_date: e.target.value })} className="flex-1 p-2 rounded border bg-background" />
                       <input required type="number" step="0.01" min="0.01" placeholder="المبلغ" value={row.amount} onChange={e => updateCustomRow(i, { amount: e.target.value })} className="w-28 p-2 rounded border bg-background" />
                       <Button type="button" size="icon" variant="ghost" onClick={() => removeCustomRow(i)} disabled={customRows.length === 1}>
                         <Trash2 className="w-4 h-4 text-destructive" />

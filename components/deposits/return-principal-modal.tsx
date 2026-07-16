@@ -52,7 +52,7 @@ export function ReturnPrincipalModal({ deposit, bankAccounts }: { deposit: any; 
 
               <div>
                 <label className="block text-sm font-medium mb-1">تاريخ الإيداع بالبنك</label>
-                <input required type="date" name="return_date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
+                <input required type="date" name="return_date" autoComplete="off" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
               </div>
 
               <div>

@@ -210,7 +210,7 @@ export function PayPayslipModal({
 
               <div>
                 <label className="block text-sm font-medium mb-1">تاريخ الدفع</label>
-                <input required type="date" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="w-full p-2 rounded border bg-background" />
+                <input required type="date" autoComplete="off" value={paymentDate} onChange={e => setPaymentDate(e.target.value)} className="w-full p-2 rounded border bg-background" />
               </div>
               <div>
                 <label className="block text-sm font-medium mb-1">ملاحظات</label>

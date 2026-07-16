@@ -244,7 +244,7 @@ export function EditClaimForm({
         </div>
         <div>
           <label className="block text-sm font-medium mb-1">تاريخ المستخلص</label>
-          <input required type="date" name="claim_date" defaultValue={claimDate}
+          <input required type="date" autoComplete="off" name="claim_date" defaultValue={claimDate}
             className="w-full p-2 rounded border bg-background" />
         </div>
       </div>

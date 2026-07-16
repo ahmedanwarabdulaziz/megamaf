@@ -71,7 +71,7 @@ export function SalaryForm({
         <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-sm font-medium mb-1">تاريخ السريان</label>
-            <input required type="date" value={effectiveFrom} onChange={e => setEffectiveFrom(e.target.value)} className="w-full p-2 rounded border bg-background" />
+            <input required type="date" autoComplete="off" value={effectiveFrom} onChange={e => setEffectiveFrom(e.target.value)} className="w-full p-2 rounded border bg-background" />
           </div>
           <div>
             <label className="block text-sm font-medium mb-1">الراتب الأساسي</label>

@@ -105,11 +105,11 @@ export function VendorsFilters({
         <>
           <div className="flex-1 min-w-[140px]">
             <label className="block text-sm font-medium mb-1">من تاريخ</label>
-            <Input type="date" value={start} onChange={e => setStart(e.target.value)} />
+            <Input type="date" autoComplete="off" value={start} onChange={e => setStart(e.target.value)} />
           </div>
           <div className="flex-1 min-w-[140px]">
             <label className="block text-sm font-medium mb-1">إلى تاريخ</label>
-            <Input type="date" value={end} onChange={e => setEnd(e.target.value)} />
+            <Input type="date" autoComplete="off" value={end} onChange={e => setEnd(e.target.value)} />
           </div>
         </>
       )}

@@ -46,6 +46,7 @@ export function EditDueDateModal({ payout }: { payout: any }) {
                 <input
                   required
                   type="date"
+                  autoComplete="off"
                   name="due_date"
                   defaultValue={payout.due_date}
                   className="w-full p-2 rounded border bg-background"

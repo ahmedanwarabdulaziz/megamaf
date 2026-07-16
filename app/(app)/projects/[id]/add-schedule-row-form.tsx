@@ -33,7 +33,7 @@ export function AddScheduleRowForm({ projectId }: { projectId: string }) {
     <form id="add-schedule-form" action={handleSubmit} className="flex flex-wrap items-end gap-3">
       <div className="flex-1 min-w-[150px]">
         <label className="block text-xs font-medium mb-1">تاريخ الاستحقاق</label>
-        <input required type="date" name="due_date" className="w-full p-2 text-sm rounded border bg-background" />
+        <input required type="date" name="due_date" autoComplete="off" className="w-full p-2 text-sm rounded border bg-background" />
       </div>
       
       <div className="flex-1 min-w-[150px]">

@@ -138,12 +138,13 @@ export function DisburseCustodyModal({ employees, banks }: { employees: any[], b
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">التاريخ</label>
-              <input 
-                name="date" 
-                type="date" 
-                required 
+              <input
+                name="date"
+                type="date"
+                autoComplete="off"
+                required
                 defaultValue={today}
-                className="w-full p-2 rounded-md border bg-background" 
+                className="w-full p-2 rounded-md border bg-background"
               />
             </div>
           </div>

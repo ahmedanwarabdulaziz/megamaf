@@ -52,7 +52,7 @@ export function CollectModal({ payout, bankAccounts, defaultBankAccountId }: { p
 
               <div>
                 <label className="block text-sm font-medium mb-1">تاريخ التحصيل وإيداع البنك</label>
-                <input required type="date" name="collected_date" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
+                <input required type="date" name="collected_date" autoComplete="off" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
               </div>
 
               <div>

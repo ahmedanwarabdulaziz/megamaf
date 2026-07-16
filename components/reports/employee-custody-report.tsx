@@ -181,11 +181,11 @@ export function EmployeeCustodyReport({
           </div>
           <div>
             <label className="block text-xs font-medium mb-1 text-muted-foreground">من</label>
-            <Input type="date" value={start} onChange={e => setStart(e.target.value)} className="text-sm" />
+            <Input type="date" autoComplete="off" value={start} onChange={e => setStart(e.target.value)} className="text-sm" />
           </div>
           <div>
             <label className="block text-xs font-medium mb-1 text-muted-foreground">إلى</label>
-            <Input type="date" value={end} onChange={e => setEnd(e.target.value)} className="text-sm" />
+            <Input type="date" autoComplete="off" value={end} onChange={e => setEnd(e.target.value)} className="text-sm" />
           </div>
         </div>
         <div className="flex gap-2 mt-3">

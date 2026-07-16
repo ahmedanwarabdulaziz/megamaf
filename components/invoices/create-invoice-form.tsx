@@ -182,10 +182,15 @@ export function CreateInvoiceForm({
           <select required name="project_id" defaultValue={invoice?.project_id || ''} className="w-full p-2 rounded border bg-background">
             <option value="">اختر المشروع...</option>
             {(() => {
-              // Build a parent→children map for depth-first tree walk
+              // Build a parent→children map for depth-first tree walk.
+              // RLS only returns projects the employee has been explicitly granted —
+              // a non-admin may see a phase without seeing its parent branch. Treat
+              // such orphaned projects as top-level instead of dropping them silently.
+              const idsPresent = new Set(projects.map((p: any) => p.id));
               const childrenOf = new Map<string | null, any[]>();
               for (const p of projects) {
-                const key = p.parent_id ?? null;
+                const rawKey = p.parent_id ?? null;
+                const key = rawKey && idsPresent.has(rawKey) ? rawKey : null;
                 if (!childrenOf.has(key)) childrenOf.set(key, []);
                 childrenOf.get(key)!.push(p);
               }
@@ -219,6 +224,7 @@ export function CreateInvoiceForm({
             required
             type="date"
             name="invoice_date"
+            autoComplete="off"
             defaultValue={invoice?.invoice_date || new Date().toISOString().split('T')[0]}
             className="w-full p-2 rounded border bg-background"
           />
