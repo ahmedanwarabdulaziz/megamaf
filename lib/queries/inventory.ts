@@ -1,11 +1,56 @@
 import { createClient } from '@/lib/supabase/server';
 
-export async function getInventoryStock(filters?: { warehouseId?: string; search?: string }) {
+/** Compose "parent / sub" display label from category names */
+export function categoryLabel(categoryName?: string | null, parentName?: string | null) {
+  if (!categoryName) return null;
+  return parentName ? `${parentName} / ${categoryName}` : categoryName;
+}
+
+export async function getItemCategories() {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from('item_categories')
+    .select('id, name, parent_id')
+    .order('name');
+  if (error) throw error;
+  return data || [];
+}
+
+/** Items with flattened category info — use everywhere an item picker needs the catalogue */
+export async function getInventoryItemsWithCategory() {
+  const supabase = await createClient();
+  const [{ data: items, error: iError }, { data: categories, error: cError }] = await Promise.all([
+    supabase.from('inventory_items').select('id, name, unit, code, category_id').order('name'),
+    supabase.from('item_categories').select('id, name, parent_id'),
+  ]);
+  if (iError) throw iError;
+  if (cError) throw cError;
+
+  const catMap = new Map((categories || []).map(c => [c.id, c]));
+  return (items || []).map(i => {
+    const cat = i.category_id ? catMap.get(i.category_id) : null;
+    const parent = cat?.parent_id ? catMap.get(cat.parent_id) : null;
+    return {
+      ...i,
+      category_name: cat?.name ?? null,
+      parent_category_id: cat?.parent_id ?? null,
+      parent_category_name: parent?.name ?? null,
+      category_label: categoryLabel(cat?.name, parent?.name),
+    };
+  });
+}
+
+export async function getInventoryStock(filters?: { warehouseId?: string; search?: string; categoryId?: string }) {
   const supabase = await createClient();
   let query = supabase.from('v_stock_on_hand').select('*').order('warehouse_name').order('item_name');
 
   if (filters?.warehouseId) {
     query = query.eq('warehouse_id', filters.warehouseId);
+  }
+
+  // Matches the sub-category directly, or all subs when a main category is chosen
+  if (filters?.categoryId) {
+    query = query.or(`category_id.eq.${filters.categoryId},parent_category_id.eq.${filters.categoryId}`);
   }
 
   // Push text search to DB — avoids fetching all rows then filtering in JS memory
@@ -50,19 +95,28 @@ export async function getWarehousesWithValuation() {
     }
   }
 
-  // Calculate total value per warehouse
+  // Calculate total value per warehouse + breakdown per main category
   const warehouseValues: Record<string, number> = {};
+  const warehouseCategoryValues: Record<string, Record<string, number>> = {};
   if (stockOnHand) {
     for (const stock of stockOnHand) {
       const avgCost = itemAvgCost[stock.item_id] || 0;
       const val = Number(stock.qty_on_hand || 0) * avgCost;
       warehouseValues[stock.warehouse_id] = (warehouseValues[stock.warehouse_id] || 0) + val;
+
+      const catName = stock.parent_category_name || stock.category_name || 'غير مصنف';
+      if (!warehouseCategoryValues[stock.warehouse_id]) warehouseCategoryValues[stock.warehouse_id] = {};
+      warehouseCategoryValues[stock.warehouse_id][catName] =
+        (warehouseCategoryValues[stock.warehouse_id][catName] || 0) + val;
     }
   }
 
   return warehouses?.map(w => ({
     ...w,
-    total_value: warehouseValues[w.id] || 0
+    total_value: warehouseValues[w.id] || 0,
+    category_breakdown: Object.entries(warehouseCategoryValues[w.id] || {})
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value)
   })) || [];
 }
 
@@ -70,7 +124,7 @@ export async function getWarehouseTransactions(warehouseId: string) {
   const supabase = await createClient();
   const { data, error } = await supabase
     .from('stock_movements')
-    .select('*, inventory_items(name, code, unit), employees(full_name)')
+    .select('*, inventory_items(name, code, unit, item_categories(name)), employees(full_name)')
     .eq('warehouse_id', warehouseId)
     .order('created_at', { ascending: false });
 
@@ -166,7 +220,26 @@ export async function getWarehouse(id: string) {
 
 export async function getItem(id: string) {
   const supabase = await createClient();
-  const { data, error } = await supabase.from('inventory_items').select('*').eq('id', id).single();
+  const { data, error } = await supabase
+    .from('inventory_items')
+    .select('*, item_categories(id, name, parent_id)')
+    .eq('id', id)
+    .single();
   if (error) throw error;
-  return data;
+
+  // Resolve the parent (main) category name for a full "main / sub" label
+  let parentName: string | null = null;
+  if (data?.item_categories?.parent_id) {
+    const { data: parent } = await supabase
+      .from('item_categories')
+      .select('name')
+      .eq('id', data.item_categories.parent_id)
+      .single();
+    parentName = parent?.name ?? null;
+  }
+
+  return {
+    ...data,
+    category_label: categoryLabel(data?.item_categories?.name, parentName),
+  };
 }

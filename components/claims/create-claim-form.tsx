@@ -10,6 +10,7 @@ import { uploadFile } from '@/lib/upload';
 import { Plus, Trash2, Loader2, Package, X, ChevronUp, ChevronDown } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { groupOptionsByCategory } from '@/lib/item-category-options';
 
 // ── Types ────────────────────────────────────────────────────
 interface BundleLine {
@@ -480,7 +481,7 @@ export function CreateClaimForm({
 
                 const warehouseOptions = warehouses.map((w: any) => ({ value: w.id, label: w.name }));
 
-                const itemOptions = inventoryItems.map((i: any) => {
+                const itemOptions = groupOptionsByCategory(inventoryItems, (i: any) => {
                   const stock = item.warehouse_id
                     ? stockLevels.find((s: any) => s.warehouse_id === item.warehouse_id && s.item_id === i.id)
                     : null;
@@ -488,7 +489,7 @@ export function CreateClaimForm({
                   return {
                     value: i.id,
                     label: i.name,
-                    sub: i.code ?? undefined,
+                    sub: [i.code, i.category_label].filter(Boolean).join(' · ') || undefined,
                     badge: qty !== null ? `${qty.toLocaleString('en')} ${i.unit}` : undefined,
                     badgeColor: qty !== null
                       ? qty > 0 ? 'bg-green-50 text-green-700 border-green-300' : 'bg-red-50 text-red-700 border-red-300'

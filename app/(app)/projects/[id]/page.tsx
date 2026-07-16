@@ -1,6 +1,7 @@
 import { Suspense } from 'react'
 import { createClient } from '@/lib/supabase/server'
 import { getProfile } from '@/lib/supabase/get-profile'
+import { getInventoryItemsWithCategory } from '@/lib/queries/inventory'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
@@ -95,7 +96,7 @@ export default async function ProjectDetailPage({
       { data: ose },
       { data: v },
       { data: wh },
-      { data: items },
+      items,
       { data: zc },
       { data: zc1 }
     ] = await Promise.all([
@@ -104,7 +105,7 @@ export default async function ProjectDetailPage({
       supabase.from('opening_stock_entries').select('*, warehouses(name), inventory_items(name,unit)').eq('project_id', id).order('created_at'),
       supabase.from('vendors').select('id, name').order('name'),
       supabase.from('warehouses').select('id, name, project_id'),
-      supabase.from('inventory_items').select('id, name, unit, code').order('name'),
+      getInventoryItemsWithCategory(),
       supabase.from('claims').select('id, party_id, claim_type').eq('project_id', id).eq('claim_number', 0),
       supabase.from('claims').select('id, party_id, claim_type').eq('project_id', id).eq('claim_number', 1).eq('claim_type', 'vendor'),
     ])

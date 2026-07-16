@@ -45,8 +45,18 @@ export default async function WarehousesPage() {
                       <span className="bg-primary/10 text-primary px-2 py-1 rounded-md text-xs font-bold">مستودع رئيسي (الشركة)</span>
                     )}
                   </td>
-                  <td className="p-3 font-bold text-left text-primary" dir="ltr">
-                    {formatMoney(w.total_value)}
+                  <td className="p-3 text-left">
+                    <div className="font-bold text-primary" dir="ltr">{formatMoney(w.total_value)}</div>
+                    {w.category_breakdown?.length > 0 && (
+                      <div className="mt-1 space-y-0.5">
+                        {w.category_breakdown.map((cat: { name: string; value: number }) => (
+                          <div key={cat.name} className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
+                            <span className="truncate">{cat.name}</span>
+                            <span dir="ltr" className="whitespace-nowrap">{formatMoney(cat.value)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </td>
                   <td className="p-3 text-center">
                     <Link href={`/inventory/warehouses/${w.id}/transactions`} className="text-xs bg-muted hover:bg-muted/80 text-foreground px-3 py-1.5 rounded border transition-colors inline-block">

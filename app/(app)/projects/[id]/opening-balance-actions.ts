@@ -131,17 +131,19 @@ export async function saveInventoryItem(formData: FormData) {
   const name      = (formData.get('name') as string)?.trim();
   const unit      = (formData.get('unit') as string)?.trim();
   const code      = (formData.get('code') as string)?.trim() || null;
+  const categoryId = (formData.get('category_id') as string) || null;
 
   if (!name) throw new Error('اسم الصنف مطلوب');
   if (!unit) throw new Error('وحدة القياس مطلوبة');
+  if (!categoryId) throw new Error('فئة الصنف مطلوبة');
 
   const { data, error } = await supabase
     .from('inventory_items')
-    .insert({ name, unit, code })
-    .select('id, name, unit, code')
+    .insert({ name, unit, code, category_id: categoryId })
+    .select('id, name, unit, code, category_id')
     .single();
 
   if (error) throw new Error(error.message);
   revalidatePath(`/projects/${projectId}`);
-  return data as { id: string; name: string; unit: string; code: string | null };
+  return data as { id: string; name: string; unit: string; code: string | null; category_id: string };
 }

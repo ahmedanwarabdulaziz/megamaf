@@ -12,7 +12,7 @@ import { formatMoney } from '@/lib/money';
 import { QuickAddItemModal } from './quick-add-item-modal';
 import { SearchableItemSelect } from './searchable-item-select';
 
-interface InventoryItem { id: string; name: string; unit: string; code?: string | null; }
+interface InventoryItem { id: string; name: string; unit: string; code?: string | null; category_id?: string | null; category_label?: string | null; }
 interface LineItem { id: string; description: string; qty: number; unit_price: number; warehouse_id: string; item_id: string; }
 
 export function CreateInvoiceForm({

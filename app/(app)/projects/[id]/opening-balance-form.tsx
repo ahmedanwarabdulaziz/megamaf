@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useState, useTransition, useEffect } from 'react';
 import { formatMoney } from '@/lib/money';
+import { createClient } from '@/lib/supabase/client';
 import {
   saveFinancialBalance,
   saveVendorPriorClaim,
@@ -22,7 +23,8 @@ import { SearchableSelect } from '@/components/ui/searchable-select';
 // ─────────────────────────────────────────────────
 interface Vendor { id: string; name: string; }
 interface Warehouse { id: string; name: string; project_id: string | null; }
-interface InventoryItem { id: string; name: string; unit: string; code: string | null; }
+interface InventoryItem { id: string; name: string; unit: string; code: string | null; category_id?: string | null; category_label?: string | null; }
+interface ItemCategory { id: string; name: string; parent_id: string | null; }
 interface VendorPriorClaim {
   id: string;
   vendor_id: string;
@@ -530,6 +532,26 @@ function InventorySection({
   const [showItemModal, setShowItemModal] = useState(false);
   const [itemPending, startItemTransition] = useTransition();
   const [itemError, setItemError] = useState('');
+  // Category pickers for the add-item modal (loaded lazily on first open)
+  const [itemCategories, setItemCategories] = useState<ItemCategory[]>([]);
+  const [itemMainCatId, setItemMainCatId] = useState('');
+  const [itemSubCatId, setItemSubCatId] = useState('');
+
+  useEffect(() => {
+    if (!showItemModal || itemCategories.length > 0) return;
+    const supabase = createClient();
+    supabase
+      .from('item_categories')
+      .select('id, name, parent_id')
+      .order('name')
+      .then(({ data }) => setItemCategories(data || []));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showItemModal]);
+
+  const itemMainCats = itemCategories.filter(c => !c.parent_id);
+  const itemSubCats = itemCategories.filter(c => c.parent_id === itemMainCatId);
+  // Items attach to the sub-category when the main has subs, otherwise to the main itself
+  const itemCategoryId = itemSubCatId || (itemMainCatId && itemSubCats.length === 0 ? itemMainCatId : '');
   // Controlled value for the searchable item picker
   const [selectedItemId, setSelectedItemId] = useState('');
 
@@ -565,14 +587,23 @@ function InventorySection({
   async function handleAddItem(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     setItemError('');
+    if (!itemCategoryId) { setItemError('فئة الصنف مطلوبة'); return; }
     const fd = new FormData(e.currentTarget);
     fd.set('project_id', projectId);
+    fd.set('category_id', itemCategoryId);
     startItemTransition(async () => {
       try {
         const newItem = await saveInventoryItem(fd);
-        setInventoryItems(prev => [...prev, newItem]);
+        const sub = itemCategories.find(c => c.id === itemCategoryId);
+        const parent = sub?.parent_id ? itemCategories.find(c => c.id === sub.parent_id) : null;
+        setInventoryItems(prev => [...prev, {
+          ...newItem,
+          category_label: sub ? (parent ? `${parent.name} / ${sub.name}` : sub.name) : null,
+        }]);
         setSelectedItemId(newItem.id); // auto-select the newly created item
         setShowItemModal(false);
+        setItemMainCatId('');
+        setItemSubCatId('');
         (e.target as HTMLFormElement).reset();
       } catch (err: any) { setItemError(err.message); }
     });
@@ -714,7 +745,7 @@ function InventorySection({
                     options={inventoryItems.map(i => ({
                       value: i.id,
                       label: i.name,
-                      sub: i.code ? `كود: ${i.code}` : undefined,
+                      sub: [i.code ? `كود: ${i.code}` : null, i.category_label].filter(Boolean).join(' · ') || undefined,
                       badge: i.unit,
                     }))}
                     value={selectedItemId}
@@ -815,6 +846,36 @@ function InventorySection({
                   placeholder="مثال: أسمنت، حديد تسليح، طوب"
                   className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    الفئة الرئيسية <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    value={itemMainCatId}
+                    onChange={e => { setItemMainCatId(e.target.value); setItemSubCatId(''); }}
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none"
+                  >
+                    <option value="">اختر...</option>
+                    {itemMainCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    الفئة الفرعية {itemSubCats.length > 0 && <span className="text-destructive">*</span>}
+                  </label>
+                  <select
+                    value={itemSubCatId}
+                    onChange={e => setItemSubCatId(e.target.value)}
+                    disabled={itemSubCats.length === 0}
+                    className="w-full border rounded-lg px-3 py-2.5 text-sm bg-background focus:ring-2 focus:ring-primary focus:outline-none disabled:opacity-50"
+                  >
+                    <option value="">{itemSubCats.length === 0 ? 'لا يوجد' : 'اختر...'}</option>
+                    {itemSubCats.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

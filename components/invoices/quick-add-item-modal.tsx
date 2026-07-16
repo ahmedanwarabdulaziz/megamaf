@@ -1,10 +1,18 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
 import { Plus, X, Loader2, PackagePlus } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 
-interface InventoryItem { id: string; name: string; unit: string; code?: string | null; }
+interface InventoryItem {
+  id: string;
+  name: string;
+  unit: string;
+  code?: string | null;
+  category_id?: string | null;
+  category_label?: string | null;
+}
+interface Category { id: string; name: string; parent_id: string | null; }
 
 interface Props {
   /** Called with the newly created item so the parent can append + select it */
@@ -15,19 +23,39 @@ export function QuickAddItemModal({ onItemCreated }: Props) {
   const [open, setOpen]       = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
-  // Focus name field when opening (nameRef assigned in handleSubmit block)
-  // Close on Escape
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [mainCatId, setMainCatId] = useState('');
+  const [subCatId, setSubCatId] = useState('');
+
+  // Focus name field + load categories when opening; close on Escape
   useEffect(() => {
     if (!open) return;
     nameRef.current?.focus();
+
+    if (categories.length === 0) {
+      const supabase = createClient();
+      supabase
+        .from('item_categories')
+        .select('id, name, parent_id')
+        .order('name')
+        .then(({ data }) => setCategories(data || []));
+    }
+
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const nameRef = useRef<HTMLInputElement>(null);
   const unitRef = useRef<HTMLInputElement>(null);
   const codeRef = useRef<HTMLInputElement>(null);
+
+  const mains = useMemo(() => categories.filter(c => !c.parent_id), [categories]);
+  const subs = useMemo(() => categories.filter(c => c.parent_id === mainCatId), [categories, mainCatId]);
+
+  // Items attach to the sub-category when the main has subs, otherwise to the main itself
+  const categoryId = subCatId || (mainCatId && subs.length === 0 ? mainCatId : '');
 
   async function handleSubmit() {
     setError('');
@@ -36,6 +64,7 @@ export function QuickAddItemModal({ onItemCreated }: Props) {
     const code = codeRef.current?.value.trim() || null;
 
     if (!name || !unit) { setError('الاسم والوحدة مطلوبان'); return; }
+    if (!categoryId) { setError('فئة الصنف مطلوبة'); return; }
 
     setLoading(true);
     try {
@@ -44,17 +73,24 @@ export function QuickAddItemModal({ onItemCreated }: Props) {
       const supabase = createClient();
       const { data, error: dbError } = await supabase
         .from('inventory_items')
-        .insert({ name, unit, code })
-        .select('id, name, unit, code')
+        .insert({ name, unit, code, category_id: categoryId })
+        .select('id, name, unit, code, category_id')
         .single();
 
       if (dbError) { setError(dbError.message); return; }
       if (data) {
-        onItemCreated(data);
+        const sub = categories.find(c => c.id === categoryId);
+        const parent = sub?.parent_id ? categories.find(c => c.id === sub.parent_id) : null;
+        onItemCreated({
+          ...data,
+          category_label: sub ? (parent ? `${parent.name} / ${sub.name}` : sub.name) : null,
+        });
         setOpen(false);
         if (nameRef.current) nameRef.current.value = '';
         if (unitRef.current) unitRef.current.value = '';
         if (codeRef.current) codeRef.current.value = '';
+        setMainCatId('');
+        setSubCatId('');
       }
     } finally {
       setLoading(false);
@@ -118,6 +154,36 @@ export function QuickAddItemModal({ onItemCreated }: Props) {
                   placeholder="مثال: أسمنت بورتلاندي"
                   className="w-full p-2.5 rounded-lg border bg-background text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    الفئة الرئيسية <span className="text-destructive">*</span>
+                  </label>
+                  <select
+                    value={mainCatId}
+                    onChange={e => { setMainCatId(e.target.value); setSubCatId(''); }}
+                    className="w-full p-2.5 rounded-lg border bg-background text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition"
+                  >
+                    <option value="">اختر...</option>
+                    {mains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium mb-1">
+                    الفئة الفرعية {subs.length > 0 && <span className="text-destructive">*</span>}
+                  </label>
+                  <select
+                    value={subCatId}
+                    onChange={e => setSubCatId(e.target.value)}
+                    disabled={subs.length === 0}
+                    className="w-full p-2.5 rounded-lg border bg-background text-sm focus:ring-2 focus:ring-primary/30 focus:border-primary outline-none transition disabled:opacity-50"
+                  >
+                    <option value="">{subs.length === 0 ? 'لا يوجد' : 'اختر...'}</option>
+                    {subs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+                  </select>
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

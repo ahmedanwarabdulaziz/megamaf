@@ -2,6 +2,7 @@ import { notFound, redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getVendors } from '@/lib/queries/vendors';
 import { getProjects } from '@/lib/queries/projects';
+import { getInventoryItemsWithCategory } from '@/lib/queries/inventory';
 import { EditClaimForm } from '@/components/claims/edit-claim-form';
 
 export const metadata = { title: 'تعديل المستخلص' };
@@ -38,7 +39,7 @@ export default async function EditClaimPage({ params }: { params: Promise<{ id: 
 
   const [vendors, projects] = await Promise.all([getVendors(), getProjects()]);
   const { data: warehouses }    = await supabase.from('warehouses').select('id, name, project_id');
-  const { data: inventoryItems } = await supabase.from('inventory_items').select('id, name, unit, code');
+  const inventoryItems = await getInventoryItemsWithCategory();
   const { data: stockLevels }   = await supabase.from('v_stock_on_hand').select('warehouse_id, item_id, qty_on_hand, item_unit');
 
   // For Claim#0, return to the project opening-balance tab after save/cancel

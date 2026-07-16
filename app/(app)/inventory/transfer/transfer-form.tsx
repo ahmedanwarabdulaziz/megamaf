@@ -23,6 +23,20 @@ export function TransferForm({ warehouses, stock }: { warehouses: any[], stock: 
     return stock.filter(s => s.warehouse_id === fromWh);
   }, [fromWh, stock]);
 
+  // Group by category for the item <optgroup> dropdown
+  const itemGroups = useMemo(() => {
+    const groups: { label: string; items: any[] }[] = [];
+    for (const s of availableItems) {
+      const label = s.category_name
+        ? (s.parent_category_name ? `${s.parent_category_name} / ${s.category_name}` : s.category_name)
+        : 'غير مصنف';
+      const group = groups.find(g => g.label === label);
+      if (group) group.items.push(s);
+      else groups.push({ label, items: [s] });
+    }
+    return groups.sort((a, b) => a.label.localeCompare(b.label, 'ar'));
+  }, [availableItems]);
+
   const maxQty = useMemo(() => {
     if (!fromWh || !itemId) return 0;
     const s = availableItems.find(i => i.item_id === itemId);
@@ -88,10 +102,14 @@ export function TransferForm({ warehouses, stock }: { warehouses: any[], stock: 
         <label className="block text-sm font-medium mb-1">الصنف</label>
         <select required value={itemId} onChange={e => setItemId(e.target.value)} disabled={!fromWh} className="w-full p-2 rounded border bg-background disabled:opacity-50">
           <option value="">اختر الصنف المتوفر...</option>
-          {availableItems.map(s => (
-            <option key={s.item_id} value={s.item_id}>
-              {s.item_code ? `${s.item_code} - ` : ''}{s.item_name} (المتاح: {s.qty_on_hand} {s.item_unit})
-            </option>
+          {itemGroups.map(group => (
+            <optgroup key={group.label} label={group.label}>
+              {group.items.map(s => (
+                <option key={s.item_id} value={s.item_id}>
+                  {s.item_code ? `${s.item_code} - ` : ''}{s.item_name} (المتاح: {s.qty_on_hand} {s.item_unit})
+                </option>
+              ))}
+            </optgroup>
           ))}
         </select>
       </div>

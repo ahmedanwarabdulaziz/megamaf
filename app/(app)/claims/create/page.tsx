@@ -3,6 +3,7 @@ import { getProjects } from '@/lib/queries/projects';
 import { CreateClaimForm } from '@/components/claims/create-claim-form';
 import { createClient } from '@/lib/supabase/server';
 import { getVendor } from '@/lib/queries/vendors';
+import { getInventoryItemsWithCategory } from '@/lib/queries/inventory';
 
 export const metadata = {
   title: 'تسجيل مستخلص',
@@ -27,7 +28,7 @@ export default async function CreateClaimPage({
   }
   const supabase = await createClient();
   const { data: warehouses } = await supabase.from('warehouses').select('id, name, project_id');
-  const { data: inventoryItems } = await supabase.from('inventory_items').select('id, name, unit, code');
+  const inventoryItems = await getInventoryItemsWithCategory();
   const { data: stockLevels } = await supabase.from('v_stock_on_hand').select('warehouse_id, item_id, qty_on_hand, item_unit');
 
   return (

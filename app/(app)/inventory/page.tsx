@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { Package } from 'lucide-react';
-import { getInventoryStock } from '@/lib/queries/inventory';
+import { getInventoryStock, getItemCategories, categoryLabel } from '@/lib/queries/inventory';
 import { InventoryFilters } from '@/components/inventory/inventory-filters';
 import { requirePageAccess } from '@/lib/require-page-access';
 
@@ -11,15 +11,16 @@ export const metadata = { title: 'المخزون' };
 export default async function InventoryPage({
   searchParams,
 }: {
-  searchParams: Promise<{ warehouse_id?: string; search?: string }>;
+  searchParams: Promise<{ warehouse_id?: string; category_id?: string; search?: string }>;
 }) {
   await requirePageAccess('inventory');
-  const { warehouse_id, search } = await searchParams;
+  const { warehouse_id, category_id, search } = await searchParams;
   const supabase = await createClient();
 
-  const [{ data: warehouses }, stock] = await Promise.all([
+  const [{ data: warehouses }, stock, categories] = await Promise.all([
     supabase.from('warehouses').select('*, projects(name)').order('name'),
-    getInventoryStock({ warehouseId: warehouse_id, search: search })
+    getInventoryStock({ warehouseId: warehouse_id, categoryId: category_id, search: search }),
+    getItemCategories()
   ]);
 
   return (
@@ -47,10 +48,12 @@ export default async function InventoryPage({
         </div>
       </div>
 
-      <InventoryFilters 
-        warehouses={warehouses || []} 
-        selectedWarehouseId={warehouse_id || ''} 
-        searchQuery={search || ''} 
+      <InventoryFilters
+        warehouses={warehouses || []}
+        categories={categories}
+        selectedWarehouseId={warehouse_id || ''}
+        selectedCategoryId={category_id || ''}
+        searchQuery={search || ''}
       />
 
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
@@ -60,6 +63,7 @@ export default async function InventoryPage({
               <th className="p-4 font-medium">المستودع</th>
               <th className="p-4 font-medium">الكود</th>
               <th className="p-4 font-medium">الصنف</th>
+              <th className="p-4 font-medium">الفئة</th>
               <th className="p-4 font-medium">الوحدة</th>
               <th className="p-4 font-medium text-primary">الرصيد المتاح</th>
             </tr>
@@ -70,13 +74,22 @@ export default async function InventoryPage({
                 <td className="p-4 font-semibold">{s.warehouse_name}</td>
                 <td className="p-4 text-muted-foreground">{s.item_code}</td>
                 <td className="p-4 font-medium">{s.item_name}</td>
+                <td className="p-4">
+                  {s.category_name ? (
+                    <span className="bg-primary/10 text-primary px-2 py-1 rounded-md text-xs whitespace-nowrap">
+                      {categoryLabel(s.category_name, s.parent_category_name)}
+                    </span>
+                  ) : (
+                    <span className="text-muted-foreground text-xs">غير مصنف</span>
+                  )}
+                </td>
                 <td className="p-4">{s.item_unit}</td>
                 <td className="p-4 font-bold text-lg" dir="ltr">{Number(s.qty_on_hand).toLocaleString()}</td>
               </tr>
             ))}
             {(!stock || stock.length === 0) && (
               <tr>
-                <td colSpan={5} className="p-8 text-center text-muted-foreground">لا يوجد أرصدة مخزنية حالياً.</td>
+                <td colSpan={6} className="p-8 text-center text-muted-foreground">لا يوجد أرصدة مخزنية حالياً.</td>
               </tr>
             )}
           </tbody>

@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { Search, ChevronDown, X } from 'lucide-react';
 
-interface InventoryItem { id: string; name: string; unit: string; code?: string | null; }
+interface InventoryItem { id: string; name: string; unit: string; code?: string | null; category_label?: string | null; }
 
 interface Props {
   items: InventoryItem[];
@@ -27,14 +27,25 @@ export function SearchableItemSelect({
 
   const selected = items.find(i => i.id === value);
 
-  // Filter by name, code, or unit
+  // Filter by name, code, unit, or category
   const filtered = query.trim()
     ? items.filter(i =>
         i.name.toLowerCase().includes(query.toLowerCase()) ||
         (i.code ?? '').toLowerCase().includes(query.toLowerCase()) ||
-        i.unit.toLowerCase().includes(query.toLowerCase())
+        i.unit.toLowerCase().includes(query.toLowerCase()) ||
+        (i.category_label ?? '').toLowerCase().includes(query.toLowerCase())
       )
     : items;
+
+  // Group results under category headers
+  const grouped: { label: string; items: InventoryItem[] }[] = [];
+  for (const item of filtered) {
+    const label = item.category_label || 'غير مصنف';
+    const group = grouped.find(g => g.label === label);
+    if (group) group.items.push(item);
+    else grouped.push({ label, items: [item] });
+  }
+  grouped.sort((a, b) => a.label.localeCompare(b.label, 'ar'));
 
   // Close on outside click
   useEffect(() => {
@@ -145,34 +156,43 @@ export function SearchableItemSelect({
             </div>
           </div>
 
-          {/* Results */}
+          {/* Results — grouped by category */}
           <ul className="max-h-56 overflow-y-auto divide-y divide-border/50">
             {filtered.length === 0 ? (
               <li className="px-4 py-6 text-center text-sm text-muted-foreground">
                 لا توجد نتائج لـ «{query}»
               </li>
             ) : (
-              filtered.map(item => (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    onClick={() => pick(item)}
-                    className={`
-                      w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right
-                      hover:bg-accent transition-colors
-                      ${item.id === value ? 'bg-primary/5 font-semibold' : ''}
-                    `}
-                  >
-                    <span className="flex-1 truncate">{item.name}</span>
-                    {item.code && (
-                      <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground whitespace-nowrap">
-                        {item.code}
-                      </span>
-                    )}
-                    <span className="text-xs text-muted-foreground border rounded px-1.5 py-0.5 whitespace-nowrap">
-                      {item.unit}
-                    </span>
-                  </button>
+              grouped.map(group => (
+                <li key={group.label}>
+                  <div className="px-4 py-1.5 text-[11px] font-bold text-muted-foreground bg-muted/50 sticky top-0">
+                    {group.label}
+                  </div>
+                  <ul className="divide-y divide-border/50">
+                    {group.items.map(item => (
+                      <li key={item.id}>
+                        <button
+                          type="button"
+                          onClick={() => pick(item)}
+                          className={`
+                            w-full flex items-center gap-3 px-4 py-2.5 text-sm text-right
+                            hover:bg-accent transition-colors
+                            ${item.id === value ? 'bg-primary/5 font-semibold' : ''}
+                          `}
+                        >
+                          <span className="flex-1 truncate">{item.name}</span>
+                          {item.code && (
+                            <span className="text-[10px] font-mono bg-muted px-1.5 py-0.5 rounded text-muted-foreground whitespace-nowrap">
+                              {item.code}
+                            </span>
+                          )}
+                          <span className="text-xs text-muted-foreground border rounded px-1.5 py-0.5 whitespace-nowrap">
+                            {item.unit}
+                          </span>
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
                 </li>
               ))
             )}

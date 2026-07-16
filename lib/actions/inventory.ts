@@ -8,19 +8,74 @@ export async function createItem(formData: FormData) {
   const name = (formData.get('name') as string)?.trim();
   const code = (formData.get('code') as string)?.trim() || null;
   const unit = (formData.get('unit') as string)?.trim();
+  const category_id = (formData.get('category_id') as string) || null;
 
   if (!name || !unit) return { error: 'الاسم والوحدة مطلوبان' };
+  if (!category_id) return { error: 'فئة الصنف مطلوبة' };
 
   const { data, error } = await supabase
     .from('inventory_items')
-    .insert({ name, code, unit })
-    .select('id, name, unit, code')
+    .insert({ name, code, unit, category_id })
+    .select('id, name, unit, code, category_id')
     .single();
 
   if (error) return { error: error.message };
 
   revalidatePath('/inventory/items');
   return { success: true, item: data };
+}
+
+export async function createItemCategory(formData: FormData) {
+  const supabase = await createClient();
+  const name = (formData.get('name') as string)?.trim();
+  const parent_id = (formData.get('parent_id') as string) || null;
+
+  if (!name) return { error: 'اسم الفئة مطلوب' };
+
+  const { error } = await supabase.from('item_categories').insert({ name, parent_id });
+  if (error) {
+    if (error.code === '23505') return { error: 'يوجد فئة بنفس الاسم في هذا المستوى' };
+    return { error: error.message };
+  }
+
+  revalidatePath('/inventory/categories');
+  revalidatePath('/inventory/items');
+  return { success: true };
+}
+
+export async function renameItemCategory(formData: FormData) {
+  const supabase = await createClient();
+  const id = formData.get('id') as string;
+  const name = (formData.get('name') as string)?.trim();
+
+  if (!id || !name) return { error: 'اسم الفئة مطلوب' };
+
+  const { error } = await supabase.from('item_categories').update({ name, updated_at: new Date().toISOString() }).eq('id', id);
+  if (error) {
+    if (error.code === '23505') return { error: 'يوجد فئة بنفس الاسم في هذا المستوى' };
+    return { error: error.message };
+  }
+
+  revalidatePath('/inventory/categories');
+  revalidatePath('/inventory/items');
+  return { success: true };
+}
+
+export async function deleteItemCategory(formData: FormData) {
+  const supabase = await createClient();
+  const id = formData.get('id') as string;
+  if (!id) return { error: 'الفئة غير محددة' };
+
+  const { error } = await supabase.from('item_categories').delete().eq('id', id);
+  if (error) {
+    // FK violation: category has items or sub-categories attached
+    if (error.code === '23503') return { error: 'لا يمكن حذف الفئة لوجود أصناف أو فئات فرعية مرتبطة بها' };
+    return { error: error.message };
+  }
+
+  revalidatePath('/inventory/categories');
+  revalidatePath('/inventory/items');
+  return { success: true };
 }
 
 export async function createWarehouse(formData: FormData) {

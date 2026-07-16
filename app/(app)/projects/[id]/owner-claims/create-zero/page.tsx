@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getProfile } from '@/lib/supabase/get-profile';
+import { getInventoryItemsWithCategory } from '@/lib/queries/inventory';
 import { CreateZeroClaimForm } from '@/components/claims/create-zero-claim-form';
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
@@ -32,12 +33,12 @@ export default async function CreateZeroOwnerClaimPage({ params }: { params: Pro
   const [
     { data: project },
     { data: warehouses },
-    { data: inventoryItems },
+    inventoryItems,
     { data: stockLevels },
   ] = await Promise.all([
     supabase.from('projects').select('id, name, owner_id, project_owners:project_owners!projects_owner_id_fkey(name)').eq('id', project_id).single(),
     supabase.from('warehouses').select('id, name').order('name'),
-    supabase.from('inventory_items').select('id, code, name, unit').order('name'),
+    getInventoryItemsWithCategory(),
     supabase.from('v_stock_levels').select('warehouse_id, item_id, qty_on_hand, item_unit'),
   ]);
 

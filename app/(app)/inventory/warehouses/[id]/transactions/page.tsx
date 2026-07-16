@@ -38,6 +38,7 @@ export default async function WarehouseTransactionsPage({ params }: { params: Pr
                 <th className="p-4 font-medium">التاريخ</th>
                 <th className="p-4 font-medium">نوع الحركة</th>
                 <th className="p-4 font-medium">الصنف</th>
+                <th className="p-4 font-medium">الفئة</th>
                 <th className="p-4 font-medium text-center">الكمية</th>
                 <th className="p-4 font-medium">القيمة / السعر</th>
                 <th className="p-4 font-medium">بواسطة</th>
@@ -79,6 +80,15 @@ export default async function WarehouseTransactionsPage({ params }: { params: Pr
                     <td className="p-4 font-semibold">
                       {t.inventory_items?.name} <span className="text-xs text-muted-foreground font-normal">({t.inventory_items?.code})</span>
                     </td>
+                    <td className="p-4">
+                      {t.inventory_items?.item_categories?.name ? (
+                        <span className="bg-primary/10 text-primary px-2 py-1 rounded-md text-xs whitespace-nowrap">
+                          {t.inventory_items.item_categories.name}
+                        </span>
+                      ) : (
+                        <span className="text-muted-foreground text-xs">-</span>
+                      )}
+                    </td>
                     <td className="p-4 text-center">
                       <span className={`font-bold px-2 py-1 rounded-md ${isOut ? 'bg-destructive/10 text-destructive' : 'bg-green-500/10 text-green-600'}`} dir="ltr">
                         {isOut ? '' : '+'}{Number(t.qty).toLocaleString()} {t.inventory_items?.unit}
@@ -98,7 +108,7 @@ export default async function WarehouseTransactionsPage({ params }: { params: Pr
               })}
               {(!transactions || transactions.length === 0) && (
                 <tr>
-                  <td colSpan={7} className="p-8 text-center text-muted-foreground">لا يوجد حركات لهذا المستودع.</td>
+                  <td colSpan={8} className="p-8 text-center text-muted-foreground">لا يوجد حركات لهذا المستودع.</td>
                 </tr>
               )}
             </tbody>

@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
+import { getInventoryItemsWithCategory } from '@/lib/queries/inventory';
 import { CreateClaimForm } from '@/components/claims/create-claim-form';
 
 export const metadata = {
@@ -18,7 +19,7 @@ export default async function CreateOwnerClaimPage({ params }: { params: Promise
     .single();
 
   const { data: warehouses } = await supabase.from('warehouses').select('id, name, project_id');
-  const { data: inventoryItems } = await supabase.from('inventory_items').select('id, name, unit, code');
+  const inventoryItems = await getInventoryItemsWithCategory();
 
   if (!project) notFound();
 

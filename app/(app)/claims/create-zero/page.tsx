@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { getProfile } from '@/lib/supabase/get-profile';
+import { getInventoryItemsWithCategory } from '@/lib/queries/inventory';
 import { CreateZeroClaimForm } from '@/components/claims/create-zero-claim-form';
 import { ArrowRight } from 'lucide-react';
 import Link from 'next/link';
@@ -56,13 +57,13 @@ export default async function CreateZeroVendorClaimPage({ searchParams }: { sear
     { data: vendor },
     { data: project },
     { data: warehouses },
-    { data: inventoryItems },
+    inventoryItems,
     { data: stockLevels },
   ] = await Promise.all([
     supabase.from('vendors').select('name').eq('id', party_id).single(),
     supabase.from('projects').select('name').eq('id', project_id).single(),
     supabase.from('warehouses').select('id, name').order('name'),
-    supabase.from('inventory_items').select('id, code, name, unit').order('name'),
+    getInventoryItemsWithCategory(),
     supabase.from('v_stock_levels').select('warehouse_id, item_id, qty_on_hand, item_unit'),
   ]);
 

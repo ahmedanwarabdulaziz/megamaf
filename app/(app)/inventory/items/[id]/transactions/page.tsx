@@ -24,8 +24,11 @@ export default async function ItemTransactionsPage({ params }: { params: Promise
             <Package className="w-6 h-6 text-primary" />
             حركة الصنف: {item.name}
           </h1>
-          <p className="text-muted-foreground mt-1">
-            الكود: {item.code} | الوحدة: {item.unit}
+          <p className="text-muted-foreground mt-1 flex items-center gap-2 flex-wrap">
+            <span>الكود: {item.code} | الوحدة: {item.unit}</span>
+            {item.category_label && (
+              <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-md text-xs">{item.category_label}</span>
+            )}
           </p>
         </div>
       </div>
