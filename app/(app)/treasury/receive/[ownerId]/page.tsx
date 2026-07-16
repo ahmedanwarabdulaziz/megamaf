@@ -174,7 +174,10 @@ export default async function ReceiveOwnerPage({ params }: { params: Promise<{ o
   }
 
 
-  const { data: projects } = await supabase.from('projects').select('id, name').order('name');
+  // Scope the project options to this owner's own projects — the receipt
+  // must not be tagged with a project belonging to a different owner, even
+  // if the employee can see it via RLS.
+  const { data: projects } = await supabase.from('projects').select('id, name').eq('owner_id', ownerId).order('name');
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">

@@ -4,6 +4,31 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { sendPushNotification } from '@/lib/notifications';
 
+// Server-side guard mirroring the vendor/project scoping check in lib/actions/claims.ts —
+// a vendor restricted to specific projects must not be tagged with a payment for a
+// project outside that scope, even if the client-side form was tampered with.
+async function assertVendorProjectAccess(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  vendorId: string,
+  projectId: string
+) {
+  const { data: vendor } = await supabase
+    .from('vendors')
+    .select('all_projects, vendor_project_access(project_id)')
+    .eq('id', vendorId)
+    .single();
+
+  if (!vendor) return { error: 'Vendor not found' };
+
+  if (!vendor.all_projects) {
+    const allowedProjects = vendor.vendor_project_access?.map((p: any) => p.project_id) || [];
+    if (!allowedProjects.includes(projectId)) {
+      return { error: 'هذا المقاول/المورد غير مصرح له بالعمل في هذا المشروع' };
+    }
+  }
+  return null;
+}
+
 export async function payVendor(formData: FormData, allocations: any[], attachments: string[] = []) {
   const supabase = await createClient();
 
@@ -12,6 +37,11 @@ export async function payVendor(formData: FormData, allocations: any[], attachme
   const amount = parseFloat(formData.get('amount') as string);
   const memo = formData.get('memo') as string;
   const project_id = formData.get('project_id') as string || null;
+
+  if (project_id) {
+    const accessError = await assertVendorProjectAccess(supabase, vendor_id, project_id);
+    if (accessError) return accessError;
+  }
 
   // Split allocations: prior_claim must be handled separately (not in payment_allocations)
   const priorClaimAllocations = allocations.filter(a => a.target_type === 'prior_claim');
@@ -88,6 +118,11 @@ export async function payVendorFromExpense(formData: FormData, allocations: any[
   const memo = formData.get('memo') as string;
   const project_id = formData.get('project_id') as string || null;
 
+  if (project_id) {
+    const accessError = await assertVendorProjectAccess(supabase, vendor_id, project_id);
+    if (accessError) return accessError;
+  }
+
   const priorClaimAllocations = allocations.filter(a => a.target_type === 'prior_claim');
   const standardAllocations = allocations.filter(a => a.target_type !== 'prior_claim');
 
@@ -160,6 +195,13 @@ export async function receiveFromOwner(formData: FormData, allocations: any[], a
   const amount = parseFloat(formData.get('amount') as string);
   const memo = formData.get('memo') as string;
   const project_id = formData.get('project_id') as string || null;
+
+  if (project_id) {
+    const { data: project } = await supabase.from('projects').select('owner_id').eq('id', project_id).single();
+    if (!project || project.owner_id !== owner_id) {
+      return { error: 'هذا المشروع لا يخص هذا المالك' };
+    }
+  }
 
   const { data, error } = await supabase.rpc('record_owner_receipt', {
     p_bank_account_id: bank_account_id,

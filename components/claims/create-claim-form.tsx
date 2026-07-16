@@ -87,6 +87,19 @@ export function CreateClaimForm({
 
   const [partyId, setPartyId] = useState(fixedPartyId || defaultPartyId || '');
   const [projectId, setProjectId] = useState(fixedProjectId || defaultProjectId || '');
+
+  // Scope the project list to the selected vendor/owner's assigned projects —
+  // vendors with all_projects=false must only offer their granted projects here.
+  const selectedParty = vendors.find(v => v.id === partyId);
+  const visibleProjects = (!selectedParty || selectedParty.all_projects)
+    ? projects
+    : projects.filter(p => selectedParty.vendor_project_access?.some((a: any) => a.project_id === p.id));
+
+  useEffect(() => {
+    if (fixedProjectId || !projectId) return;
+    if (!visibleProjects.some(p => p.id === projectId)) setProjectId('');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [partyId]);
   const [taxEnabled, setTaxEnabled] = useState(false);
   const [taxRateStr, setTaxRateStr] = useState("14");
   const taxRate = (parseFloat(taxRateStr) || 0) / 100;
@@ -358,11 +371,11 @@ export function CreateClaimForm({
               <option value="">اختر المشروع...</option>
               {(() => {
                 // Root of the visible tree = projects whose parent is main_company or null
-                const rootParentId = projects.find(p => p.node_type === 'main_company')?.id ?? null;
+                const rootParentId = visibleProjects.find(p => p.node_type === 'main_company')?.id ?? null;
                 // RLS only returns projects the employee has been explicitly granted —
                 // a non-admin may see a phase without seeing its parent branch. Treat
                 // such orphaned projects as top-level instead of dropping them silently.
-                const idsPresent = new Set(projects.map((p: any) => p.id));
+                const idsPresent = new Set(visibleProjects.map((p: any) => p.id));
                 function effectiveParentId(p: any): string | null {
                   return p.parent_id && idsPresent.has(p.parent_id) ? p.parent_id : rootParentId;
                 }
@@ -379,7 +392,7 @@ export function CreateClaimForm({
                       ...flattenTree(nodes, p.id, depth + 1),
                     ]);
                 }
-                const ordered = flattenTree(projects, rootParentId, 0);
+                const ordered = flattenTree(visibleProjects, rootParentId, 0);
 
                 return ordered.map(({ project: p, depth }) => {
                   const indent = depth === 0 ? '' : '\u00a0'.repeat(depth * 3) + '↳ ';

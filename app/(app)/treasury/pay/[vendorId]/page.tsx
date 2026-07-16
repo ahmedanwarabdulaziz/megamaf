@@ -7,7 +7,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   const { vendorId } = await params;
   const supabase = await createClient();
 
-  const { data: vendor } = await supabase.from('vendors').select('*').eq('id', vendorId).single();
+  const { data: vendor } = await supabase.from('vendors').select('*, vendor_project_access(project_id)').eq('id', vendorId).single();
   if (!vendor) notFound();
 
   const [
@@ -90,6 +90,15 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
 
 
   const { data: projects } = await supabase.from('projects').select('id, name').order('name');
+
+  // Scope the project options offered in the payment form to the vendor's own
+  // assignment — a vendor restricted to specific projects must not be tagged
+  // with a payment for a project outside that scope, even if the employee can
+  // see it via RLS. `projects` (unfiltered) is kept for project-name lookups
+  // below, since a claim may reference a project the vendor is no longer scoped to.
+  const vendorScopedProjects = vendor.all_projects
+    ? projects
+    : (projects || []).filter(p => vendor.vendor_project_access?.some((a: any) => a.project_id === p.id));
 
   // ── Fetch latest approved claim per project for the summary card ──────────
   const { data: latestClaims } = await supabase
@@ -282,7 +291,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
         <p className="text-muted-foreground mt-1">المقاول: {vendor.name}</p>
       </div>
 
-      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} bankAccounts={bankAccounts || []} employees={employees || []} projects={projects || []} claimSummaries={claimSummaries} />
+      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} bankAccounts={bankAccounts || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} />
     </div>
   );
 }

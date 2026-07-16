@@ -231,7 +231,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
         result = await payVendor(formData, apiAllocations, uploadedPaths);
       }
 
-      if (result.error) {
+      if ('error' in result && result.error) {
         alert(result.error);
         setLoading(false);
       } else {
