@@ -2,7 +2,7 @@
 
 import { PutObjectCommand, GetObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
-import { createR2Client, R2_BUCKET, getBatchSignedUrls } from "@/lib/r2"
+import { createR2Client, R2_BUCKET, getBatchSignedUrls, getBatchSignedUrlsTreasury } from "@/lib/r2"
 
 export async function getUploadUrl(fileName: string, contentType: string) {
   try {
@@ -48,6 +48,11 @@ export async function getDownloadUrl(r2Key: string): Promise<{ url?: string; err
  */
 export async function getDownloadUrls(r2Keys: string[]): Promise<Record<string, string>> {
   return getBatchSignedUrls(r2Keys)
+}
+
+/** Same as getDownloadUrls, but for files in the treasury payments bucket. */
+export async function getTreasuryDownloadUrls(r2Keys: string[]): Promise<Record<string, string>> {
+  return getBatchSignedUrlsTreasury(r2Keys)
 }
 
 /**

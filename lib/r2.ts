@@ -20,6 +20,13 @@ export function createR2Client() {
 export const R2_BUCKET = process.env.R2_BUCKET_NAME!
 
 /**
+ * Separate bucket for treasury payment attachments (vendor payment receipts/proofs).
+ * Kept isolated from R2_BUCKET so treasury documents don't share storage/lifecycle
+ * with the general expenses/invoices/claims attachment bucket.
+ */
+export const R2_BUCKET_TREASURY = process.env.R2_BUCKET_NAME_TREASURY!
+
+/**
  * Get a signed R2 URL for a file path — cached for 55 minutes.
  *
  * WHY: Generating signed URLs requires an outbound network call to Cloudflare R2
@@ -58,6 +65,41 @@ export async function getBatchSignedUrls(filePaths: string[]): Promise<Record<st
   const entries = await Promise.all(
     filePaths.map(async (path) => {
       const url = await getCachedSignedUrl(path)
+      return url ? [path, url] as const : null
+    })
+  )
+
+  return Object.fromEntries(entries.filter(Boolean) as [string, string][])
+}
+
+/** Same as getCachedSignedUrl, but against the treasury bucket. */
+export const getCachedSignedUrlTreasury = unstable_cache(
+  async (filePath: string): Promise<string | null> => {
+    try {
+      const r2 = createR2Client()
+      return await getSignedUrl(
+        r2,
+        new GetObjectCommand({ Bucket: R2_BUCKET_TREASURY, Key: filePath }),
+        { expiresIn: 3600 }
+      )
+    } catch {
+      return null
+    }
+  },
+  ["r2-signed-url-treasury"],
+  {
+    revalidate: 55 * 60,
+    tags: ["r2-signed-url-treasury"],
+  }
+)
+
+/** Same as getBatchSignedUrls, but against the treasury bucket. */
+export async function getBatchSignedUrlsTreasury(filePaths: string[]): Promise<Record<string, string>> {
+  if (filePaths.length === 0) return {}
+
+  const entries = await Promise.all(
+    filePaths.map(async (path) => {
+      const url = await getCachedSignedUrlTreasury(path)
       return url ? [path, url] as const : null
     })
   )

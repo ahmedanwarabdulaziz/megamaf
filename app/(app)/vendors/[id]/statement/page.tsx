@@ -3,6 +3,8 @@ import { notFound } from 'next/navigation';
 import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
 import { ArrowLeft } from 'lucide-react';
+import { AttachmentViewer } from '@/components/ui/attachment-viewer';
+import { getTreasuryDownloadUrls } from '@/lib/actions/storage';
 
 export const metadata = { title: 'كشف حساب مقاول' };
 
@@ -25,6 +27,18 @@ export default async function VendorStatementPage({ params }: { params: Promise<
     supabase.from('ledger_entries').select('id, entry_date, amount, memo, project_id, projects(name), created_at').eq('counterparty_id', id).eq('counterparty_type', 'vendor').eq('direction', 'out'),
     supabase.from('claims').select('id, opening_paid_amount, created_at, project_id, projects(name)').eq('party_id', id).eq('claim_type', 'vendor').eq('claim_number', 0).eq('status', 'approved')
   ]);
+
+  // Attachments (payment receipts) live in a separate bucket — fetch them keyed by ledger entry
+  const ledgerPaymentIds = (ledgerPayments || []).map((lp: any) => lp.id);
+  const { data: paymentAttachments } = ledgerPaymentIds.length > 0
+    ? await supabase.from('attachments').select('entity_id, r2_key').eq('entity_type', 'vendor_payment').in('entity_id', ledgerPaymentIds)
+    : { data: [] as any[] };
+  const attachmentsByLedgerId = new Map<string, { r2_key: string }[]>();
+  for (const a of paymentAttachments || []) {
+    const list = attachmentsByLedgerId.get(a.entity_id) || [];
+    list.push({ r2_key: a.r2_key });
+    attachmentsByLedgerId.set(a.entity_id, list);
+  }
 
   let rows: any[] = [];
   
@@ -91,7 +105,8 @@ export default async function VendorStatementPage({ params }: { params: Promise<
       description: lp.memo || 'دفعة منصرفة',
       amount_due: 0,
       amount_paid: Number(lp.amount),
-      sort_date: lp.created_at || lp.entry_date || '1970-01-01'
+      sort_date: lp.created_at || lp.entry_date || '1970-01-01',
+      attachments: attachmentsByLedgerId.get(lp.id) || [],
     });
   }
 
@@ -146,6 +161,7 @@ export default async function VendorStatementPage({ params }: { params: Promise<
                 <th className="p-3 font-medium text-amber-600">دائن (مستحق له)</th>
                 <th className="p-3 font-medium text-green-600">مدين (دفعة منصرفة)</th>
                 <th className="p-3 font-medium text-primary">الرصيد التراكمي</th>
+                <th className="p-3 font-medium">المرفقات</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-border">
@@ -157,11 +173,16 @@ export default async function VendorStatementPage({ params }: { params: Promise<
                   <td className="p-3 font-medium text-amber-600">{row.amount_due > 0 ? formatMoney(row.amount_due) : '-'}</td>
                   <td className="p-3 font-medium text-green-600">{row.amount_paid > 0 ? formatMoney(row.amount_paid) : '-'}</td>
                   <td className="p-3 font-bold text-primary" dir="ltr">{formatMoney(row.running_balance)}</td>
+                  <td className="p-3">
+                    {row.attachments && row.attachments.length > 0
+                      ? <AttachmentViewer attachments={row.attachments} fetchUrls={getTreasuryDownloadUrls} />
+                      : <span className="text-muted-foreground">-</span>}
+                  </td>
                 </tr>
               ))}
               {rows.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-muted-foreground">لا يوجد حركات مسجلة.</td>
+                  <td colSpan={7} className="p-8 text-center text-muted-foreground">لا يوجد حركات مسجلة.</td>
                 </tr>
               )}
             </tbody>

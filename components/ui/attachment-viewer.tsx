@@ -8,9 +8,11 @@ import { isImageFile } from '@/lib/attachments';
 
 interface AttachmentViewerProps {
   attachments: { r2_key: string }[];
+  /** Defaults to the shared attachments bucket; pass a different fetcher (e.g. getTreasuryDownloadUrls) for attachments stored elsewhere. */
+  fetchUrls?: (keys: string[]) => Promise<Record<string, string>>;
 }
 
-export function AttachmentViewer({ attachments }: AttachmentViewerProps) {
+export function AttachmentViewer({ attachments, fetchUrls = getDownloadUrls }: AttachmentViewerProps) {
   const [loading, setLoading] = useState(false);
   const [items, setItems] = useState<GalleryItem[] | null>(null);
   const [index, setIndex] = useState(0);
@@ -27,7 +29,7 @@ export function AttachmentViewer({ attachments }: AttachmentViewerProps) {
       return;
     }
     setLoading(true);
-    const urls = await getDownloadUrls(attachments.map(a => a.r2_key));
+    const urls = await fetchUrls(attachments.map(a => a.r2_key));
     setLoading(false);
     const resolved = attachments
       .filter(a => urls[a.r2_key])

@@ -4,9 +4,9 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { sendPushNotification } from '@/lib/notifications';
 
-export async function payVendor(formData: FormData, allocations: any[]) {
+export async function payVendor(formData: FormData, allocations: any[], attachments: string[] = []) {
   const supabase = await createClient();
-  
+
   const bank_account_id = formData.get('bank_account_id') as string;
   const vendor_id = formData.get('vendor_id') as string;
   const amount = parseFloat(formData.get('amount') as string);
@@ -30,6 +30,8 @@ export async function payVendor(formData: FormData, allocations: any[]) {
     return { error: error.message };
   }
 
+  const ledgerEntryId = data;
+
   // Handle prior_claim allocations via the pay_prior_claim RPC (bypasses super-admin-only RLS)
   for (const alloc of priorClaimAllocations) {
     if (alloc.amount > 0) {
@@ -42,6 +44,20 @@ export async function payVendor(formData: FormData, allocations: any[]) {
         return { error: priorError.message };
       }
     }
+  }
+
+  if (attachments && attachments.length > 0) {
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id').eq('auth_user_id', userData.user?.id).single();
+    const attachmentRows = attachments.map((key) => ({
+      entity_type: 'vendor_payment',
+      entity_id: ledgerEntryId,
+      r2_key: key,
+      file_name: key,
+      uploaded_by: emp?.id,
+    }));
+    const { error: attachError } = await supabase.from('attachments').insert(attachmentRows);
+    if (attachError) console.error('Vendor payment attachment insert failed:', attachError);
   }
 
   // Notify admins
@@ -62,7 +78,7 @@ export async function payVendor(formData: FormData, allocations: any[]) {
   return { success: true };
 }
 
-export async function payVendorFromExpense(formData: FormData, allocations: any[]) {
+export async function payVendorFromExpense(formData: FormData, allocations: any[], attachments: string[] = []) {
   const supabase = await createClient();
 
   const employee_id = formData.get('employee_id') as string;
@@ -89,6 +105,8 @@ export async function payVendorFromExpense(formData: FormData, allocations: any[
     return { error: error.message };
   }
 
+  const ledgerEntryId = data;
+
   for (const alloc of priorClaimAllocations) {
     if (alloc.amount > 0) {
       const { error: priorError } = await supabase.rpc('pay_prior_claim', {
@@ -100,6 +118,20 @@ export async function payVendorFromExpense(formData: FormData, allocations: any[
         return { error: priorError.message };
       }
     }
+  }
+
+  if (attachments && attachments.length > 0) {
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id').eq('auth_user_id', userData.user?.id).single();
+    const attachmentRows = attachments.map((key) => ({
+      entity_type: 'vendor_payment',
+      entity_id: ledgerEntryId,
+      r2_key: key,
+      file_name: key,
+      uploaded_by: emp?.id,
+    }));
+    const { error: attachError } = await supabase.from('attachments').insert(attachmentRows);
+    if (attachError) console.error('Vendor payment attachment insert failed:', attachError);
   }
 
   const { data: admins } = await supabase.from('employees').select('id').eq('is_super_admin', true);
@@ -145,12 +177,17 @@ export async function receiveFromOwner(formData: FormData, allocations: any[], a
   const ledgerEntryId = data;
 
   if (attachments && attachments.length > 0) {
-    const attachmentRows = attachments.map((url) => ({
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id').eq('auth_user_id', userData.user?.id).single();
+    const attachmentRows = attachments.map((key) => ({
       entity_type: 'ledger_entry',
       entity_id: ledgerEntryId,
-      file_url: url
+      r2_key: key,
+      file_name: key,
+      uploaded_by: emp?.id,
     }));
-    await supabase.from('attachments').insert(attachmentRows);
+    const { error: attachError } = await supabase.from('attachments').insert(attachmentRows);
+    if (attachError) console.error('Owner receipt attachment insert failed:', attachError);
   }
 
   // Notify admins
