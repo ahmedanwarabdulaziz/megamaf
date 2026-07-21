@@ -9,9 +9,18 @@ import { disburseLoan } from '@/lib/actions/loans';
 import { formatMoney } from '@/lib/money';
 
 type BankAccount = { bank_account_id: string; bank_name: string; account_name: string; current_balance: number };
+type Employee = { id: string; full_name: string };
 type CustomRow = { due_date: string; amount: string };
 
-export function DisburseLoanModal({ employeeId, bankAccounts }: { employeeId: string; bankAccounts: BankAccount[] }) {
+export function DisburseLoanModal({
+  employeeId,
+  bankAccounts,
+  employees,
+}: {
+  employeeId: string;
+  bankAccounts: BankAccount[];
+  employees: Employee[];
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -20,6 +29,11 @@ export function DisburseLoanModal({ employeeId, bankAccounts }: { employeeId: st
 
   const [repaymentType, setRepaymentType] = useState<'next_salary_full' | 'equal_installments' | 'custom_schedule'>('next_salary_full');
   const [customRows, setCustomRows] = useState<CustomRow[]>([{ due_date: '', amount: '' }]);
+
+  const [fundingSource, setFundingSource] = useState<'bank' | 'expense'>('bank');
+  const [bankAccountId, setBankAccountId] = useState('');
+  const [fundingEmployeeId, setFundingEmployeeId] = useState(employeeId);
+  const [amount, setAmount] = useState<number>(0);
 
   useEffect(() => { setMounted(true); }, []);
 
@@ -36,11 +50,26 @@ export function DisburseLoanModal({ employeeId, bankAccounts }: { employeeId: st
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
     if (submittingRef.current) return;
+    if (amount <= 0) {
+      alert('المبلغ يجب أن يكون أكبر من صفر');
+      return;
+    }
+    if (fundingSource === 'bank' && !bankAccountId) {
+      alert('يجب اختيار الحساب البنكي');
+      return;
+    }
     submittingRef.current = true;
     setLoading(true);
     const formData = new FormData(e.currentTarget);
     formData.set('employee_id', employeeId);
     formData.set('repayment_type', repaymentType);
+    formData.set('amount', String(amount));
+    formData.set('funding_source', fundingSource);
+    if (fundingSource === 'bank') {
+      formData.set('bank_account_id', bankAccountId);
+    } else {
+      formData.set('funding_employee_id', fundingEmployeeId);
+    }
     if (repaymentType === 'custom_schedule') {
       formData.set(
         'custom_schedule',
@@ -53,6 +82,9 @@ export function DisburseLoanModal({ employeeId, bankAccounts }: { employeeId: st
         alert(result.error);
       } else {
         setIsOpen(false);
+        if ((result as any).pending) {
+          alert('تم إرسال طلب السلفة — بانتظار اعتماد المصروف من عهدة الموظف المحدد.');
+        }
         router.refresh();
       }
     } catch (err: any) {
@@ -70,24 +102,68 @@ export function DisburseLoanModal({ employeeId, bankAccounts }: { employeeId: st
             <h2 className="text-xl font-bold mb-4">صرف سلفة جديدة</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium mb-1">المبلغ</label>
-                <input required type="number" step="0.01" min="0.01" name="amount" className="w-full p-2 rounded border bg-background text-lg font-bold text-primary" />
-              </div>
-              <div>
                 <label className="block text-sm font-medium mb-1">تاريخ الصرف</label>
                 <input required type="date" name="date" autoComplete="off" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
               </div>
+
               <div>
-                <label className="block text-sm font-medium mb-1">الحساب البنكي</label>
-                <select required name="bank_account_id" className="w-full p-2 rounded border bg-background">
-                  <option value="">-- اختر الحساب البنكي --</option>
-                  {bankAccounts.map(b => (
-                    <option key={b.bank_account_id} value={b.bank_account_id}>
-                      {b.bank_name} - {b.account_name} ({formatMoney(b.current_balance)})
-                    </option>
-                  ))}
-                </select>
+                <label className="block text-sm font-medium mb-1">مصدر الصرف</label>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setFundingSource('bank')}
+                    className={`flex-1 p-2 rounded border text-sm font-medium ${fundingSource === 'bank' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'}`}
+                  >
+                    من الخزينة / حساب بنكي
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setFundingSource('expense'); setBankAccountId(''); }}
+                    className={`flex-1 p-2 rounded border text-sm font-medium ${fundingSource === 'expense' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'}`}
+                  >
+                    من عهدة موظف
+                  </button>
+                </div>
               </div>
+
+              <div>
+                <label className="block text-sm font-medium mb-1">المبلغ</label>
+                <input
+                  required type="number" step="0.01" min="0.01"
+                  value={amount || ''}
+                  onChange={e => setAmount(parseFloat(e.target.value) || 0)}
+                  className="w-full p-2 rounded border bg-background text-lg font-bold text-primary"
+                />
+              </div>
+
+              {fundingSource === 'bank' ? (
+                <div>
+                  <label className="block text-sm font-medium mb-1">الحساب البنكي</label>
+                  <select required value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className="w-full p-2 rounded border bg-background">
+                    <option value="">-- اختر الحساب البنكي --</option>
+                    {bankAccounts.map(b => (
+                      <option key={b.bank_account_id} value={b.bank_account_id}>
+                        {b.bank_name} - {b.account_name} ({formatMoney(b.current_balance)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">الموظف صاحب العهدة</label>
+                    <select required value={fundingEmployeeId} onChange={e => setFundingEmployeeId(e.target.value)} className="w-full p-2 rounded border bg-background">
+                      {employees.map(emp => (
+                        <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    سيتم تسجيل هذا المبلغ كمصروف "سلفة من الراتب" على عهدة الموظف المحدد، وتصرف السلفة فعلياً بعد اعتماد المصروف من صفحة اعتمادات المصروفات.
+                  </p>
+                </>
+              )}
+
               <div>
                 <label className="block text-sm font-medium mb-1">طريقة السداد</label>
                 <select value={repaymentType} onChange={e => setRepaymentType(e.target.value as any)} className="w-full p-2 rounded border bg-background">
@@ -131,7 +207,7 @@ export function DisburseLoanModal({ employeeId, bankAccounts }: { employeeId: st
 
               <div className="flex justify-end gap-2 pt-4 border-t">
                 <Button type="button" variant="outline" onClick={() => setIsOpen(false)} disabled={loading}>إلغاء</Button>
-                <Button type="submit" disabled={loading}>
+                <Button type="submit" disabled={loading || amount <= 0 || (fundingSource === 'bank' && !bankAccountId)}>
                   {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
                   صرف السلفة
                 </Button>

@@ -17,7 +17,7 @@ export default async function EmployeeSalaryPage({ params }: { params: Promise<{
   const { employeeId } = await params;
   const supabase = await createClient();
 
-  const [{ data: employee }, { data: salaries }, { data: bankAccounts }, loanSummary] = await Promise.all([
+  const [{ data: employee }, { data: salaries }, { data: bankAccounts }, { data: employees }, loanSummary] = await Promise.all([
     supabase.from('employees').select('id, full_name, employment_type').eq('id', employeeId).single(),
     supabase
       .from('employee_salaries')
@@ -25,6 +25,7 @@ export default async function EmployeeSalaryPage({ params }: { params: Promise<{
       .eq('employee_id', employeeId)
       .order('effective_from', { ascending: false }),
     supabase.from('v_bank_account_balances').select('*').order('account_name'),
+    supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name'),
     getEmployeeLoanSummary(employeeId),
   ]);
 
@@ -101,7 +102,7 @@ export default async function EmployeeSalaryPage({ params }: { params: Promise<{
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
         <div className="p-4 border-b bg-muted/30 flex justify-between items-center">
           <h3 className="font-bold">السلف</h3>
-          <DisburseLoanModal employeeId={employee.id} bankAccounts={bankAccounts || []} />
+          <DisburseLoanModal employeeId={employee.id} bankAccounts={bankAccounts || []} employees={employees || []} />
         </div>
         {loans.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">لا توجد سلف</p>

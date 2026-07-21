@@ -29,13 +29,15 @@ const customScheduleItemSchema = z.object({
 
 const disburseLoanSchema = z.object({
   employee_id: z.string().uuid(),
-  bank_account_id: z.string().uuid(),
   amount: z.coerce.number().positive(),
   date: z.string(),
   repayment_type: z.enum(['next_salary_full', 'equal_installments', 'custom_schedule']),
   installment_months: z.coerce.number().positive().optional(),
   custom_schedule: z.array(customScheduleItemSchema).optional(),
   memo: z.string().optional(),
+  funding_source: z.enum(['bank', 'expense']).default('bank'),
+  bank_account_id: z.string().uuid().optional(),
+  funding_employee_id: z.string().uuid().optional(),
 });
 
 export async function disburseLoan(formData: FormData) {
@@ -58,13 +60,15 @@ export async function disburseLoan(formData: FormData) {
 
     const parsed = disburseLoanSchema.safeParse({
       employee_id: formData.get('employee_id'),
-      bank_account_id: formData.get('bank_account_id'),
+      bank_account_id: formData.get('bank_account_id') || undefined,
       amount: formData.get('amount'),
       date: formData.get('date'),
       repayment_type: formData.get('repayment_type'),
       installment_months: formData.get('installment_months') || undefined,
       custom_schedule: customSchedule,
       memo: formData.get('memo') || undefined,
+      funding_source: formData.get('funding_source') || undefined,
+      funding_employee_id: formData.get('funding_employee_id') || undefined,
     });
     if (!parsed.success) {
       return { error: 'بيانات السلفة غير صالحة: ' + parsed.error.issues.map(e => e.path.join('.') + ': ' + e.message).join(' | ') };
@@ -78,20 +82,44 @@ export async function disburseLoan(formData: FormData) {
       return { error: 'جدول السداد المخصص مطلوب' };
     }
 
-    const { data, error } = await supabase.rpc('disburse_loan', {
-      p_employee_id: d.employee_id,
-      p_bank_account_id: d.bank_account_id,
-      p_amount: d.amount,
-      p_date: d.date,
-      p_repayment_type: d.repayment_type,
-      p_installment_months: d.installment_months || null,
-      p_custom_schedule: d.custom_schedule || null,
-      p_memo: d.memo || null,
-    });
-    if (error) return { error: error.message };
+    if (d.funding_source === 'bank') {
+      if (!d.bank_account_id) return { error: 'يجب اختيار الحساب البنكي' };
 
-    revalidatePath(`/salary/${d.employee_id}`);
-    return { success: true, id: data as string };
+      const { data, error } = await supabase.rpc('disburse_loan', {
+        p_employee_id: d.employee_id,
+        p_bank_account_id: d.bank_account_id,
+        p_amount: d.amount,
+        p_date: d.date,
+        p_repayment_type: d.repayment_type,
+        p_installment_months: d.installment_months || null,
+        p_custom_schedule: d.custom_schedule || null,
+        p_memo: d.memo || null,
+      });
+      if (error) return { error: error.message };
+
+      revalidatePath(`/salary/${d.employee_id}`);
+      return { success: true, id: data as string };
+    } else {
+      if (!d.funding_employee_id) {
+        return { error: 'يجب اختيار الموظف صاحب العهدة' };
+      }
+
+      const { data, error } = await supabase.rpc('request_loan_from_custody', {
+        p_employee_id: d.employee_id,
+        p_funding_employee_id: d.funding_employee_id,
+        p_amount: d.amount,
+        p_date: d.date,
+        p_repayment_type: d.repayment_type,
+        p_installment_months: d.installment_months || null,
+        p_custom_schedule: d.custom_schedule || null,
+        p_memo: d.memo || null,
+      });
+      if (error) return { error: error.message };
+
+      revalidatePath(`/salary/${d.employee_id}`);
+      revalidatePath('/expenses/approvals');
+      return { success: true, id: data as string, pending: true };
+    }
   } catch (e: any) {
     return { error: e.message || 'حدث خطأ غير متوقع' };
   }

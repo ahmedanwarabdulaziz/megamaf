@@ -55,6 +55,13 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ loa
         </div>
       </div>
 
+      {loan.status === 'pending' && (
+        <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-300 text-amber-700 dark:text-amber-300 text-sm p-3 rounded-lg">
+          هذه السلفة بانتظار اعتماد المصروف الممول من عهدة الموظف —{' '}
+          <Link href="/expenses/approvals" className="underline font-medium">راجع صفحة اعتمادات المصروفات</Link>.
+        </div>
+      )}
+
       <div className="bg-card p-4 rounded-lg border shadow-sm space-y-2 text-sm">
         <div className="flex justify-between"><span className="text-muted-foreground">المبلغ الأصلي:</span><span className="font-bold text-primary">{formatMoney(loan.principal_amount)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">تاريخ الصرف:</span><span className="font-medium">{new Date(loan.disbursed_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span></div>

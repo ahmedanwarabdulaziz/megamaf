@@ -76,6 +76,7 @@ export function payrollRunStatusLabel(status: string): string {
 }
 
 const LOAN_STATUS_LABELS: Record<string, string> = {
+  pending: 'بانتظار اعتماد المصروف',
   active: 'قائمة',
   completed: 'مسددة بالكامل',
   cancelled: 'ملغاة',
