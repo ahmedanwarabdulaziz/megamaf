@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "app.vercel.megamaf.twa",
+      "sha256_cert_fingerprints": [
+        "81:3D:B3:21:59:E6:A9:4C:FD:D8:9E:62:0F:06:6F:DC:92:6C:C5:42:84:43:26:4E:C9:48:E4:42:A7:86:99:64"
+      ]
+    }
+  }
+]
