@@ -1,7 +1,7 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { Search } from 'lucide-react';
+import { Search, AlertTriangle } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { EditExpenseModal, DeleteExpenseButton } from './create-expense-modal';
 import { AttachmentViewer } from '@/components/ui/attachment-viewer';
@@ -44,38 +44,50 @@ export function MyExpensesList({
           </div>
         ) : (
           filtered.map((expense: any) => (
-            <div key={expense.id} className="p-4 flex flex-col sm:flex-row justify-between sm:items-center gap-4">
-              <div>
-                <p className="font-bold">{expense.project?.name} - {expense.category?.name}</p>
-                <p className="text-sm text-muted-foreground">{expense.notes}</p>
-                <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
-                  <span>{expense.expense_date}</span>
-                  <span>•</span>
-                  <StatusBadge status={expense.status} />
-                  {expense.status === 'approved' && (
+            <div key={expense.id} className="p-4 flex flex-col gap-3">
+              <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
+                <div>
+                  <p className="font-bold">{expense.project?.name} - {expense.category?.name}</p>
+                  <p className="text-sm text-muted-foreground">{expense.notes}</p>
+                  <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
+                    <span>{expense.expense_date}</span>
+                    <span>•</span>
+                    <StatusBadge status={expense.status} />
+                    {expense.status === 'approved' && (
+                      <>
+                        <span>•</span>
+                        <span className="text-primary">تمت التسوية: {formatMoney(expense.settled_amount)}</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <AttachmentViewer attachments={expense.attachments} />
+                  <div className="text-xl font-bold whitespace-nowrap">
+                    {formatMoney(expense.amount)}
+                  </div>
+                  {expense.status !== 'approved' && (
                     <>
-                      <span>•</span>
-                      <span className="text-primary">تمت التسوية: {formatMoney(expense.settled_amount)}</span>
+                      <EditExpenseModal
+                        expense={expense}
+                        categories={categories}
+                        projects={projects}
+                      />
+                      <DeleteExpenseButton expenseId={expense.id} />
                     </>
                   )}
                 </div>
               </div>
-              <div className="flex items-center gap-2">
-                <AttachmentViewer attachments={expense.attachments} />
-                <div className="text-xl font-bold whitespace-nowrap">
-                  {formatMoney(expense.amount)}
+              {expense.status === 'rejected' && expense.rejection_reason && (
+                <div className="flex gap-2 items-start bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-400 rounded-lg p-3 text-sm">
+                  <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold">سبب الرفض:</p>
+                    <p>{expense.rejection_reason}</p>
+                    <p className="text-xs mt-1 opacity-80">يرجى تعديل المصروف وإعادة إرساله للاعتماد.</p>
+                  </div>
                 </div>
-                {expense.status !== 'approved' && (
-                  <>
-                    <EditExpenseModal
-                      expense={expense}
-                      categories={categories}
-                      projects={projects}
-                    />
-                    <DeleteExpenseButton expenseId={expense.id} />
-                  </>
-                )}
-              </div>
+              )}
             </div>
           ))
         )}

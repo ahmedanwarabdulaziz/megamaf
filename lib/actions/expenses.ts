@@ -413,7 +413,8 @@ export async function updateExpense(formData: FormData) {
         expense_date: parsed.data.expense_date,
         amount: parsed.data.amount,
         notes: parsed.data.notes,
-        status: 'pending'
+        status: 'pending',
+        rejection_reason: null
       })
       .eq('id', parsed.data.id);
 
@@ -479,15 +480,18 @@ export async function approveExpense(expenseId: string) {
   }
 }
 
-export async function rejectExpense(expenseId: string) {
+export async function rejectExpense(expenseId: string, reason?: string) {
   try {
     const supabase = await createClient();
 
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) return { error: 'يرجى كتابة سبب الرفض' };
+
     const { data: expenseRecord } = await supabase.from('expenses').select('employee_id, expense_number').eq('id', expenseId).single();
 
-    const { error } = await supabase.rpc('reject_expense', { p_expense_id: expenseId });
+    const { error } = await supabase.rpc('reject_expense', { p_expense_id: expenseId, p_reason: trimmedReason });
     if (error) return { error: error.message };
-    
+
     if (expenseRecord) {
        await sendPushNotification(
          [expenseRecord.employee_id],
@@ -499,6 +503,7 @@ export async function rejectExpense(expenseId: string) {
     }
 
     revalidatePath('/expenses/approvals');
+    revalidatePath('/expenses');
     return { success: true };
   } catch (e: any) {
     return { error: e.message || 'حدث خطأ' };

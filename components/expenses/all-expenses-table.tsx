@@ -80,7 +80,14 @@ export function AllExpensesTable({
                     )}
                   </div>
                 </td>
-                <td className="p-4"><StatusBadge status={expense.status} /></td>
+                <td className="p-4">
+                  <StatusBadge status={expense.status} />
+                  {expense.status === 'rejected' && expense.rejection_reason && (
+                    <p className="text-xs text-red-600 mt-1 max-w-[180px] truncate" title={expense.rejection_reason}>
+                      {expense.rejection_reason}
+                    </p>
+                  )}
+                </td>
                 <td className="p-4 text-muted-foreground">{expense.approver?.full_name || '-'}</td>
                 <td className="p-4 text-muted-foreground">{expense.notes || '-'}</td>
                 <td className="p-4 text-center">
