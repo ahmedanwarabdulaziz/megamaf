@@ -3,9 +3,10 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Search } from 'lucide-react';
+import { Search, SlidersHorizontal, ChevronDown } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { SearchableSelect } from '@/components/ui/searchable-select';
+import { cn } from '@/lib/utils';
 
 export function AllExpensesFilters({
   employees,
@@ -37,6 +38,7 @@ export function AllExpensesFilters({
   hideEmployeeFilter?: boolean;
 }) {
   const router = useRouter();
+  const [isOpen, setIsOpen] = useState(false);
   const [employee, setEmployee] = useState(selectedEmployeeId);
   const [project, setProject] = useState(selectedProjectId);
   const [category, setCategory] = useState(selectedCategoryId);
@@ -44,6 +46,8 @@ export function AllExpensesFilters({
   const [start, setStart] = useState(startDate);
   const [end, setEnd] = useState(endDate);
   const [isAll, setIsAll] = useState(showAll);
+
+  const activeFilterCount = [employee, project, category, status].filter(Boolean).length;
 
   const handleSearch = () => {
     const params = new URLSearchParams();
@@ -90,76 +94,97 @@ export function AllExpensesFilters({
   ];
 
   return (
-    <div className="bg-muted/30 p-4 rounded-lg border shadow-sm flex flex-wrap gap-4 items-end mb-4">
-      {!hideEmployeeFilter && (
-        <div className="flex-1 min-w-[200px]">
-          <label className="block text-sm font-medium mb-1">الموظف</label>
-          <SearchableSelect
-            options={employeeOptions}
-            value={employee}
-            onChange={setEmployee}
-            placeholder="كل الموظفين"
-          />
+    <div className="mb-4">
+      <button
+        type="button"
+        onClick={() => setIsOpen((o) => !o)}
+        className="w-full flex items-center justify-between gap-2 bg-muted/30 p-3 rounded-lg border shadow-sm text-sm font-medium"
+      >
+        <span className="flex items-center gap-2">
+          <SlidersHorizontal className="w-4 h-4" />
+          الفلاتر
+          {activeFilterCount > 0 && (
+            <span className="text-[10px] bg-primary text-primary-foreground rounded-full px-1.5 py-0.5 min-w-[1.25rem] text-center">
+              {activeFilterCount}
+            </span>
+          )}
+        </span>
+        <ChevronDown className={cn('w-4 h-4 transition-transform shrink-0', isOpen && 'rotate-180')} />
+      </button>
+
+      {isOpen && (
+        <div className="bg-muted/30 p-4 rounded-lg border border-t-0 rounded-t-none shadow-sm flex flex-wrap gap-4 items-end">
+          {!hideEmployeeFilter && (
+            <div className="flex-1 min-w-[200px]">
+              <label className="block text-sm font-medium mb-1">الموظف</label>
+              <SearchableSelect
+                options={employeeOptions}
+                value={employee}
+                onChange={setEmployee}
+                placeholder="كل الموظفين"
+              />
+            </div>
+          )}
+
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm font-medium mb-1">المشروع</label>
+            <SearchableSelect
+              options={projectOptions}
+              value={project}
+              onChange={setProject}
+              placeholder="كل المشاريع"
+            />
+          </div>
+
+          <div className="flex-1 min-w-[200px]">
+            <label className="block text-sm font-medium mb-1">بند الصرف</label>
+            <SearchableSelect
+              options={categoryOptions}
+              value={category}
+              onChange={setCategory}
+              placeholder="كل البنود"
+            />
+          </div>
+
+          <div className="flex-1 min-w-[150px]">
+            <label className="block text-sm font-medium mb-1">الحالة</label>
+            <SearchableSelect
+              options={statusOptions}
+              value={status}
+              onChange={setStatus}
+              placeholder="الكل"
+            />
+          </div>
+
+          {!isAll && (
+            <>
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-sm font-medium mb-1">من تاريخ</label>
+                <Input type="date" autoComplete="off" value={start} onChange={e => setStart(e.target.value)} />
+              </div>
+              <div className="flex-1 min-w-[140px]">
+                <label className="block text-sm font-medium mb-1">إلى تاريخ</label>
+                <Input type="date" autoComplete="off" value={end} onChange={e => setEnd(e.target.value)} />
+              </div>
+            </>
+          )}
+
+          <div className="flex items-center gap-2 mb-2 px-2">
+            <input
+              type="checkbox"
+              id="showAllExp"
+              checked={isAll}
+              onChange={handleToggleShowAll}
+              className="w-4 h-4 rounded border-gray-300 text-primary"
+            />
+            <label htmlFor="showAllExp" className="text-sm font-medium">عرض الكل (بدون تاريخ)</label>
+          </div>
+
+          <Button onClick={handleSearch} className="w-full sm:w-auto">
+            <Search className="w-4 h-4 ml-2" /> تصفية
+          </Button>
         </div>
       )}
-
-      <div className="flex-1 min-w-[200px]">
-        <label className="block text-sm font-medium mb-1">المشروع</label>
-        <SearchableSelect
-          options={projectOptions}
-          value={project}
-          onChange={setProject}
-          placeholder="كل المشاريع"
-        />
-      </div>
-
-      <div className="flex-1 min-w-[200px]">
-        <label className="block text-sm font-medium mb-1">بند الصرف</label>
-        <SearchableSelect
-          options={categoryOptions}
-          value={category}
-          onChange={setCategory}
-          placeholder="كل البنود"
-        />
-      </div>
-
-      <div className="flex-1 min-w-[150px]">
-        <label className="block text-sm font-medium mb-1">الحالة</label>
-        <SearchableSelect
-          options={statusOptions}
-          value={status}
-          onChange={setStatus}
-          placeholder="الكل"
-        />
-      </div>
-      
-      {!isAll && (
-        <>
-          <div className="flex-1 min-w-[140px]">
-            <label className="block text-sm font-medium mb-1">من تاريخ</label>
-            <Input type="date" autoComplete="off" value={start} onChange={e => setStart(e.target.value)} />
-          </div>
-          <div className="flex-1 min-w-[140px]">
-            <label className="block text-sm font-medium mb-1">إلى تاريخ</label>
-            <Input type="date" autoComplete="off" value={end} onChange={e => setEnd(e.target.value)} />
-          </div>
-        </>
-      )}
-
-      <div className="flex items-center gap-2 mb-2 px-2">
-        <input 
-          type="checkbox" 
-          id="showAllExp" 
-          checked={isAll}
-          onChange={handleToggleShowAll}
-          className="w-4 h-4 rounded border-gray-300 text-primary"
-        />
-        <label htmlFor="showAllExp" className="text-sm font-medium">عرض الكل (بدون تاريخ)</label>
-      </div>
-
-      <Button onClick={handleSearch} className="w-full sm:w-auto">
-        <Search className="w-4 h-4 ml-2" /> تصفية
-      </Button>
     </div>
   );
 }

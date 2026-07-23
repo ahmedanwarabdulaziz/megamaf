@@ -38,12 +38,12 @@ export function ApproveRejectButtons({ expenseId, onSuccess }: { expenseId: stri
   }
 
   return (
-    <div className="flex gap-2">
+    <div className="flex gap-2 w-full">
       <Button
         onClick={onApprove}
         disabled={isPending}
         variant="default"
-        className="bg-green-600 hover:bg-green-700"
+        className="bg-green-600 hover:bg-green-700 flex-1"
         size="sm"
       >
         اعتماد
@@ -53,6 +53,7 @@ export function ApproveRejectButtons({ expenseId, onSuccess }: { expenseId: stri
         disabled={isPending}
         variant="destructive"
         size="sm"
+        className="flex-1"
       >
         رفض
       </Button>

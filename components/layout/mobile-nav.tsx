@@ -133,13 +133,14 @@ export function MobileNav({
   };
 
   /* ── Quick-access bottom tabs (always visible on mobile) ─────────────── */
-  const bottomTabs = [
+  const bottomTabs: NavItem[] = [
     // Dashboard tab only for super-admins
     ...(isSuperAdmin ? [{ href: '/', label: 'الرئيسية', icon: <Home className="w-5 h-5" /> }] : []),
     ...(canSeeProjects ? [{ href: '/projects', label: 'المشاريع', icon: <FolderKanban className="w-5 h-5" /> }] : []),
     ...(canSeeTreasury ? [{ href: '/treasury', label: 'الخزينة', icon: <ArrowLeftRight className="w-5 h-5" /> }] : []),
     ...(canSeeExpenses ? [{ href: '/expenses', label: 'المصروفات', icon: <Receipt className="w-5 h-5" /> }] : []),
-  ].slice(0, 4); // max 4 tabs
+    ...(canApprove ? [{ href: '/expenses/approvals', label: 'الاعتمادات', icon: <CheckSquare className="w-5 h-5" />, badge: pendingApprovalsCount }] : []),
+  ].slice(0, 5); // max 5 tabs
 
   return (
     <>
@@ -271,11 +272,16 @@ export function MobileNav({
               <Link
                 key={tab.href}
                 href={tab.href}
-                className={`flex-1 flex flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors
+                className={`relative flex-1 flex flex-col items-center justify-center gap-1 py-2 text-[10px] font-medium transition-colors
                   ${active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
               >
-                <span className={`transition-transform ${active ? 'scale-110' : ''}`}>
+                <span className={`relative transition-transform ${active ? 'scale-110' : ''}`}>
                   {tab.icon}
+                  {!!tab.badge && tab.badge > 0 && (
+                    <span className="absolute -top-1.5 -left-2.5 flex items-center justify-center min-w-[1rem] h-4 px-1 rounded-full text-[9px] font-bold bg-red-600 text-white">
+                      {tab.badge > 99 ? '99+' : tab.badge}
+                    </span>
+                  )}
                 </span>
                 <span className="leading-tight">{tab.label}</span>
                 {active && (
