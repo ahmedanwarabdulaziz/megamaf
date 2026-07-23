@@ -4,6 +4,7 @@ import { ArrowRight } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { formatMoney } from '@/lib/money';
 import { requirePageAccess } from '@/lib/require-page-access';
+import { CollectedPaymentsTrigger } from '@/components/claims/collected-payments-modal';
 
 export const metadata = { title: 'عرض المستخلص' };
 
@@ -30,7 +31,7 @@ export default async function ViewClaimPage({ params }: { params: Promise<{ id: 
       : supabase.from('project_owners').select('name').eq('id', claim.party_id).single(),
     supabase.from('projects').select('name').eq('id', claim.project_id).single(),
     // Same "already paid" source the create form uses, so this summary matches /claims/create exactly.
-    supabase.from(accountView).select('amount_paid').eq('party_id', claim.party_id).eq('project_id', claim.project_id),
+    supabase.from(accountView).select('document_id, document_type, document_date, description, amount_paid').eq('party_id', claim.party_id).eq('project_id', claim.project_id),
     supabase.from('claims').select('opening_paid_amount')
       .eq('party_id', claim.party_id).eq('project_id', claim.project_id)
       .eq('claim_type', claim.claim_type).eq('status', 'approved'),
@@ -45,6 +46,16 @@ export default async function ViewClaimPage({ params }: { params: Promise<{ id: 
   const taxAmount     = claim.tax_enabled ? netCumulative * Number(claim.tax_rate || 0) : 0;
   const totalDue      = netCumulative + taxAmount;
   const alreadyPaid   = (accountRows || []).reduce((sum, row: any) => sum + Number(row.amount_paid || 0), 0);
+  const paymentRecords = (accountRows || [])
+    .filter((row: any) => Number(row.amount_paid || 0) > 0)
+    .sort((a: any, b: any) => new Date(b.document_date).getTime() - new Date(a.document_date).getTime())
+    .map((row: any) => ({
+      id: `${row.document_type}_${row.document_id}`,
+      document_type: row.document_type,
+      document_date: row.document_date,
+      description: row.description,
+      amount_paid: Number(row.amount_paid || 0),
+    }));
   const openingPaidReference = (approvedClaims || []).reduce((sum, c: any) => sum + Number(c.opening_paid_amount || 0), 0);
   const remaining     = Math.max(0, totalDue - alreadyPaid);
 
@@ -163,10 +174,15 @@ export default async function ViewClaimPage({ params }: { params: Promise<{ id: 
 
         {/* Collected (prior paid) */}
         {alreadyPaid > 0 && (
-          <div className="flex justify-between text-green-700 dark:text-green-400 font-medium">
+          <CollectedPaymentsTrigger
+            partyName={partyName}
+            total={alreadyPaid}
+            records={paymentRecords}
+            className="flex justify-between w-full text-green-700 dark:text-green-400 font-medium hover:underline decoration-dotted underline-offset-4 text-right"
+          >
             <span>المحصّل فعلياً (جميع المستخلصات السابقة):</span>
             <span>- {formatMoney(alreadyPaid)}</span>
-          </div>
+          </CollectedPaymentsTrigger>
         )}
 
         {/* Remaining headline */}

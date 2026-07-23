@@ -1,5 +1,6 @@
 import { ItemForm } from './item-form';
 import { CategoryFilter } from './category-filter';
+import { ItemRowActions } from './item-row-actions';
 import Link from 'next/link';
 import { FolderTree } from 'lucide-react';
 import { getInventoryItemsWithCategory, getItemCategories } from '@/lib/queries/inventory';
@@ -68,10 +69,13 @@ export default async function ItemsPage({
                       )}
                     </td>
                     <td className="p-3">{item.unit}</td>
-                    <td className="p-3 text-center">
-                      <Link href={`/inventory/items/${item.id}/transactions`} className="text-xs bg-muted hover:bg-muted/80 text-foreground px-3 py-1.5 rounded border transition-colors inline-block">
-                        حركة الصنف
-                      </Link>
+                    <td className="p-3">
+                      <div className="flex items-center justify-center gap-2 flex-wrap">
+                        <Link href={`/inventory/items/${item.id}/transactions`} className="text-xs bg-muted hover:bg-muted/80 text-foreground px-3 py-1.5 rounded border transition-colors inline-block">
+                          حركة الصنف
+                        </Link>
+                        <ItemRowActions item={item} categories={categories} />
+                      </div>
                     </td>
                   </tr>
                 ))}

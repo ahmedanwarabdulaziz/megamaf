@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef } from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/button';
 import { Loader2, FolderTree } from 'lucide-react';
 import { createItem } from '@/lib/actions/inventory';
+import { CategoryFields } from '@/components/inventory/category-fields';
 
 interface Category { id: string; name: string; parent_id: string | null; }
 
@@ -15,8 +16,8 @@ export function ItemForm({ categories }: { categories: Category[] }) {
   const [mainCatId, setMainCatId] = useState('');
   const [subCatId, setSubCatId] = useState('');
 
-  const mains = useMemo(() => categories.filter(c => !c.parent_id), [categories]);
-  const subs = useMemo(() => categories.filter(c => c.parent_id === mainCatId), [categories, mainCatId]);
+  const subs = categories.filter(c => c.parent_id === mainCatId);
+  const mains = categories.filter(c => !c.parent_id);
 
   // Items attach to the sub-category when one is chosen (or exists),
   // otherwise directly to the main category.
@@ -50,36 +51,17 @@ export function ItemForm({ categories }: { categories: Category[] }) {
         <label className="block text-sm font-medium mb-1">اسم الصنف</label>
         <input required name="name" className="w-full p-2 rounded border bg-background" placeholder="مثال: أسمنت بورتلاندي" />
       </div>
-      <div>
-        <label className="block text-sm font-medium mb-1">الفئة الرئيسية</label>
-        <select
-          required
-          value={mainCatId}
-          onChange={e => { setMainCatId(e.target.value); setSubCatId(''); }}
-          className="w-full p-2 rounded border bg-background"
-        >
-          <option value="">اختر الفئة...</option>
-          {mains.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-        </select>
-        {mains.length === 0 && (
-          <p className="text-xs text-muted-foreground mt-1">
-            لا توجد فئات بعد — <Link href="/inventory/categories" className="text-primary hover:underline">أضف الفئات أولاً</Link>
-          </p>
-        )}
-      </div>
-      {subs.length > 0 && (
-        <div>
-          <label className="block text-sm font-medium mb-1">الفئة الفرعية</label>
-          <select
-            required
-            value={subCatId}
-            onChange={e => setSubCatId(e.target.value)}
-            className="w-full p-2 rounded border bg-background"
-          >
-            <option value="">اختر الفئة الفرعية...</option>
-            {subs.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-          </select>
-        </div>
+      <CategoryFields
+        categories={categories}
+        mainCatId={mainCatId}
+        subCatId={subCatId}
+        onMainChange={id => { setMainCatId(id); setSubCatId(''); }}
+        onSubChange={setSubCatId}
+      />
+      {mains.length === 0 && (
+        <p className="text-xs text-muted-foreground -mt-2">
+          لا توجد فئات بعد — <Link href="/inventory/categories" className="text-primary hover:underline">أضف الفئات أولاً</Link>
+        </p>
       )}
       <input type="hidden" name="category_id" value={categoryId} />
       <div>

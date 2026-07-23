@@ -14,6 +14,7 @@ import { computeClaimFinancials, remainingLabel, remainingColorClass } from '@/l
 import { ClaimApproveRejectButtons, RevertClaimToPendingButton } from '@/components/claims/approve-reject-buttons';
 import { ClaimHistory } from '@/components/claims/claim-history';
 import { ClaimsFilters } from '@/components/claims/claims-filters';
+import { CollectedPaymentsTrigger, type PaymentRecord } from '@/components/claims/collected-payments-modal';
 
 export const metadata = {
   title: 'المستخلصات',
@@ -56,7 +57,7 @@ export default async function ClaimsPage({
       ? supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', claimIdsForPaid)
       : Promise.resolve({ data: [] as any[] }),
     partyIds.length > 0
-      ? supabase.from('invoices').select('id, vendor_id, project_id').in('vendor_id', partyIds).eq('status', 'approved')
+      ? supabase.from('invoices').select('id, vendor_id, project_id, invoice_number').in('vendor_id', partyIds).eq('status', 'approved')
       : Promise.resolve({ data: [] as any[] }),
     partyIds.length > 0
       ? supabase.from('retention_releases').select('id, party_id, project_id').in('party_id', partyIds).eq('claim_type', 'vendor')
@@ -69,12 +70,25 @@ export default async function ClaimsPage({
   const [
     { data: invoicePaidData },
     { data: retentionPaidData },
+    { data: claimAllocations },
+    { data: invoiceAllocations },
+    { data: retentionAllocations },
   ] = await Promise.all([
     invoiceIds.length > 0
       ? supabase.from('v_invoice_paid').select('invoice_id, paid_amount').in('invoice_id', invoiceIds)
       : Promise.resolve({ data: [] as any[] }),
     retentionIds.length > 0
       ? supabase.from('v_retention_paid').select('retention_id, paid_amount').in('retention_id', retentionIds)
+      : Promise.resolve({ data: [] as any[] }),
+    // ── Payment records behind the totals above, for the "المدفوع" click-through dialog ──
+    claimIdsForPaid.length > 0
+      ? supabase.from('payment_allocations').select('id, target_id, allocated_amount, ledger_entries(entry_date, memo)').eq('target_type', 'claim').in('target_id', claimIdsForPaid)
+      : Promise.resolve({ data: [] as any[] }),
+    invoiceIds.length > 0
+      ? supabase.from('payment_allocations').select('id, target_id, allocated_amount, ledger_entries(entry_date, memo)').eq('target_type', 'invoice').in('target_id', invoiceIds)
+      : Promise.resolve({ data: [] as any[] }),
+    retentionIds.length > 0
+      ? supabase.from('payment_allocations').select('id, target_id, allocated_amount, ledger_entries(entry_date, memo)').eq('target_type', 'retention_release').in('target_id', retentionIds)
       : Promise.resolve({ data: [] as any[] }),
   ]);
 
@@ -83,6 +97,20 @@ export default async function ClaimsPage({
     if (!projectId || !amount) return;
     const k = `${partyId}__${projectId}`;
     vendorProjectPaid.set(k, (vendorProjectPaid.get(k) || 0) + amount);
+  };
+
+  // Individual records behind vendorProjectPaid's totals, grouped the same way,
+  // so the "المدفوع" cell can show exactly what makes up the number shown.
+  const vendorProjectPayments = new Map<string, PaymentRecord[]>();
+  const addPaymentRecord = (
+    partyId: string,
+    projectId: string | null | undefined,
+    record: PaymentRecord
+  ) => {
+    if (!projectId) return;
+    const k = `${partyId}__${projectId}`;
+    if (!vendorProjectPayments.has(k)) vendorProjectPayments.set(k, []);
+    vendorProjectPayments.get(k)!.push(record);
   };
 
   // NOTE: v_claim_paid already folds claim#0's opening_paid_amount into its
@@ -105,6 +133,63 @@ export default async function ClaimsPage({
   for (const row of retentionPaidData || []) {
     const ret = retentionById.get(row.retention_id);
     if (ret) addPaid((ret as any).party_id, (ret as any).project_id, Number(row.paid_amount || 0));
+  }
+
+  // Opening balance paid before the system (folded into v_claim_paid for claim#0 — see note above)
+  for (const c of realClaims) {
+    const opening = Number((c as any).opening_paid_amount || 0);
+    if ((c as any).claim_number === 0 && opening > 0) {
+      addPaymentRecord((c as any).party_id, (c as any).project_id, {
+        id: `opening_${c.id}`,
+        document_type: 'opening_balance',
+        document_date: (c as any).claim_date,
+        description: 'رصيد مدفوع قبل النظام (مستخلص #0)',
+        amount_paid: opening,
+      });
+    }
+  }
+
+  for (const row of claimAllocations || []) {
+    const c = claimById.get((row as any).target_id);
+    if (!c) continue;
+    const ledger = (row as any).ledger_entries;
+    addPaymentRecord((c as any).party_id, (c as any).project_id, {
+      id: (row as any).id,
+      document_type: 'claim',
+      document_date: ledger?.entry_date || (c as any).claim_date,
+      description: ledger?.memo || `دفعة لمستخلص رقم ${(c as any).claim_number}`,
+      amount_paid: Number((row as any).allocated_amount || 0),
+    });
+  }
+
+  for (const row of invoiceAllocations || []) {
+    const inv = invoiceById.get((row as any).target_id);
+    if (!inv) continue;
+    const ledger = (row as any).ledger_entries;
+    addPaymentRecord((inv as any).vendor_id, (inv as any).project_id, {
+      id: (row as any).id,
+      document_type: 'invoice',
+      document_date: ledger?.entry_date || '',
+      description: ledger?.memo || `دفعة لفاتورة رقم ${(inv as any).invoice_number}`,
+      amount_paid: Number((row as any).allocated_amount || 0),
+    });
+  }
+
+  for (const row of retentionAllocations || []) {
+    const ret = retentionById.get((row as any).target_id);
+    if (!ret) continue;
+    const ledger = (row as any).ledger_entries;
+    addPaymentRecord((ret as any).party_id, (ret as any).project_id, {
+      id: (row as any).id,
+      document_type: 'retention_release',
+      document_date: ledger?.entry_date || '',
+      description: ledger?.memo || 'دفعة لإفراج ضمان حسن تنفيذ',
+      amount_paid: Number((row as any).allocated_amount || 0),
+    });
+  }
+
+  for (const records of vendorProjectPayments.values()) {
+    records.sort((a, b) => new Date(b.document_date).getTime() - new Date(a.document_date).getTime());
   }
 
   // Group by party_id + project_id; query is already DESC by claim_number
@@ -263,7 +348,16 @@ export default async function ClaimsPage({
                           )}
                         </td>
                         <td className="p-3 text-green-700 dark:text-green-400 font-medium whitespace-nowrap">
-                          {fin.paidInSystem > 0 ? formatMoney(fin.paidInSystem) : '-'}
+                          {fin.paidInSystem > 0 ? (
+                            <CollectedPaymentsTrigger
+                              partyName={claim.party_name}
+                              total={fin.paidInSystem}
+                              records={vendorProjectPayments.get(`${claim.party_id}__${claim.project_id}`) || []}
+                              className="hover:underline decoration-dotted underline-offset-4"
+                            >
+                              {formatMoney(fin.paidInSystem)}
+                            </CollectedPaymentsTrigger>
+                          ) : '-'}
                           {openingPaidDisplay > 0 && (
                             <div className="text-xs text-amber-600 dark:text-amber-500">منها {formatMoney(openingPaidDisplay)} قبل النظام</div>
                           )}
