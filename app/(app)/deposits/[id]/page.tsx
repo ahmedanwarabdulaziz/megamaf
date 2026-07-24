@@ -51,7 +51,7 @@ export default async function DepositDetailPage({ params }: { params: Promise<{ 
   return (
     <div className="space-y-6 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2">
+        <h1 className="text-2xl font-bold flex flex-wrap items-center gap-2">
           {deposit.name}
           {deposit.status !== 'active' && (
             <span className="text-xs font-medium bg-muted text-muted-foreground px-2 py-1 rounded-full">
@@ -76,7 +76,7 @@ export default async function DepositDetailPage({ params }: { params: Promise<{ 
             <p className="font-bold text-amber-800 dark:text-amber-400">هذه الشهادة وصلت لتاريخ الاستحقاق</p>
             <p className="text-sm text-amber-700 dark:text-amber-500 mt-0.5">قم بإرجاع أصل المبلغ للبنك أو تجديد الشهادة</p>
           </div>
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 shrink-0 [&>*]:justify-center">
             <ReturnPrincipalModal deposit={deposit} bankAccounts={bankAccounts || []} />
             <RenewDepositModal deposit={deposit} bankAccounts={bankAccounts || []} />
           </div>
@@ -133,79 +133,135 @@ export default async function DepositDetailPage({ params }: { params: Promise<{ 
             <div className="p-4 border-b bg-muted/30">
               <h3 className="font-bold">جدول العوائد (الاستحقاقات)</h3>
             </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm text-right">
-                <thead className="bg-muted/50 border-b">
-                  <tr>
-                    <th className="p-3 font-medium">م</th>
-                    <th className="p-3 font-medium">تاريخ الاستحقاق</th>
-                    <th className="p-3 font-medium">المبلغ المتوقع</th>
-                    <th className="p-3 font-medium">الحالة</th>
-                    <th className="p-3 font-medium">تاريخ التحصيل</th>
-                    <th className="p-3 font-medium">المبلغ المحصل</th>
-                    <th className="p-3 font-medium"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {(() => {
-                    const WINDOW_DAYS = 15;
-                    const todayUTC = new Date();
-                    todayUTC.setUTCHours(0, 0, 0, 0);
+            {(() => {
+              const WINDOW_DAYS = 15;
+              const todayUTC = new Date();
+              todayUTC.setUTCHours(0, 0, 0, 0);
 
-                    // Lower bound: today minus 15 days
-                    const lowerBound = new Date(todayUTC);
-                    lowerBound.setUTCDate(lowerBound.getUTCDate() - WINDOW_DAYS);
+              // Lower bound: today minus 15 days
+              const lowerBound = new Date(todayUTC);
+              lowerBound.setUTCDate(lowerBound.getUTCDate() - WINDOW_DAYS);
 
-                    // Upper bound: today plus 15 days
-                    const upperBound = new Date(todayUTC);
-                    upperBound.setUTCDate(upperBound.getUTCDate() + WINDOW_DAYS);
+              // Upper bound: today plus 15 days
+              const upperBound = new Date(todayUTC);
+              upperBound.setUTCDate(upperBound.getUTCDate() + WINDOW_DAYS);
 
-                    return payouts.map((p: any) => {
-                      const dueDate = new Date(p.due_date + 'T00:00:00Z');
-                      const isTooOld   = dueDate < lowerBound;   // past the 15-day grace window
-                      const isTooEarly = dueDate > upperBound;    // more than 15 days in the future
-                      // Only lock OLD payouts — future ones stay unlocked so they can be collected early
-                      const isOutOfWindow = isTooOld;
+              type PayoutRow = { p: any; isTooOld: boolean; isTooEarly: boolean; isOutOfWindow: boolean };
 
+              const rows: PayoutRow[] = payouts.map((p: any) => {
+                const dueDate = new Date(p.due_date + 'T00:00:00Z');
+                const isTooOld = dueDate < lowerBound; // past the 15-day grace window
+                const isTooEarly = dueDate > upperBound; // more than 15 days in the future
+                // Only lock OLD payouts — future ones stay unlocked so they can be collected early
+                const isOutOfWindow = isTooOld;
+                return { p, isTooOld, isTooEarly, isOutOfWindow };
+              });
+
+              const statusBadge = ({ p, isTooOld, isTooEarly }: PayoutRow) =>
+                p.is_collected ? (
+                  <span className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded text-xs font-medium">مُحصّل</span>
+                ) : isTooOld ? (
+                  <span className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded text-xs font-medium">منتهية المهلة</span>
+                ) : isTooEarly ? (
+                  <span className="bg-muted text-muted-foreground px-2 py-1 rounded text-xs font-medium">لم يحن بعد</span>
+                ) : (
+                  <span className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-1 rounded text-xs font-medium">منتظر</span>
+                );
+
+              return (
+                <>
+                  {/* Mobile: card list */}
+                  <div className="md:hidden divide-y divide-border">
+                    {rows.map((row) => {
+                      const { p, isOutOfWindow } = row;
                       return (
-                        <tr key={p.id} className={`hover:bg-muted/30 ${isOutOfWindow && !p.is_collected ? 'opacity-40' : ''}`}>
-                          <td className="p-3 font-medium">{p.seq}</td>
-                          <td className="p-3">
-                            <div className="flex items-center gap-2">
-                              <span>{new Date(p.due_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span>
-                              {!p.is_collected && <EditDueDateModal payout={p} />}
+                      <div key={p.id} className={`p-4 space-y-2 ${isOutOfWindow && !p.is_collected ? 'opacity-40' : ''}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-xs font-medium text-muted-foreground shrink-0">#{p.seq}</span>
+                            <span className="font-medium truncate">{new Date(p.due_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span>
+                            {!p.is_collected && <EditDueDateModal payout={p} />}
+                          </div>
+                          {statusBadge(row)}
+                        </div>
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">المبلغ المتوقع:</span>
+                          <span className="font-semibold text-primary">{formatMoney(p.expected_amount)}</span>
+                        </div>
+                        {p.is_collected && (
+                          <>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">تاريخ التحصيل:</span>
+                              <span>{new Date(p.collected_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span>
                             </div>
-                          </td>
-                          <td className="p-3 font-semibold text-primary">{formatMoney(p.expected_amount)}</td>
-                          <td className="p-3">
-                            {p.is_collected ? (
-                              <span className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 px-2 py-1 rounded text-xs font-medium">مُحصّل</span>
-                            ) : isTooOld ? (
-                              <span className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-2 py-1 rounded text-xs font-medium">منتهية المهلة</span>
-                            ) : isTooEarly ? (
-                              <span className="bg-muted text-muted-foreground px-2 py-1 rounded text-xs font-medium">لم يحن بعد</span>
-                            ) : (
-                              <span className="bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400 px-2 py-1 rounded text-xs font-medium">منتظر</span>
-                            )}
-                          </td>
-                          <td className="p-3">{p.collected_date ? new Date(p.collected_date).toLocaleDateString('en-GB', { timeZone: 'UTC' }) : '-'}</td>
-                          <td className="p-3 font-bold text-green-600">{p.is_collected ? formatMoney(p.collected_amount) : '-'}</td>
-                          <td className="p-3 text-left">
-                            {!p.is_collected && (
-                              <CollectModal
-                                payout={p}
-                                bankAccounts={bankAccounts || []}
-                                defaultBankAccountId={deposit.default_bank_account_id}
-                              />
-                            )}
-                          </td>
-                        </tr>
+                            <div className="flex items-center justify-between text-sm">
+                              <span className="text-muted-foreground">المبلغ المحصل:</span>
+                              <span className="font-bold text-green-600">{formatMoney(p.collected_amount)}</span>
+                            </div>
+                          </>
+                        )}
+                        {!p.is_collected && (
+                          <div className="pt-1">
+                            <CollectModal
+                              payout={p}
+                              bankAccounts={bankAccounts || []}
+                              defaultBankAccountId={deposit.default_bank_account_id}
+                            />
+                          </div>
+                        )}
+                      </div>
                       );
-                    });
-                  })()}
-                </tbody>
-              </table>
-            </div>
+                    })}
+                  </div>
+
+                  {/* Desktop: table */}
+                  <div className="hidden md:block overflow-x-auto">
+                    <table className="w-full text-sm text-right">
+                      <thead className="bg-muted/50 border-b">
+                        <tr>
+                          <th className="p-3 font-medium">م</th>
+                          <th className="p-3 font-medium">تاريخ الاستحقاق</th>
+                          <th className="p-3 font-medium">المبلغ المتوقع</th>
+                          <th className="p-3 font-medium">الحالة</th>
+                          <th className="p-3 font-medium">تاريخ التحصيل</th>
+                          <th className="p-3 font-medium">المبلغ المحصل</th>
+                          <th className="p-3 font-medium"></th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-border">
+                        {rows.map((row) => {
+                          const { p, isOutOfWindow } = row;
+                          return (
+                          <tr key={p.id} className={`hover:bg-muted/30 ${isOutOfWindow && !p.is_collected ? 'opacity-40' : ''}`}>
+                            <td className="p-3 font-medium">{p.seq}</td>
+                            <td className="p-3">
+                              <div className="flex items-center gap-2">
+                                <span>{new Date(p.due_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span>
+                                {!p.is_collected && <EditDueDateModal payout={p} />}
+                              </div>
+                            </td>
+                            <td className="p-3 font-semibold text-primary">{formatMoney(p.expected_amount)}</td>
+                            <td className="p-3">{statusBadge(row)}</td>
+                            <td className="p-3">{p.collected_date ? new Date(p.collected_date).toLocaleDateString('en-GB', { timeZone: 'UTC' }) : '-'}</td>
+                            <td className="p-3 font-bold text-green-600">{p.is_collected ? formatMoney(p.collected_amount) : '-'}</td>
+                            <td className="p-3 text-left">
+                              {!p.is_collected && (
+                                <CollectModal
+                                  payout={p}
+                                  bankAccounts={bankAccounts || []}
+                                  defaultBankAccountId={deposit.default_bank_account_id}
+                                />
+                              )}
+                            </td>
+                          </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>

@@ -79,9 +79,9 @@ export default async function DepositsPage({
 
   return (
     <div className="space-y-6 max-w-6xl mx-auto">
-      <div className="flex items-center justify-between bg-card p-6 rounded-lg border shadow-sm">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-card p-6 rounded-lg border shadow-sm">
         <div className="flex items-center gap-4">
-          <div className="p-3 bg-primary/10 rounded-full">
+          <div className="p-3 bg-primary/10 rounded-full shrink-0">
             <Wallet className="w-8 h-8 text-primary" />
           </div>
           <div>
@@ -89,7 +89,7 @@ export default async function DepositsPage({
             <p className="text-muted-foreground mt-1">إدارة الشهادات البنكية وحساب العوائد</p>
           </div>
         </div>
-        <Link href="/deposits/create" className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium text-sm flex items-center gap-2">
+        <Link href="/deposits/create" className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium text-sm flex items-center justify-center gap-2">
           <Plus className="w-4 h-4" /> إصدار شهادة/وديعة
         </Link>
       </div>
@@ -208,87 +208,167 @@ export default async function DepositsPage({
         </div>
       )}
 
-      <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm text-right">
-            <thead className="bg-muted/50 border-b">
-              <tr>
-                <th className="p-3 font-medium">الاسم</th>
-                <th className="p-3 font-medium">البنك</th>
-                <th className="p-3 font-medium">أصل المبلغ</th>
-                <th className="p-3 font-medium">العائد المتوقع</th>
-                <th className="p-3 font-medium">العائد المحصل</th>
-                <th className="p-3 font-medium">المدة</th>
-                <th className="p-3 font-medium">نوع العائد</th>
-                <th className="p-3 font-medium">تاريخ الإصدار</th>
-                <th className="p-3 font-medium">تاريخ الاستحقاق</th>
-                {tab === 'old' && <th className="p-3 font-medium">الحالة</th>}
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-border">
-              {deposits?.map(d => {
-                const totalExpected = d.deposit_payouts?.reduce((sum: number, p: any) => sum + Number(p.expected_amount), 0) || 0;
-                const totalCollected = d.deposit_payouts?.reduce((sum: number, p: any) => sum + (p.is_collected ? Number(p.collected_amount) : 0), 0) || 0;
-                const expiryDate = new Date(d.start_date + 'T00:00:00Z');
-                expiryDate.setUTCMonth(expiryDate.getUTCMonth() + d.term_months);
+      {(() => {
+        type DepositRow = {
+          d: any;
+          totalExpected: number;
+          totalCollected: number;
+          expiryDate: Date;
+          isExpired: boolean;
+          isExpiringThisMonth: boolean;
+          isExpiringSoon: boolean;
+        };
 
-                const isExpired = tab === 'active' && expiryDate < todayUTC;
-                const isExpiringThisMonth = tab === 'active' && !isExpired
-                  && expiryDate.getUTCFullYear() === todayUTC.getUTCFullYear()
-                  && expiryDate.getUTCMonth() === todayUTC.getUTCMonth();
-                const isExpiringSoon = tab === 'active' && !isExpired && !isExpiringThisMonth && expiryDate <= threeMonthsOutUTC;
+        const rows: DepositRow[] = (deposits || []).map((d: any) => {
+          const totalExpected = d.deposit_payouts?.reduce((sum: number, p: any) => sum + Number(p.expected_amount), 0) || 0;
+          const totalCollected = d.deposit_payouts?.reduce((sum: number, p: any) => sum + (p.is_collected ? Number(p.collected_amount) : 0), 0) || 0;
+          const expiryDate = new Date(d.start_date + 'T00:00:00Z');
+          expiryDate.setUTCMonth(expiryDate.getUTCMonth() + d.term_months);
 
-                const rowHighlight = isExpired
-                  ? 'bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/40'
+          const isExpired = tab === 'active' && expiryDate < todayUTC;
+          const isExpiringThisMonth = tab === 'active' && !isExpired
+            && expiryDate.getUTCFullYear() === todayUTC.getUTCFullYear()
+            && expiryDate.getUTCMonth() === todayUTC.getUTCMonth();
+          const isExpiringSoon = tab === 'active' && !isExpired && !isExpiringThisMonth && expiryDate <= threeMonthsOutUTC;
+
+          return { d, totalExpected, totalCollected, expiryDate, isExpired, isExpiringThisMonth, isExpiringSoon };
+        });
+
+        if (rows.length === 0) {
+          return (
+            <div className="bg-card rounded-lg border shadow-sm p-12 text-center">
+              <Wallet className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+              <h3 className="text-lg font-medium text-muted-foreground">
+                {tab === 'old' ? 'لا يوجد ودائع قديمة (مُرجعة أو مُجدَّدة) بعد' : 'لا يوجد ودائع أو شهادات حالياً'}
+              </h3>
+              {tab === 'active' && (
+                <p className="text-sm text-muted-foreground mt-2">قم بإنشاء وديعة جديدة لإدارة أرباحها.</p>
+              )}
+            </div>
+          );
+        }
+
+        return (
+          <>
+            {/* Mobile: card list */}
+            <div className="md:hidden space-y-3">
+              {rows.map(({ d, totalExpected, totalCollected, expiryDate, isExpired, isExpiringThisMonth, isExpiringSoon }) => {
+                const cardHighlight = isExpired
+                  ? 'bg-red-100 dark:bg-red-900/30'
                   : isExpiringThisMonth
-                    ? 'bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/40'
+                    ? 'bg-yellow-100 dark:bg-yellow-900/30'
                     : isExpiringSoon
-                      ? 'bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30'
-                      : 'hover:bg-muted/30';
+                      ? 'bg-orange-50 dark:bg-orange-900/20'
+                      : 'bg-card';
 
                 return (
-                  <tr key={d.id} className={`transition-colors cursor-pointer ${rowHighlight}`}>
-                    <td className="p-0">
-                      <Link href={`/deposits/${d.id}`} className="block p-3 font-bold">{d.name}</Link>
-                    </td>
-                    <td className="p-3 text-muted-foreground">{d.bank_name}</td>
-                    <td className="p-3 font-semibold">{formatMoney(d.principal_amount)}</td>
-                    <td className="p-3 font-semibold text-primary">{formatMoney(totalExpected)}</td>
-                    <td className="p-3 font-semibold text-green-600">{formatMoney(totalCollected)}</td>
-                    <td className="p-3 whitespace-nowrap">{d.term_months} شهر</td>
-                    <td className="p-3 whitespace-nowrap">
-                      {d.profit_type === 'annual_rate' ? `سنوي ${d.profit_value}%` : 'مبلغ ثابت'}
-                    </td>
-                    <td className="p-3 whitespace-nowrap">{new Date(d.start_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</td>
-                    <td className="p-3 whitespace-nowrap">{expiryDate.toLocaleDateString('en-GB', { timeZone: 'UTC' })}</td>
-                    {tab === 'old' && (
-                      <td className="p-3">
-                        <span className="text-xs font-medium bg-muted text-muted-foreground px-2 py-0.5 rounded-full whitespace-nowrap">
+                  <Link
+                    key={d.id}
+                    href={`/deposits/${d.id}`}
+                    className={`block rounded-lg border shadow-sm p-4 space-y-2 ${cardHighlight}`}
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <p className="font-bold truncate">{d.name}</p>
+                        <p className="text-xs text-muted-foreground truncate">{d.bank_name}</p>
+                      </div>
+                      {tab === 'old' && (
+                        <span className="text-xs font-medium bg-muted text-muted-foreground px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
                           {STATUS_LABEL[d.status]}
                         </span>
-                      </td>
-                    )}
-                  </tr>
+                      )}
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-sm pt-1">
+                      <div>
+                        <p className="text-xs text-muted-foreground">أصل المبلغ</p>
+                        <p className="font-semibold">{formatMoney(d.principal_amount)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">المدة</p>
+                        <p className="font-medium">{d.term_months} شهر</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">العائد المتوقع</p>
+                        <p className="font-semibold text-primary">{formatMoney(totalExpected)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">العائد المحصل</p>
+                        <p className="font-semibold text-green-600">{formatMoney(totalCollected)}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">تاريخ الإصدار</p>
+                        <p className="font-medium">{new Date(d.start_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">تاريخ الاستحقاق</p>
+                        <p className="font-medium">{expiryDate.toLocaleDateString('en-GB', { timeZone: 'UTC' })}</p>
+                      </div>
+                    </div>
+                  </Link>
                 );
               })}
+            </div>
 
-              {(!deposits || deposits.length === 0) && (
-                <tr>
-                  <td colSpan={tab === 'old' ? 10 : 9} className="p-12 text-center">
-                    <Wallet className="w-12 h-12 text-muted-foreground mx-auto mb-4 opacity-50" />
-                    <h3 className="text-lg font-medium text-muted-foreground">
-                      {tab === 'old' ? 'لا يوجد ودائع قديمة (مُرجعة أو مُجدَّدة) بعد' : 'لا يوجد ودائع أو شهادات حالياً'}
-                    </h3>
-                    {tab === 'active' && (
-                      <p className="text-sm text-muted-foreground mt-2">قم بإنشاء وديعة جديدة لإدارة أرباحها.</p>
-                    )}
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            {/* Desktop: table */}
+            <div className="hidden md:block bg-card rounded-lg border shadow-sm overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-right">
+                  <thead className="bg-muted/50 border-b">
+                    <tr>
+                      <th className="p-3 font-medium">الاسم</th>
+                      <th className="p-3 font-medium">البنك</th>
+                      <th className="p-3 font-medium">أصل المبلغ</th>
+                      <th className="p-3 font-medium">العائد المتوقع</th>
+                      <th className="p-3 font-medium">العائد المحصل</th>
+                      <th className="p-3 font-medium">المدة</th>
+                      <th className="p-3 font-medium">نوع العائد</th>
+                      <th className="p-3 font-medium">تاريخ الإصدار</th>
+                      <th className="p-3 font-medium">تاريخ الاستحقاق</th>
+                      {tab === 'old' && <th className="p-3 font-medium">الحالة</th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-border">
+                    {rows.map(({ d, totalExpected, totalCollected, expiryDate, isExpired, isExpiringThisMonth, isExpiringSoon }) => {
+                      const rowHighlight = isExpired
+                        ? 'bg-red-100 dark:bg-red-900/30 hover:bg-red-200 dark:hover:bg-red-900/40'
+                        : isExpiringThisMonth
+                          ? 'bg-yellow-100 dark:bg-yellow-900/30 hover:bg-yellow-200 dark:hover:bg-yellow-900/40'
+                          : isExpiringSoon
+                            ? 'bg-orange-50 dark:bg-orange-900/20 hover:bg-orange-100 dark:hover:bg-orange-900/30'
+                            : 'hover:bg-muted/30';
+
+                      return (
+                        <tr key={d.id} className={`transition-colors cursor-pointer ${rowHighlight}`}>
+                          <td className="p-0">
+                            <Link href={`/deposits/${d.id}`} className="block p-3 font-bold">{d.name}</Link>
+                          </td>
+                          <td className="p-3 text-muted-foreground">{d.bank_name}</td>
+                          <td className="p-3 font-semibold">{formatMoney(d.principal_amount)}</td>
+                          <td className="p-3 font-semibold text-primary">{formatMoney(totalExpected)}</td>
+                          <td className="p-3 font-semibold text-green-600">{formatMoney(totalCollected)}</td>
+                          <td className="p-3 whitespace-nowrap">{d.term_months} شهر</td>
+                          <td className="p-3 whitespace-nowrap">
+                            {d.profit_type === 'annual_rate' ? `سنوي ${d.profit_value}%` : 'مبلغ ثابت'}
+                          </td>
+                          <td className="p-3 whitespace-nowrap">{new Date(d.start_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</td>
+                          <td className="p-3 whitespace-nowrap">{expiryDate.toLocaleDateString('en-GB', { timeZone: 'UTC' })}</td>
+                          {tab === 'old' && (
+                            <td className="p-3">
+                              <span className="text-xs font-medium bg-muted text-muted-foreground px-2 py-0.5 rounded-full whitespace-nowrap">
+                                {STATUS_LABEL[d.status]}
+                              </span>
+                            </td>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </>
+        );
+      })()}
     </div>
   );
 }
