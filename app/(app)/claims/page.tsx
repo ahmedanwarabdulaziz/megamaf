@@ -38,59 +38,23 @@ export default async function ClaimsPage({
     getProjects(),
   ]);
 
-  // Build "how much has actually been paid" per vendor+project purely from
-  // allocation-tracking views (v_claim_paid / v_invoice_paid / v_retention_paid),
-  // each grouped by the document's OWN project_id, plus claim#0's opening_paid_amount —
-  // NOT from the payment ledger row's project tag. A single payment can be split (via
-  // payment_allocations) across documents in different projects, and the ledger row's
-  // project_id — a single value — can't represent that split correctly.
+  // Build "how much has actually been paid" per vendor+project from the RAW ledger
+  // amount that left the treasury, not just the portion formally allocated to a
+  // specific claim (via payment_allocations). A payment can be left partially or
+  // fully unallocated (e.g. an advance) and that money is still paid — mirrors the
+  // fix applied to v_vendor_balances, see
+  // supabase/migrations/20260723120000_fix_vendor_balances_raw_paid.sql.
   const realClaims = allClaims.filter((c: any) => !c.is_prior_only);
-  const claimIdsForPaid = realClaims.map((c: any) => c.id);
   const partyIds = [...new Set(realClaims.map((c: any) => c.party_id))];
 
-  const [
-    { data: claimPaidData },
-    { data: vendorInvoices },
-    { data: vendorRetentions },
-  ] = await Promise.all([
-    claimIdsForPaid.length > 0
-      ? supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', claimIdsForPaid)
-      : Promise.resolve({ data: [] as any[] }),
-    partyIds.length > 0
-      ? supabase.from('invoices').select('id, vendor_id, project_id, invoice_number').in('vendor_id', partyIds).eq('status', 'approved')
-      : Promise.resolve({ data: [] as any[] }),
-    partyIds.length > 0
-      ? supabase.from('retention_releases').select('id, party_id, project_id').in('party_id', partyIds).eq('claim_type', 'vendor')
-      : Promise.resolve({ data: [] as any[] }),
-  ]);
-
-  const invoiceIds = (vendorInvoices || []).map((i: any) => i.id);
-  const retentionIds = (vendorRetentions || []).map((r: any) => r.id);
-
-  const [
-    { data: invoicePaidData },
-    { data: retentionPaidData },
-    { data: claimAllocations },
-    { data: invoiceAllocations },
-    { data: retentionAllocations },
-  ] = await Promise.all([
-    invoiceIds.length > 0
-      ? supabase.from('v_invoice_paid').select('invoice_id, paid_amount').in('invoice_id', invoiceIds)
-      : Promise.resolve({ data: [] as any[] }),
-    retentionIds.length > 0
-      ? supabase.from('v_retention_paid').select('retention_id, paid_amount').in('retention_id', retentionIds)
-      : Promise.resolve({ data: [] as any[] }),
-    // ── Payment records behind the totals above, for the "المدفوع" click-through dialog ──
-    claimIdsForPaid.length > 0
-      ? supabase.from('payment_allocations').select('id, target_id, allocated_amount, ledger_entries(entry_date, memo)').eq('target_type', 'claim').in('target_id', claimIdsForPaid)
-      : Promise.resolve({ data: [] as any[] }),
-    invoiceIds.length > 0
-      ? supabase.from('payment_allocations').select('id, target_id, allocated_amount, ledger_entries(entry_date, memo)').eq('target_type', 'invoice').in('target_id', invoiceIds)
-      : Promise.resolve({ data: [] as any[] }),
-    retentionIds.length > 0
-      ? supabase.from('payment_allocations').select('id, target_id, allocated_amount, ledger_entries(entry_date, memo)').eq('target_type', 'retention_release').in('target_id', retentionIds)
-      : Promise.resolve({ data: [] as any[] }),
-  ]);
+  const { data: vendorPayments } = partyIds.length > 0
+    ? await supabase
+        .from('ledger_entries')
+        .select('id, entry_date, amount, memo, project_id, counterparty_id')
+        .eq('counterparty_type', 'vendor')
+        .eq('direction', 'out')
+        .in('counterparty_id', partyIds)
+    : { data: [] as any[] };
 
   const vendorProjectPaid = new Map<string, number>();
   const addPaid = (partyId: string, projectId: string | null | undefined, amount: number) => {
@@ -113,32 +77,22 @@ export default async function ClaimsPage({
     vendorProjectPayments.get(k)!.push(record);
   };
 
-  // NOTE: v_claim_paid already folds claim#0's opening_paid_amount into its
-  // paid_amount on this database (confirmed against live data — this isn't in
-  // the local migration files, so treat the live view as ground truth). Do NOT
-  // add opening_paid_amount again here, or claim#0 rows get double-counted.
-  const claimById = new Map(realClaims.map((c: any) => [c.id, c]));
-  for (const row of claimPaidData || []) {
-    const c = claimById.get(row.claim_id);
-    if (c) addPaid((c as any).party_id, (c as any).project_id, Number(row.paid_amount || 0));
+  for (const p of vendorPayments || []) {
+    addPaid((p as any).counterparty_id, (p as any).project_id, Number((p as any).amount || 0));
+    addPaymentRecord((p as any).counterparty_id, (p as any).project_id, {
+      id: (p as any).id,
+      document_type: 'payment',
+      document_date: (p as any).entry_date,
+      description: (p as any).memo || 'دفعة نقدية',
+      amount_paid: Number((p as any).amount || 0),
+    });
   }
 
-  const invoiceById = new Map((vendorInvoices || []).map((i: any) => [i.id, i]));
-  for (const row of invoicePaidData || []) {
-    const inv = invoiceById.get(row.invoice_id);
-    if (inv) addPaid((inv as any).vendor_id, (inv as any).project_id, Number(row.paid_amount || 0));
-  }
-
-  const retentionById = new Map((vendorRetentions || []).map((r: any) => [r.id, r]));
-  for (const row of retentionPaidData || []) {
-    const ret = retentionById.get(row.retention_id);
-    if (ret) addPaid((ret as any).party_id, (ret as any).project_id, Number(row.paid_amount || 0));
-  }
-
-  // Opening balance paid before the system (folded into v_claim_paid for claim#0 — see note above)
+  // Opening balance paid before the system — not a ledger row, so add it separately.
   for (const c of realClaims) {
     const opening = Number((c as any).opening_paid_amount || 0);
     if ((c as any).claim_number === 0 && opening > 0) {
+      addPaid((c as any).party_id, (c as any).project_id, opening);
       addPaymentRecord((c as any).party_id, (c as any).project_id, {
         id: `opening_${c.id}`,
         document_type: 'opening_balance',
@@ -147,45 +101,6 @@ export default async function ClaimsPage({
         amount_paid: opening,
       });
     }
-  }
-
-  for (const row of claimAllocations || []) {
-    const c = claimById.get((row as any).target_id);
-    if (!c) continue;
-    const ledger = (row as any).ledger_entries;
-    addPaymentRecord((c as any).party_id, (c as any).project_id, {
-      id: (row as any).id,
-      document_type: 'claim',
-      document_date: ledger?.entry_date || (c as any).claim_date,
-      description: ledger?.memo || `دفعة لمستخلص رقم ${(c as any).claim_number}`,
-      amount_paid: Number((row as any).allocated_amount || 0),
-    });
-  }
-
-  for (const row of invoiceAllocations || []) {
-    const inv = invoiceById.get((row as any).target_id);
-    if (!inv) continue;
-    const ledger = (row as any).ledger_entries;
-    addPaymentRecord((inv as any).vendor_id, (inv as any).project_id, {
-      id: (row as any).id,
-      document_type: 'invoice',
-      document_date: ledger?.entry_date || '',
-      description: ledger?.memo || `دفعة لفاتورة رقم ${(inv as any).invoice_number}`,
-      amount_paid: Number((row as any).allocated_amount || 0),
-    });
-  }
-
-  for (const row of retentionAllocations || []) {
-    const ret = retentionById.get((row as any).target_id);
-    if (!ret) continue;
-    const ledger = (row as any).ledger_entries;
-    addPaymentRecord((ret as any).party_id, (ret as any).project_id, {
-      id: (row as any).id,
-      document_type: 'retention_release',
-      document_date: ledger?.entry_date || '',
-      description: ledger?.memo || 'دفعة لإفراج ضمان حسن تنفيذ',
-      amount_paid: Number((row as any).allocated_amount || 0),
-    });
   }
 
   for (const records of vendorProjectPayments.values()) {
