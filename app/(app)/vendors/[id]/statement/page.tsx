@@ -20,7 +20,8 @@ export default async function VendorStatementPage({ params }: { params: Promise<
     { data: claims },
     { data: priorClaims },
     { data: ledgerPayments },
-    { data: claimZero }
+    { data: claimZero },
+    { data: invoices },
   ] = await Promise.all([
     // NOTE: v_claim_totals is a VIEW with no FK to `claims`, so it can't be embedded
     // via `.select('v_claim_totals(...)')` — PostgREST has no relationship to detect
@@ -29,7 +30,11 @@ export default async function VendorStatementPage({ params }: { params: Promise<
     supabase.from('claims').select('id, project_id, claim_number, created_at, projects(name)').eq('party_id', id).eq('claim_type', 'vendor').eq('status', 'approved'),
     supabase.from('vendor_prior_claims').select('*').eq('vendor_id', id),
     supabase.from('ledger_entries').select('id, entry_date, amount, memo, project_id, projects(name), created_at').eq('counterparty_id', id).eq('counterparty_type', 'vendor').eq('direction', 'out'),
-    supabase.from('claims').select('id, opening_paid_amount, created_at, project_id, projects(name)').eq('party_id', id).eq('claim_type', 'vendor').eq('claim_number', 0).eq('status', 'approved')
+    supabase.from('claims').select('id, opening_paid_amount, created_at, project_id, projects(name)').eq('party_id', id).eq('claim_type', 'vendor').eq('claim_number', 0).eq('status', 'approved'),
+    // Suppliers (kind='vendor') are typically billed via invoices, not claims — a
+    // vendor with zero claims but real invoices was previously invisible here,
+    // showing 0 due against real ledger payments (see /reports/audit-log fix session).
+    supabase.from('invoices').select('id, invoice_number, invoice_date, total, project_id, projects(name), created_at').eq('vendor_id', id).eq('status', 'approved'),
   ]);
 
   // claim_cumulative_payable is already cumulative for the whole project, so only the
@@ -114,6 +119,21 @@ export default async function VendorStatementPage({ params }: { params: Promise<
         amount_due: due,
         amount_paid: 0,
         sort_date: c.created_at || '1970-01-01'
+      });
+    }
+  }
+
+  // Invoices — the due side for suppliers billed via invoices rather than claims
+  for (const inv of invoices || []) {
+    const due = Number(inv.total || 0);
+    if (due > 0) {
+      rows.push({
+        document_date: inv.invoice_date || inv.created_at?.split('T')[0] || '',
+        project_name: (inv.projects as any)?.name || '-',
+        description: inv.invoice_number ? `فاتورة رقم ${inv.invoice_number}` : 'فاتورة',
+        amount_due: due,
+        amount_paid: 0,
+        sort_date: inv.created_at || inv.invoice_date || '1970-01-01'
       });
     }
   }
