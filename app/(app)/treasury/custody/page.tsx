@@ -83,7 +83,6 @@ export default async function TreasuryCustodyPage({
                   <th className="p-3 text-right font-medium">العهد المسواة</th>
                   <th className="p-3 text-right font-medium">المصروفات المعتمدة</th>
                   <th className="p-3 text-right font-medium">الرصيد المتبقي</th>
-                  <th className="p-3 text-center font-medium">الكشف</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-border">
@@ -95,15 +94,6 @@ export default async function TreasuryCustodyPage({
                     <td className="p-3">{formatMoney(b.total_approved_expenses)}</td>
                     <td className={`p-3 font-bold ${b.balance < 0 ? 'text-red-500' : 'text-green-500'}`}>
                       {formatMoney(b.balance)}
-                    </td>
-                    <td className="p-3 text-center">
-                      <Link
-                        href={`/reports/employee-custody?employee_id=${b.employee_id}`}
-                        className="inline-flex items-center justify-center w-8 h-8 rounded-md text-primary hover:bg-primary/10 transition-colors"
-                        title="كشف العهدة"
-                      >
-                        <ClipboardList className="w-4 h-4" />
-                      </Link>
                     </td>
                   </tr>
                 ))}

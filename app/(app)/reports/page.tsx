@@ -1,44 +1,16 @@
 import Link from 'next/link';
-import { BarChart3, Building2, Landmark, Users, Briefcase, FileText, Activity } from 'lucide-react';
+import { BarChart3, Building2, Activity } from 'lucide-react';
 
 export const metadata = { title: 'التقارير' };
 
 export default function ReportsHubPage() {
   const reports = [
     {
-      title: "الموقف المالي للمشاريع (P&L)",
-      description: "ملخص الإيرادات والتكاليف والسيولة النقدية للشركة الأم وكل مشروع على حدة.",
-      href: "/reports/project-position",
+      title: "التقرير المالي للمشروع",
+      description: "ملخص مالي شامل وتفصيلي لأي مشروع: الإيرادات، التكاليف، المحتجزات، السيولة، وكل الحركات التفصيلية.",
+      href: "/reports/project",
       icon: <Building2 className="w-8 h-8 text-blue-600" />,
       color: "border-blue-200 hover:border-blue-500 bg-blue-50/50"
-    },
-    {
-      title: "كشوف حسابات البنوك",
-      description: "حركة الخزينة والبنك التفصيلية (الوارد والمنصرف) لكل حساب بنكي.",
-      href: "/reports/bank-statement",
-      icon: <Landmark className="w-8 h-8 text-emerald-600" />,
-      color: "border-emerald-200 hover:border-emerald-500 bg-emerald-50/50"
-    },
-    {
-      title: "كشوف عهد الموظفين",
-      description: "متابعة العهد المنصرفة للموظفين وتسوياتها بالمصروفات المعتمدة.",
-      href: "/reports/employee-custody",
-      icon: <Users className="w-8 h-8 text-indigo-600" />,
-      color: "border-indigo-200 hover:border-indigo-500 bg-indigo-50/50"
-    },
-    {
-      title: "كشوف حسابات المقاولين",
-      description: "فواتير ومستخلصات الموردين والمقاولين مقابل الدفعات المنصرفة لهم.",
-      href: "/reports/vendor-account",
-      icon: <Briefcase className="w-8 h-8 text-amber-600" />,
-      color: "border-amber-200 hover:border-amber-500 bg-amber-50/50"
-    },
-    {
-      title: "كشوف حسابات الملاك",
-      description: "المستخلصات والدفعات المستحقة على الملاك مقابل التحصيلات الفعلية.",
-      href: "/reports/owner-account",
-      icon: <FileText className="w-8 h-8 text-cyan-600" />,
-      color: "border-cyan-200 hover:border-cyan-500 bg-cyan-50/50"
     },
     {
       title: "سجل حركات النظام (Audit Log)",
@@ -70,6 +42,8 @@ export default function ReportsHubPage() {
           </Link>
         ))}
       </div>
+
+      <p className="text-sm text-muted-foreground text-center">تقارير إضافية قادمة قريباً.</p>
     </div>
   );
 }

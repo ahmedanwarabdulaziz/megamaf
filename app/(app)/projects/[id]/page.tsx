@@ -13,6 +13,8 @@ import { ClaimApproveRejectButtons } from '@/components/claims/approve-reject-bu
 import { ClaimHistory } from '@/components/claims/claim-history'
 import { ProjectModal } from '../_components/project-modal'
 import { OpeningBalanceForm } from './opening-balance-form'
+import { ProjectReport } from '@/components/reports/project-report'
+import { getProjectReportData } from '@/lib/queries/project-report'
 
 export const dynamic = 'force-dynamic';
 
@@ -77,6 +79,9 @@ export default async function ProjectDetailPage({
 
 
   const isMainCompany = project.node_type === 'main_company';
+
+  // ── Full financial report (only fetched when its tab is active) ──
+  const reportData = tab === 'report' ? await getProjectReportData(id) : null;
 
   // ── Opening Balance data (only for non-main-company when admin) ──
   let financialBalance: any = null
@@ -160,6 +165,9 @@ export default async function ProjectDetailPage({
         <Link href={`/projects/${id}?tab=overview`} className={`px-4 py-2 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${tab === 'overview' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
           نظرة عامة
         </Link>
+        <Link href={`/projects/${id}?tab=report`} className={`px-4 py-2 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${tab === 'report' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
+          التقرير المالي
+        </Link>
         {!isMainCompany && (
           <>
             <Link href={`/projects/${id}?tab=claims`} className={`px-4 py-2 font-medium text-sm whitespace-nowrap border-b-2 transition-colors ${tab === 'claims' ? 'border-primary text-primary' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -177,6 +185,10 @@ export default async function ProjectDetailPage({
           </>
         )}
       </div>
+
+      {tab === 'report' && reportData && (
+        <ProjectReport data={reportData} />
+      )}
 
       {tab === 'overview' && (
         <div className="space-y-4">
