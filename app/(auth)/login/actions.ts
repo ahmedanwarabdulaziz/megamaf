@@ -143,5 +143,20 @@ export async function changePassword(formData: FormData) {
   })
   if (error) {
     console.error('Change password error:', error)
+    return
   }
+
+  const { data: userData } = await supabase.auth.getUser()
+  const { data: employeeData } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('auth_user_id', userData.user?.id)
+    .single()
+
+  await logAudit({
+    employee_id: employeeData?.id,
+    action: 'update',
+    entity_type: 'user_credentials',
+    entity_id: employeeData?.id,
+  })
 }

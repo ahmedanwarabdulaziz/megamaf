@@ -4,19 +4,23 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { SearchableSelect, type SelectOption } from '@/components/ui/searchable-select';
-import { Search, Download, ChevronDown, ChevronUp, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Search, Download, Loader2, ChevronDown, ChevronUp, ChevronRight, ChevronLeft } from 'lucide-react';
 import { exportToCsv } from '@/lib/export';
 import { formatMoney } from '@/lib/money';
+import { fetchAllAuditLogRows } from '@/lib/actions/audit-log';
 
 const ENTITY_LABELS: Record<string, string> = {
   employee: 'موظف',
   project_owner: 'مالك مشروع',
   project: 'مشروع',
+  bank: 'بنك',
   bank_account: 'حساب بنكي',
   deposit: 'وديعة',
   deposit_payout: 'عائد وديعة',
   vendor: 'مورد/مقاول',
+  vendor_prior_claim: 'مستخلص سابق (رصيد افتتاحي)',
   claim: 'مستخلص',
+  retention_release: 'تحرير ضمان محتجز',
   expense_category: 'فئة مصروف',
   expense: 'مصروف',
   direct_expense: 'مصروف مباشر',
@@ -33,9 +37,19 @@ const ENTITY_LABELS: Record<string, string> = {
   payslip: 'قسيمة راتب',
   payslip_component: 'بند راتب',
   payslip_project_allocations: 'تخصيص راتب لمشروع',
+  payslip_payment: 'دفعة راتب',
   employee_loan: 'سلفة موظف',
   ledger_entry: 'حركة خزينة',
-  transfer: 'تحويل مخزني',
+  transfer: 'تحويل بين حسابات بنكية',
+  stock_transfer: 'تحويل مخزون بين مستودعات',
+  item: 'صنف',
+  item_category: 'فئة صنف',
+  warehouse: 'مستودع',
+  project_opening_balance: 'رصيد افتتاحي للمشروع',
+  opening_stock_entry: 'رصيد مخزون افتتاحي',
+  employee_page_access: 'صلاحية صفحة لموظف',
+  employee_project_access: 'صلاحية مشروع لموظف',
+  user_credentials: 'بيانات الدخول',
 };
 
 const ACTION_LABELS: Record<string, { label: string; className: string }> = {
@@ -66,7 +80,7 @@ function buildSummary(row: any, projectNameById: Map<string, string>): string {
 }
 
 function dayLabel(dateStr: string) {
-  return new Date(dateStr).toLocaleDateString('ar-EG', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
+  return new Date(dateStr).toLocaleDateString('en-GB', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
 }
 
 export function AuditLogReport({
@@ -103,6 +117,7 @@ export function AuditLogReport({
   const [from, setFrom] = useState(dateFrom);
   const [to, setTo] = useState(dateTo);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [exportingAll, setExportingAll] = useState(false);
 
   const projectNameById = new Map(projects.map((p) => [p.id, p.name]));
 
@@ -117,16 +132,36 @@ export function AuditLogReport({
     router.push(`/reports/audit-log?${params.toString()}`);
   }
 
-  const handleExport = () => {
-    const exportData = data.map((row: any) => ({
-      'التاريخ': new Date(row.created_at).toLocaleString('ar-EG'),
+  function toCsvRows(rows: any[]) {
+    return rows.map((row: any) => ({
+      'التاريخ': new Date(row.created_at).toLocaleString('en-GB'),
       'المستخدم': row.employees?.full_name || 'النظام',
       'الإجراء': ACTION_LABELS[row.action]?.label || row.action,
       'نوع الحركة': ENTITY_LABELS[row.entity_type] || row.entity_type,
       'المعرف': row.entity_id,
       'الوصف': buildSummary(row, projectNameById),
+      'عنوان IP': row.ip || '',
     }));
-    exportToCsv('سجل_الحركات', exportData);
+  }
+
+  const handleExport = () => {
+    exportToCsv('سجل_الحركات', toCsvRows(data));
+  };
+
+  const handleExportAll = async () => {
+    setExportingAll(true);
+    try {
+      const rows = await fetchAllAuditLogRows({
+        entity_type: entityType || undefined,
+        action: action || undefined,
+        employee_id: employeeId || undefined,
+        date_from: from || undefined,
+        date_to: to || undefined,
+      });
+      exportToCsv('سجل_الحركات_كامل', toCsvRows(rows));
+    } finally {
+      setExportingAll(false);
+    }
   };
 
   function toggle(id: string) {
@@ -218,6 +253,12 @@ export function AuditLogReport({
             <Download className="w-4 h-4 ml-2" /> تصدير هذه الصفحة CSV
           </Button>
         )}
+        {total > 0 && (
+          <Button variant="outline" onClick={handleExportAll} disabled={exportingAll}>
+            {exportingAll ? <Loader2 className="w-4 h-4 ml-2 animate-spin" /> : <Download className="w-4 h-4 ml-2" />}
+            تصدير الكل (حسب الفلاتر)
+          </Button>
+        )}
       </div>
 
       <div className="text-sm text-muted-foreground">
@@ -237,7 +278,7 @@ export function AuditLogReport({
                 <div className="divide-y divide-border/60">
                   {g.rows.map((row: any) => {
                     const isOpen = expanded.has(row.id);
-                    const hasDetail = !!row.before || !!row.after;
+                    const hasDetail = !!row.before || !!row.after || !!row.ip;
                     const actionMeta = ACTION_LABELS[row.action];
                     return (
                       <div key={row.id}>
@@ -246,7 +287,7 @@ export function AuditLogReport({
                           onClick={() => hasDetail && toggle(row.id)}
                         >
                           <span className="text-xs text-muted-foreground w-12 shrink-0" dir="ltr">
-                            {new Date(row.created_at).toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' })}
+                            {new Date(row.created_at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
                           </span>
                           <span className="w-28 shrink-0 font-medium truncate">{row.employees?.full_name || 'النظام'}</span>
                           <span className={`px-2 py-0.5 rounded text-xs font-semibold shrink-0 whitespace-nowrap ${actionMeta?.className || 'bg-muted text-muted-foreground'}`}>
@@ -264,7 +305,10 @@ export function AuditLogReport({
                         </div>
                         {isOpen && (
                           <div className="px-4 pb-3 bg-muted/10">
-                            <p className="text-xs text-muted-foreground mb-2">معرف الكيان: <span className="font-mono">{row.entity_id || '—'}</span></p>
+                            <p className="text-xs text-muted-foreground mb-2">
+                              معرف الكيان: <span className="font-mono">{row.entity_id || '—'}</span>
+                              {row.ip && <span className="mr-4">عنوان IP: <span className="font-mono" dir="ltr">{row.ip}</span></span>}
+                            </p>
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                               {row.before && (
                                 <div>

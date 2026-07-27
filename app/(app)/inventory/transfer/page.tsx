@@ -1,11 +1,15 @@
 import { createClient } from '@/lib/supabase/server';
 import { TransferForm } from './transfer-form';
+import { requirePageAccess, canEditPage } from '@/lib/require-page-access';
+import { redirect } from 'next/navigation';
 
 export const metadata = { title: 'نقل مخزون' };
 
 export default async function TransferPage() {
+  const { profile } = await requirePageAccess('inventory');
+  if (!canEditPage(profile, 'inventory')) redirect('/inventory');
   const supabase = await createClient();
-  
+
   const { data: warehouses } = await supabase.from('warehouses').select('*, projects(name)').order('name');
   
   // To allow selecting an item, we can fetch all stock and items

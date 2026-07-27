@@ -2,8 +2,10 @@ import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import { VendorPaymentCalculator } from './calculator';
 import { computeClaimFinancials } from '@/lib/claim-financials';
+import { requirePageAccess } from '@/lib/require-page-access';
 
 export default async function PayVendorPage({ params }: { params: Promise<{ vendorId: string }> }) {
+  await requirePageAccess('treasury');
   const { vendorId } = await params;
   const supabase = await createClient();
 
@@ -13,9 +15,11 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   const [
     { data: bankAccounts },
     { data: employees },
+    { data: creditEntries },
   ] = await Promise.all([
     supabase.from('v_bank_account_balances').select('*').order('account_name'),
     supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name'),
+    supabase.from('v_vendor_unallocated_credit').select('*').eq('vendor_id', vendorId).order('entry_date'),
   ]);
 
   // Fetch all open vendor docs
@@ -291,7 +295,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
         <p className="text-muted-foreground mt-1">المقاول: {vendor.name}</p>
       </div>
 
-      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} bankAccounts={bankAccounts || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} />
+      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} bankAccounts={bankAccounts || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} creditEntries={creditEntries || []} />
     </div>
   );
 }

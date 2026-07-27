@@ -1,6 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 
-export type AuditAction = 'create' | 'update' | 'delete' | 'approve' | 'login' | 'logout';
+export type AuditAction = 'create' | 'update' | 'delete' | 'approve' | 'reject' | 'login' | 'logout';
 
 interface AuditParams {
   employee_id?: string;

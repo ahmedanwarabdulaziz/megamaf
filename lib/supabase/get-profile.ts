@@ -22,7 +22,7 @@ export const getProfile = cache(async () => {
   const { data: profile } = await supabase
     .from("employees")
     .select(
-      "id, full_name, role, is_super_admin, can_approve, has_custody_access, is_active, active_session_id, employee_page_access(page_slug)"
+      "id, full_name, role, is_super_admin, can_approve, has_custody_access, is_active, active_session_id, employee_page_access(page_slug, access_level)"
     )
     .eq("auth_user_id", user.id)
     .single()

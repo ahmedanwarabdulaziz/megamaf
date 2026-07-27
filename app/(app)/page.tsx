@@ -143,7 +143,7 @@ export default async function HomePage({
                   <div key={p.id} className="flex justify-between items-center border-b pb-2 last:border-0 last:pb-0">
                     <div>
                       <p className="font-semibold text-sm">{p.deposits?.name}</p>
-                      <p className="text-xs text-muted-foreground">استحقاق #{p.seq} في {new Date(p.due_date).toLocaleDateString('ar-EG')}</p>
+                      <p className="text-xs text-muted-foreground">استحقاق #{p.seq} في {new Date(p.due_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</p>
                     </div>
                     <div className="font-bold text-green-600 bg-green-50 dark:bg-green-900/20 px-2 py-1 rounded">
                       {formatMoney(p.expected_amount)}
@@ -171,7 +171,7 @@ export default async function HomePage({
                   <div key={s.id} className="flex justify-between items-center border-b pb-2 last:border-0 last:pb-0">
                     <div>
                       <p className="font-semibold text-sm">{s.project_owners?.name}</p>
-                      <p className="text-xs text-muted-foreground">تاريخ الاستحقاق: {new Date(s.due_date).toLocaleDateString('ar-EG')}</p>
+                      <p className="text-xs text-muted-foreground">تاريخ الاستحقاق: {new Date(s.due_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</p>
                     </div>
                     <div className="font-bold text-blue-600 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded">
                       {formatMoney(s.expected_amount)}

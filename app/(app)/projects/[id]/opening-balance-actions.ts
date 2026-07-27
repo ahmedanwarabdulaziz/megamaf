@@ -1,7 +1,18 @@
 'use server';
 
 import { createClient } from '@/lib/supabase/server';
+import { logAudit } from '@/lib/audit';
 import { revalidatePath } from 'next/cache';
+
+async function getCurrentEmployeeId(supabase: Awaited<ReturnType<typeof createClient>>) {
+  const { data: userData } = await supabase.auth.getUser();
+  const { data: employeeData } = await supabase
+    .from('employees')
+    .select('id')
+    .eq('auth_user_id', userData.user?.id)
+    .single();
+  return employeeData?.id;
+}
 
 export async function saveFinancialBalance(formData: FormData) {
   const supabase = await createClient();
@@ -121,6 +132,15 @@ export async function saveWarehouse(formData: FormData) {
     .single();
 
   if (error) throw new Error(error.message);
+
+  await logAudit({
+    employee_id: await getCurrentEmployeeId(supabase),
+    action: 'create',
+    entity_type: 'warehouse',
+    entity_id: data.id,
+    after: data,
+  });
+
   revalidatePath(`/projects/${projectId}`);
   return data as { id: string; name: string; project_id: string };
 }
@@ -144,6 +164,15 @@ export async function saveInventoryItem(formData: FormData) {
     .single();
 
   if (error) throw new Error(error.message);
+
+  await logAudit({
+    employee_id: await getCurrentEmployeeId(supabase),
+    action: 'create',
+    entity_type: 'item',
+    entity_id: data.id,
+    after: data,
+  });
+
   revalidatePath(`/projects/${projectId}`);
   return data as { id: string; name: string; unit: string; code: string | null; category_id: string };
 }

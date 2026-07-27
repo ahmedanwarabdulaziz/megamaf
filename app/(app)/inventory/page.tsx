@@ -1,9 +1,11 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
-import { Package } from 'lucide-react';
+import { ArrowLeftRight } from 'lucide-react';
 import { getInventoryStock, getItemCategories, categoryLabel } from '@/lib/queries/inventory';
 import { InventoryFilters } from '@/components/inventory/inventory-filters';
-import { requirePageAccess } from '@/lib/require-page-access';
+import { InventoryPageHeader } from '@/components/inventory/inventory-page-header';
+import { InventoryTabs } from '@/components/inventory/inventory-tabs';
+import { requirePageAccess, canEditPage } from '@/lib/require-page-access';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'المخزون' };
@@ -13,7 +15,8 @@ export default async function InventoryPage({
 }: {
   searchParams: Promise<{ warehouse_id?: string; category_id?: string; search?: string }>;
 }) {
-  await requirePageAccess('inventory');
+  const { profile } = await requirePageAccess('inventory');
+  const canEdit = canEditPage(profile, 'inventory');
   const { warehouse_id, category_id, search } = await searchParams;
   const supabase = await createClient();
 
@@ -25,28 +28,19 @@ export default async function InventoryPage({
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between bg-card p-6 rounded-lg border shadow-sm">
-        <div className="flex items-center gap-4">
-          <div className="p-3 bg-primary/10 rounded-full">
-            <Package className="w-8 h-8 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold">المخزون</h1>
-            <p className="text-muted-foreground mt-1">إدارة المستودعات، الأصناف، والأرصدة</p>
-          </div>
-        </div>
-        <div className="flex gap-2">
-          <Link href="/inventory/items" className="bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 rounded-md font-medium text-sm">
-            الأصناف
-          </Link>
-          <Link href="/inventory/warehouses" className="bg-secondary text-secondary-foreground hover:bg-secondary/80 px-4 py-2 rounded-md font-medium text-sm">
-            المستودعات
-          </Link>
-          <Link href="/inventory/transfer" className="bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium text-sm">
-            تحويل مخزني
-          </Link>
-        </div>
-      </div>
+      <InventoryPageHeader
+        title="المخزون"
+        description="إدارة المستودعات، الأصناف، والأرصدة"
+        action={
+          canEdit ? (
+            <Link href="/inventory/transfer" className="flex items-center gap-1.5 bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md font-medium text-sm">
+              <ArrowLeftRight className="w-4 h-4" /> تحويل مخزني
+            </Link>
+          ) : undefined
+        }
+      />
+
+      <InventoryTabs active="balances" />
 
       <InventoryFilters
         warehouses={warehouses || []}

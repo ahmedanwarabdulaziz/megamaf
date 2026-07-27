@@ -20,19 +20,28 @@ async function assertSuperAdmin() {
   if (!me?.is_super_admin) throw new Error('غير مصرح: هذه العملية متاحة لمدير النظام فقط')
 }
 
-export async function togglePageAccess(employeeId: string, pageSlug: string, isGranted: boolean) {
+export async function setPageAccess(employeeId: string, pageSlug: string, level: 'none' | 'view' | 'edit') {
   await assertSuperAdmin()
   const adminClient = createAdminClient()
 
-  if (isGranted) {
-    await adminClient.from('employee_page_access').insert({ employee_id: employeeId, page_slug: pageSlug })
-    await logAudit({ action: 'create', entity_type: 'employee_page_access', entity_id: employeeId, after: { page_slug: pageSlug } })
-  } else {
+  if (level === 'none') {
     await adminClient.from('employee_page_access').delete().match({ employee_id: employeeId, page_slug: pageSlug })
     await logAudit({ action: 'delete', entity_type: 'employee_page_access', entity_id: employeeId, before: { page_slug: pageSlug } })
+  } else {
+    await adminClient
+      .from('employee_page_access')
+      .upsert({ employee_id: employeeId, page_slug: pageSlug, access_level: level }, { onConflict: 'employee_id,page_slug' })
+    await logAudit({ action: 'create', entity_type: 'employee_page_access', entity_id: employeeId, after: { page_slug: pageSlug, access_level: level } })
   }
 
   revalidatePath(`/employees/${employeeId}`)
+}
+
+// Simple on/off wrapper for pages excluded from the view/edit model
+// ("employees", "settings") — mutation there is always super-admin-gated
+// regardless of level, so a bare grant ('view') is all that's meaningful.
+export async function toggleSimplePageAccess(employeeId: string, pageSlug: string, isGranted: boolean) {
+  return setPageAccess(employeeId, pageSlug, isGranted ? 'view' : 'none')
 }
 
 export async function toggleProjectAccess(employeeId: string, projectId: string, isGranted: boolean) {

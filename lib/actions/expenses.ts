@@ -218,13 +218,8 @@ export async function createDirectExpense(formData: FormData) {
       if (attachError) console.error('Attachment insert failed:', attachError);
     }
 
-    await logAudit({
-      employee_id: employeeData.id,
-      action: 'create',
-      entity_type: 'direct_expense',
-      entity_id: expenseId as string,
-      after: { ...parsed.data, employee_id: targetEmployeeId },
-    });
+    // create_direct_expense() already inserts its own audit_log row — logging
+    // again here would produce a duplicate 'create'/'direct_expense' entry.
 
     revalidatePath('/expenses');
     revalidatePath('/expenses/statement');
@@ -583,6 +578,12 @@ export async function deleteCustodyDisbursement(id: string) {
     const { data: userData } = await supabase.auth.getUser();
     if (!userData.user) return { error: 'Unauthorized' };
 
+    const { data: actingEmployee } = await supabase
+      .from('employees')
+      .select('id')
+      .eq('auth_user_id', userData.user.id)
+      .single();
+
     // Use admin client to fetch the entry
     const { data: entry } = await adminSupabase
       .from('ledger_entries')
@@ -591,7 +592,7 @@ export async function deleteCustodyDisbursement(id: string) {
       .single();
 
     if (!entry) return { error: 'Entry not found' };
-    
+
     if (entry.category !== 'custody_disbursement') return { error: 'Invalid entry type' };
 
     // Delete the employee ledger entry (using admin client to bypass RLS)
@@ -608,12 +609,20 @@ export async function deleteCustodyDisbursement(id: string) {
       .eq('counterparty_id', entry.employee_id)
       .eq('amount', entry.amount)
       .eq('entry_date', entry.entry_date);
-    
+
     if (err2) throw err2;
     // Note: count may be 0 if the bank entry was already deleted — that's acceptable
 
     // Recalculate employee custody balance
     await adminSupabase.rpc('settle_employee_custody', { p_employee_id: entry.employee_id });
+
+    await logAudit({
+      employee_id: actingEmployee?.id,
+      action: 'delete',
+      entity_type: 'custody_disbursement',
+      entity_id: id,
+      before: { employee_id: entry.employee_id, bank_account_id: entry.counterparty_id, amount: entry.amount, entry_date: entry.entry_date },
+    });
 
     revalidatePath('/reports/employee-custody');
     revalidatePath('/treasury/custody');

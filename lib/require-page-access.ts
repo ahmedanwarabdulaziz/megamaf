@@ -8,6 +8,12 @@ const PAGE_SLUG_TO_PATH: Record<string, string> = {
   banks: '/banks',
   deposits: '/deposits',
   'treasury/custody': '/treasury',
+  // 'treasury' (vendor/owner payment processing) intentionally has no entry
+  // here: it has no standalone landing route (/treasury/pay/[vendorId]
+  // requires a vendorId), so it can't safely be a requireAdmin() redirect
+  // target. An employee whose only grant is 'treasury' falls through to
+  // '/login' instead of looping — expected to always be paired with
+  // 'vendors' access in practice.
   expenses: '/expenses',
   vendors: '/vendors',
   claims: '/claims',
@@ -50,6 +56,18 @@ export async function requirePageAccess(slug: string) {
   }
 
   return { user, profile, isSuperAdmin }
+}
+
+/**
+ * Whether the current profile has 'edit' level access to `slug` — super
+ * admins always do. Use to hide add/edit/delete affordances for view-only
+ * users (the underlying RLS is the real gate; this is just UX).
+ */
+export function canEditPage(profile: any, slug: string): boolean {
+  if (!profile) return false
+  if (profile.is_super_admin) return true
+  const row = (profile.employee_page_access as any[])?.find((p: any) => p.page_slug === slug)
+  return row?.access_level === 'edit'
 }
 
 /**

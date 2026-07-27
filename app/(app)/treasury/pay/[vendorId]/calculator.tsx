@@ -4,7 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Loader2, Paperclip, FileText, Image, X } from 'lucide-react';
-import { payVendor, payVendorFromExpense } from '@/lib/actions/payments';
+import { payVendor, payVendorFromExpense, assignVendorPayment } from '@/lib/actions/payments';
 import { getEmployeeAvailableExpenses } from '@/lib/actions/expenses';
 import { uploadTreasuryFile } from '@/lib/upload-treasury';
 import { formatMoney } from '@/lib/money';
@@ -36,7 +36,17 @@ type ClaimSummary = {
   remaining: number;
 };
 
-export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, employees, projects, claimSummaries }: { vendorId: string, openDocs: any[], bankAccounts: any[], employees: {id: string, full_name: string}[], projects: {id: string, name: string}[], claimSummaries?: ClaimSummary[] }) {
+type CreditEntry = {
+  ledger_entry_id: string;
+  vendor_id: string;
+  entry_date: string;
+  amount: number;
+  remaining_credit: number;
+  project_id: string | null;
+  memo: string | null;
+};
+
+export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, employees, projects, claimSummaries, creditEntries = [] }: { vendorId: string, openDocs: any[], bankAccounts: any[], employees: {id: string, full_name: string}[], projects: {id: string, name: string}[], claimSummaries?: ClaimSummary[], creditEntries?: CreditEntry[] }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState<number>(0);
@@ -50,8 +60,17 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
     setFiles(prev => [...prev, ...Array.from(flist)]);
   };
 
-  // Funding source: pay from a bank account, or from an employee's approved expense
-  const [fundingSource, setFundingSource] = useState<'bank' | 'expense'>('bank');
+  // Funding source: pay from a bank account, from an employee's approved expense,
+  // or settle from an existing unallocated payment already sitting with this vendor.
+  const [fundingSource, setFundingSource] = useState<'bank' | 'expense' | 'credit'>('bank');
+  const [creditEntryId, setCreditEntryId] = useState('');
+  const totalCredit = useMemo(() => creditEntries.reduce((sum, c) => sum + Number(c.remaining_credit || 0), 0), [creditEntries]);
+
+  const selectCreditEntry = (entry: CreditEntry) => {
+    setCreditEntryId(entry.ledger_entry_id);
+    setAmount(Number(entry.remaining_credit));
+    if (!projectId && entry.project_id) setProjectId(entry.project_id);
+  };
   const [employeeId, setEmployeeId] = useState('');
   const [employeeExpenses, setEmployeeExpenses] = useState<AvailableExpense[]>([]);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
@@ -126,9 +145,16 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
     // - claim rows have amount_due patched to summary.remaining
     let remaining = amount;
 
-    const filteredDocs = projectId
-      ? openDocs.filter(d => d.project_id === projectId)
-      : openDocs;
+    // Settling from an existing credit requires assign_vendor_payment's
+    // per-document project match, so (a) a project must be explicitly picked
+    // before any document is offered, and (b) prior_claim rows are excluded —
+    // that target type isn't tracked in payment_allocations at all (routed
+    // separately into vendor_prior_claims.prior_paid_amount), so consuming
+    // credit against it would silently drift from what v_vendor_unallocated_credit
+    // reports as remaining.
+    const filteredDocs = fundingSource === 'credit'
+      ? (projectId ? openDocs.filter(d => d.project_id === projectId && d.document_type !== 'prior_claim') : [])
+      : (projectId ? openDocs.filter(d => d.project_id === projectId) : openDocs);
 
     const newAllocations = filteredDocs.map(doc => {
       // For cumulative claims: use summary values so description and
@@ -166,7 +192,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
       };
     });
     setAllocations(newAllocations);
-  }, [amount, openDocs, projectId, projects, claimSummaries]);
+  }, [amount, openDocs, projectId, projects, claimSummaries, fundingSource]);
 
   const updateAllocation = (index: number, val: number) => {
     const newAllocations = [...allocations];
@@ -186,14 +212,18 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
     setLoading(true);
 
     try {
-      // Upload attachments first — into the dedicated treasury bucket
+      // Upload attachments first — into the dedicated treasury bucket.
+      // Settling from an existing credit doesn't create a new payment, so
+      // there's nothing to attach a receipt to.
       const uploadedPaths: string[] = [];
-      for (const file of files) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const { error: uploadError } = await uploadTreasuryFile(file, fileName);
-        if (uploadError) throw new Error(uploadError);
-        uploadedPaths.push(fileName);
+      if (fundingSource !== 'credit') {
+        for (const file of files) {
+          const fileExt = file.name.split('.').pop();
+          const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const { error: uploadError } = await uploadTreasuryFile(file, fileName);
+          if (uploadError) throw new Error(uploadError);
+          uploadedPaths.push(fileName);
+        }
       }
 
       const allocatedRows = allocations.filter(a => a.amount > 0);
@@ -212,7 +242,19 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
       const effectiveProjectId = projectId || (allocatedProjectIds.length === 1 ? allocatedProjectIds[0] : '');
 
       let result;
-      if (fundingSource === 'expense') {
+      if (fundingSource === 'credit') {
+        if (!effectiveProjectId) {
+          alert('يجب اختيار المشروع المرتبط بالمستندات المراد تسويتها من الرصيد.');
+          setLoading(false);
+          return;
+        }
+        if (allocatedRows.length === 0) {
+          alert('اختر مستنداً واحداً على الأقل لتخصيص الرصيد له.');
+          setLoading(false);
+          return;
+        }
+        result = await assignVendorPayment(creditEntryId, effectiveProjectId, apiAllocations);
+      } else if (fundingSource === 'expense') {
         const formData = new FormData();
         formData.append('vendor_id', vendorId);
         formData.append('employee_id', employeeId);
@@ -320,6 +362,19 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
           ))}
         </div>
       )}
+      {/* ── Existing unallocated credit banner ── */}
+      {creditEntries.length > 0 && (
+        <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <p className="font-bold text-green-800 dark:text-green-400">لهذا المقاول رصيد دائن من دفعات سابقة لم تُخصص لأي مستند</p>
+            <p className="text-sm text-green-700 dark:text-green-500 mt-1">يمكنك تسوية أي فاتورة أو مستخلص مفتوح من هذا الرصيد بدلاً من تسجيل دفعة نقدية جديدة — اختر &quot;تسوية من رصيد دائن سابق&quot; أدناه.</p>
+          </div>
+          <div className="text-left shrink-0">
+            <div className="text-xs text-green-700 dark:text-green-500">الرصيد المتاح</div>
+            <div className="text-2xl font-bold text-green-800 dark:text-green-400">{formatMoney(totalCredit)}</div>
+          </div>
+        </div>
+      )}
       <div className="bg-card p-6 rounded-lg border shadow-sm space-y-4">
         {/* Funding source toggle */}
         <div>
@@ -339,11 +394,20 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
             >
               من عهدة موظف (مصروف معتمد)
             </button>
+            {creditEntries.length > 0 && (
+              <button
+                type="button"
+                onClick={() => { setFundingSource('credit'); setAmount(0); setBankId(''); setCreditEntryId(''); }}
+                className={`flex-1 p-2 rounded border text-sm font-medium ${fundingSource === 'credit' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'}`}
+              >
+                تسوية من رصيد دائن سابق
+              </button>
+            )}
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {fundingSource === 'bank' ? (
+          {fundingSource === 'bank' && (
             <div>
               <label className="block text-sm font-medium mb-1">الخزينة / الحساب البنكي المسدد منه</label>
               <select required value={bankId} onChange={e => setBankId(e.target.value)} className="w-full p-2 rounded border bg-background">
@@ -353,7 +417,8 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
                 ))}
               </select>
             </div>
-          ) : (
+          )}
+          {fundingSource === 'expense' && (
             <div>
               <label className="block text-sm font-medium mb-1">الموظف</label>
               <select required value={employeeId} onChange={e => setEmployeeId(e.target.value)} className="w-full p-2 rounded border bg-background">
@@ -373,20 +438,25 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
           )}
 
           <div>
-            <label className="block text-sm font-medium mb-1">المشروع المرتبط (للدفعات المقدمة)</label>
-            <select value={projectId} onChange={e => setProjectId(e.target.value)} className="w-full p-2 rounded border bg-background">
-              <option value="">عام (غير مرتبط بمشروع محدد)</option>
+            <label className="block text-sm font-medium mb-1">
+              المشروع المرتبط {fundingSource === 'credit' ? '(مطلوب لتخصيص الرصيد)' : '(للدفعات المقدمة)'}
+            </label>
+            <select required={fundingSource === 'credit'} value={projectId} onChange={e => setProjectId(e.target.value)} className="w-full p-2 rounded border bg-background">
+              <option value="">{fundingSource === 'credit' ? 'اختر المشروع...' : 'عام (غير مرتبط بمشروع محدد)'}</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
           </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">البيان (ملاحظات)</label>
-            <input type="text" value={memo} onChange={e => setMemo(e.target.value)} className="w-full p-2 rounded border bg-background" placeholder="دفعة مقدمة، سداد مستخلص، إلخ..." />
-          </div>
+          {fundingSource !== 'credit' && (
+            <div>
+              <label className="block text-sm font-medium mb-1">البيان (ملاحظات)</label>
+              <input type="text" value={memo} onChange={e => setMemo(e.target.value)} className="w-full p-2 rounded border bg-background" placeholder="دفعة مقدمة، سداد مستخلص، إلخ..." />
+            </div>
+          )}
 
           {/* File upload */}
+          {fundingSource !== 'credit' && (
           <div className="md:col-span-2">
             <label className="block text-sm font-medium mb-2">مرفقات الدفعة (إيصالات، صور التحويل، PDF)</label>
             <label
@@ -420,7 +490,52 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
               </ul>
             )}
           </div>
+          )}
         </div>
+
+        {/* Credit picker */}
+        {fundingSource === 'credit' && (
+          <div>
+            <label className="block text-sm font-medium mb-2">اختر الدفعة السابقة غير المخصصة</label>
+            {!projectId && (
+              <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded p-3 mb-2">
+                اختر المشروع المرتبط أولاً أعلاه، ثم اختر الدفعة السابقة التي تريد التسوية منها.
+              </p>
+            )}
+            <div className="border rounded divide-y">
+              {creditEntries.map(entry => (
+                <label key={entry.ledger_entry_id} className={`flex items-center justify-between gap-3 p-3 cursor-pointer text-sm ${creditEntryId === entry.ledger_entry_id ? 'bg-primary/5' : ''}`}>
+                  <div className="flex items-center gap-3 min-w-0">
+                    <input type="radio" name="credit_entry" checked={creditEntryId === entry.ledger_entry_id} onChange={() => selectCreditEntry(entry)} />
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{entry.entry_date}</div>
+                      {entry.memo && <div className="text-xs text-muted-foreground truncate">{entry.memo}</div>}
+                    </div>
+                  </div>
+                  <div className="text-left whitespace-nowrap">
+                    <div className="text-xs text-muted-foreground">المتبقي غير المخصص</div>
+                    <div className="font-bold text-primary">{formatMoney(Number(entry.remaining_credit))}</div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            {/* Read-only — driven by what's actually allocated to documents below,
+                not something the user types in. Editing this had no real meaning
+                since it never changed what got settled. */}
+            {creditEntryId && (
+              <div className="mt-3 grid grid-cols-2 gap-4">
+                <div className="p-3 rounded border bg-muted/30">
+                  <div className="text-xs text-muted-foreground">المبلغ الذي سيتم تسويته الآن</div>
+                  <div className="font-bold text-lg text-primary">{formatMoney(totalAllocated)}</div>
+                </div>
+                <div className="p-3 rounded border bg-muted/30">
+                  <div className="text-xs text-muted-foreground">المتبقي من هذا الرصيد بعد التسوية</div>
+                  <div className="font-bold text-lg text-green-600">{formatMoney(Number(creditEntries.find(c => c.ledger_entry_id === creditEntryId)?.remaining_credit || 0) - totalAllocated)}</div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Expense picker */}
         {fundingSource === 'expense' && employeeId && (
@@ -507,20 +622,18 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
                 )}
               </>
             )}
+            {/* Read-only — driven by what's actually allocated to documents below,
+                not something the user types in (same pattern as the credit picker). */}
             {expenseId && (
-              <div className="mt-3">
-                <label className="block text-sm font-medium mb-1">المبلغ المستخدم من المصروف</label>
-                <input
-                  required
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  max={employeeExpenses.find(e => e.id === expenseId)?.available || 0}
-                  value={amount || ''}
-                  onChange={e => setAmount(Math.min(parseFloat(e.target.value) || 0, employeeExpenses.find(exp => exp.id === expenseId)?.available || 0))}
-                  className="w-full p-2 rounded border bg-background font-bold text-lg text-primary"
-                  placeholder="0.00"
-                />
+              <div className="mt-3 grid grid-cols-2 gap-4">
+                <div className="p-3 rounded border bg-muted/30">
+                  <div className="text-xs text-muted-foreground">المبلغ الذي سيتم دفعه الآن</div>
+                  <div className="font-bold text-lg text-primary">{formatMoney(totalAllocated)}</div>
+                </div>
+                <div className="p-3 rounded border bg-muted/30">
+                  <div className="text-xs text-muted-foreground">المتبقي من هذا المصروف بعد الدفع</div>
+                  <div className="font-bold text-lg text-green-600">{formatMoney(Number(employeeExpenses.find(e => e.id === expenseId)?.available || 0) - totalAllocated)}</div>
+                </div>
               </div>
             )}
           </div>
@@ -529,9 +642,9 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
 
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
         <div className="p-4 border-b bg-muted/30 flex justify-between items-center">
-          <h3 className="font-bold">توزيع الدفعة (التخصيص)</h3>
+          <h3 className="font-bold">{fundingSource === 'credit' ? 'تخصيص التسوية على المستندات' : 'توزيع الدفعة (التخصيص)'}</h3>
           <div className="text-sm">
-            المبلغ المتبقي كرصيد: <span className={`font-bold ${credit > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>{formatMoney(credit)}</span>
+            {fundingSource === 'credit' ? 'المتبقي من الرصيد غير المخصص' : 'المبلغ المتبقي كرصيد'}: <span className={`font-bold ${credit > 0 ? 'text-green-600' : 'text-muted-foreground'}`}>{formatMoney(credit)}</span>
           </div>
         </div>
         <table className="w-full text-sm text-right">
@@ -615,9 +728,9 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
       </div>
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={loading || amount <= 0 || (fundingSource === 'bank' ? !bankId : !expenseId)}>
+        <Button type="submit" disabled={loading || (fundingSource === 'credit' ? (!creditEntryId || totalAllocated <= 0) : amount <= 0 || (fundingSource === 'bank' ? !bankId : !expenseId))}>
           {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-          تسجيل الدفعة
+          {fundingSource === 'credit' ? 'تسوية من الرصيد' : 'تسجيل الدفعة'}
         </Button>
       </div>
     </form>

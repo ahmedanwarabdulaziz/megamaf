@@ -122,7 +122,7 @@ export function PasskeyManager() {
               <div className="flex flex-col">
                 <span className="text-sm font-medium">🔐 جهاز مسجل ({key.name || "Passkey"})</span>
                 <span className="text-xs text-muted-foreground">
-                  تم التسجيل في: {new Date(key.created_at).toLocaleDateString("ar-EG")}
+                  تم التسجيل في: {new Date(key.created_at).toLocaleDateString("en-GB")}
                 </span>
               </div>
               <Button

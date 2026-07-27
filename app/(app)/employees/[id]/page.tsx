@@ -1,10 +1,16 @@
 import { createClient } from '@/lib/supabase/server'
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card'
-import { togglePageAccess, toggleProjectAccess } from './actions'
+import { setPageAccess, toggleSimplePageAccess, toggleProjectAccess } from './actions'
 import { PasskeyEnrollButton } from './_components/passkey-enroll-button'
 import { ToggleList } from './_components/toggle-list'
+import { PageAccessList } from './_components/page-access-list'
 import { EditEmployeeForm } from './_components/edit-employee-form'
 import { EMPLOYEE_PAGES } from '@/lib/page-access'
+
+// Pages excluded from the view/edit model — mutation there is always
+// super-admin-gated regardless of level, since they control other
+// employees' permissions / system-wide settings.
+const SIMPLE_ACCESS_PAGES = new Set(['employees', 'settings'])
 import { redirect } from 'next/navigation'
 import { generateRegistration, verifyAndSaveRegistration } from './passkey-actions'
 import { requirePageAccess } from '@/lib/require-page-access'
@@ -87,12 +93,15 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
   if (!isSuperAdmin && !isCurrentUser) redirect('/?access_denied=1')
 
   const [{ data: pageAccess }, { data: projectAccess }, { data: allProjects }] = await Promise.all([
-    supabase.from('employee_page_access').select('page_slug').eq('employee_id', id),
+    supabase.from('employee_page_access').select('page_slug, access_level').eq('employee_id', id),
     supabase.from('employee_project_access').select('project_id').eq('employee_id', id),
     supabase.from('projects').select('id, name').order('sort_order'),
   ])
 
   const grantedPages = pageAccess?.map((p) => p.page_slug) || []
+  const pageLevels: Record<string, 'view' | 'edit'> = Object.fromEntries(
+    (pageAccess || []).map((p) => [p.page_slug, p.access_level as 'view' | 'edit'])
+  )
   const grantedProjects = projectAccess?.map((p) => p.project_id) || []
   const projectItems = (allProjects || []).map((p) => ({ key: p.id, name: p.name }))
   const grantedProjectNames = projectItems.filter(p => grantedProjects.includes(p.key)).map(p => p.name)
@@ -194,10 +203,14 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
               {EMPLOYEE_PAGES.map((page) => {
                 const Icon = PAGE_ICONS[page.slug] || Settings
                 const hasAccess = employee.is_super_admin || grantedPages.includes(page.slug)
+                const level = pageLevels[page.slug]
+                const label = !SIMPLE_ACCESS_PAGES.has(page.slug) && hasAccess && !employee.is_super_admin
+                  ? `${page.name} (${level === 'edit' ? 'عرض وتعديل' : 'عرض'})`
+                  : page.name
                 return (
                   <FlagBadge
                     key={page.slug}
-                    label={page.name}
+                    label={label}
                     active={hasAccess}
                     icon={Icon}
                   />
@@ -264,12 +277,23 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
                     مدير النظام — له وصول كامل لجميع الصفحات تلقائياً. لا حاجة لتفعيل الصلاحيات يدوياً.
                   </p>
                 ) : (
-                  <ToggleList
-                    employeeId={id}
-                    items={EMPLOYEE_PAGES.map((p) => ({ key: p.slug, name: p.name }))}
-                    granted={grantedPages}
-                    action={togglePageAccess}
-                  />
+                  <div className="space-y-4">
+                    <PageAccessList
+                      employeeId={id}
+                      items={EMPLOYEE_PAGES.filter((p) => !SIMPLE_ACCESS_PAGES.has(p.slug)).map((p) => ({ key: p.slug, name: p.name }))}
+                      levels={pageLevels}
+                      action={setPageAccess}
+                    />
+                    <div className="border-t pt-3">
+                      <p className="text-xs font-semibold text-muted-foreground mb-2">صفحات إدارية (مدير النظام فقط يمكنه التعديل فيها)</p>
+                      <ToggleList
+                        employeeId={id}
+                        items={EMPLOYEE_PAGES.filter((p) => SIMPLE_ACCESS_PAGES.has(p.slug)).map((p) => ({ key: p.slug, name: p.name }))}
+                        granted={grantedPages}
+                        action={toggleSimplePageAccess}
+                      />
+                    </div>
+                  </div>
                 )}
               </CardContent>
             </Card>

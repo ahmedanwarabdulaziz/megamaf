@@ -65,9 +65,9 @@ export function VendorPayablesTable({ vendors }: { vendors: any[] }) {
                       {remaining <= 0 ? '✓ مسدد' : formatMoney(remaining)}
                     </span>
                     {overpaid > 0 && (
-                      <div className="text-xs text-amber-600 mt-0.5 whitespace-nowrap">
-                        له رصيد زائد: {formatMoney(overpaid)}
-                      </div>
+                      <Link href={`/treasury/pay/${v.vendor_id}`} className="text-xs text-amber-600 hover:underline mt-0.5 whitespace-nowrap block">
+                        له رصيد زائد: {formatMoney(overpaid)} — تسوية
+                      </Link>
                     )}
                   </td>
                   <td className="p-4">

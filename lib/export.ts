@@ -16,7 +16,7 @@ export function exportToCsv(filename: string, rows: any[]) {
             return keys.map(k => {
                 let cell = row[k] === null || row[k] === undefined ? '' : row[k];
                 cell = cell instanceof Date
-                    ? cell.toLocaleDateString('ar-EG')
+                    ? cell.toLocaleDateString('en-GB')
                     : cell.toString().replace(/"/g, '""');
                 if (cell.search(/("|,|\n)/g) >= 0) {
                     cell = `"${cell}"`;
