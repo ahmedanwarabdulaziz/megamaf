@@ -156,20 +156,23 @@ export async function approveInvoice(invoiceId: string) {
   }
 }
 
-export async function rejectInvoice(invoiceId: string) {
+export async function rejectInvoice(invoiceId: string, reason?: string) {
   try {
     const supabase = await createClient();
 
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) return { error: 'يرجى كتابة سبب الرفض' };
+
     const { data: invoiceRecord } = await supabase.from('audit_log').select('employee_id').eq('entity_type', 'invoice').eq('entity_id', invoiceId).eq('action', 'create').single();
 
-    const { error } = await supabase.rpc('reject_invoice', { p_invoice_id: invoiceId });
+    const { error } = await supabase.rpc('reject_invoice', { p_invoice_id: invoiceId, p_reason: trimmedReason });
     if (error) return { error: error.message };
 
     if (invoiceRecord) {
        await sendPushNotification(
          [invoiceRecord.employee_id],
          'تم رفض الفاتورة',
-         `تم رفض الفاتورة التي قدمتها`,
+         `تم رفض الفاتورة التي قدمتها — السبب: ${trimmedReason}`,
          `/invoices`,
          'invoice_rejected'
        );
@@ -244,10 +247,11 @@ export async function updateInvoice(formData: FormData, items: any[], attachment
     const adminClient = createAdminClient();
     const { id, ...invoiceFields } = parsed.data;
 
-    // Editing a rejected invoice resubmits it for approval
+    // Editing a rejected invoice resubmits it for approval; clear the old
+    // rejection note since it no longer applies to the edited invoice.
     const { error: updateError } = await adminClient
       .from('invoices')
-      .update({ ...invoiceFields, status: 'pending', approved_by: null, approved_at: null })
+      .update({ ...invoiceFields, status: 'pending', approved_by: null, approved_at: null, rejection_reason: null })
       .eq('id', id);
 
     if (updateError) return { error: updateError.message };

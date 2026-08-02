@@ -9,7 +9,7 @@ import { InvoiceApproveRejectButtons } from '@/components/invoices/approve-rejec
 import { InvoicesFilters } from '@/components/invoices/invoices-filters';
 import { DeleteInvoiceButton } from '@/components/invoices/delete-invoice-button';
 import { requirePageAccess } from '@/lib/require-page-access';
-import { Pencil } from 'lucide-react';
+import { Pencil, AlertTriangle } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -20,25 +20,35 @@ export const metadata = {
 export default async function InvoicesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ project_id?: string, vendor_id?: string, search?: string, start_date?: string, end_date?: string, status?: string }>;
+  searchParams: Promise<{ tab?: string, project_id?: string, vendor_id?: string, search?: string, start_date?: string, end_date?: string, status?: string }>;
 }) {
-  const { project_id, vendor_id, search, start_date, end_date, status } = await searchParams;
+  const { tab = 'action_required', project_id, vendor_id, search, start_date, end_date, status } = await searchParams;
   await requirePageAccess('vendors'); // invoices are under vendors access
   const { profile } = await getProfile();
   if (!profile) return null;
 
-  const [invoices, actionRequiredInvoices, projects, vendors] = await Promise.all([
-    getInvoicesWithFilters({
-      projectId: project_id,
-      vendorId: vendor_id,
-      search,
-      startDate: start_date,
-      endDate: end_date,
-      status
-    }),
+  const isActionRequired = tab !== 'all';
+
+  const [invoices, actionRequiredCount, projects, vendors] = await Promise.all([
+    isActionRequired
+      ? getActionRequiredInvoices({
+          projectId: project_id,
+          vendorId: vendor_id,
+          search,
+          startDate: start_date,
+          endDate: end_date,
+        })
+      : getInvoicesWithFilters({
+          projectId: project_id,
+          vendorId: vendor_id,
+          search,
+          startDate: start_date,
+          endDate: end_date,
+          status,
+        }),
     getActionRequiredInvoices(),
     getProjects(),
-    getVendors()
+    getVendors(),
   ]);
 
   return (
@@ -50,6 +60,34 @@ export default async function InvoicesPage({
         </Link>
       </div>
 
+      <div className="flex gap-1 border-b overflow-x-auto pb-1">
+        <a
+          href="?tab=action_required"
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors flex items-center gap-2 ${
+            isActionRequired
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          فواتير تتطلب إجراء
+          {actionRequiredCount.length > 0 && (
+            <span className="text-[10px] bg-destructive/10 text-destructive px-1.5 py-0.5 rounded-full font-semibold">
+              {actionRequiredCount.length}
+            </span>
+          )}
+        </a>
+        <a
+          href="?tab=all"
+          className={`px-4 py-2 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+            !isActionRequired
+              ? 'border-primary text-primary'
+              : 'border-transparent text-muted-foreground hover:text-foreground'
+          }`}
+        >
+          قائمة الفواتير
+        </a>
+      </div>
+
       <InvoicesFilters
         projects={projects || []}
         vendors={vendors || []}
@@ -59,24 +97,12 @@ export default async function InvoicesPage({
         searchQuery={search || ''}
         startDate={start_date || ''}
         endDate={end_date || ''}
+        basePath="/invoices"
+        activeTab={tab}
+        showStatusFilter={!isActionRequired}
       />
 
-      {/* Action Required Section */}
-      {actionRequiredInvoices.length > 0 && (
-        <div>
-          <h2 className="text-xl font-bold mb-4 text-destructive flex items-center gap-2">
-            <span className="w-2 h-2 rounded-full bg-destructive animate-pulse"></span>
-            فواتير تتطلب إجراء (قيد المراجعة أو غير مسددة بالكامل)
-          </h2>
-          <InvoicesTable invoices={actionRequiredInvoices} profile={profile} isActionRequired />
-        </div>
-      )}
-
-      {/* Normal Invoices Section */}
-      <div>
-        <h2 className="text-xl font-bold mb-4">قائمة الفواتير</h2>
-        <InvoicesTable invoices={invoices} profile={profile} />
-      </div>
+      <InvoicesTable invoices={invoices} profile={profile} isActionRequired={isActionRequired} />
     </div>
   );
 }
@@ -125,6 +151,12 @@ function InvoicesTable({ invoices, profile, isActionRequired = false }: { invoic
                 <span className={`px-2.5 py-0.5 rounded-full text-xs font-semibold ${invoice.status === 'approved' ? 'bg-primary/10 text-primary' : invoice.status === 'rejected' ? 'bg-destructive/10 text-destructive' : 'bg-secondary text-secondary-foreground'}`}>
                   {invoice.status === 'approved' ? 'معتمد' : invoice.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
                 </span>
+                {invoice.status === 'rejected' && invoice.rejection_reason && (
+                  <div className="flex items-start gap-1 mt-1.5 text-xs text-destructive max-w-[200px]">
+                    <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                    <span className="line-clamp-2">{invoice.rejection_reason}</span>
+                  </div>
+                )}
               </td>
               <td className="p-4 align-top font-medium whitespace-nowrap">{formatMoney(invoice.total)}</td>
               <td className="p-4 align-top text-green-700 whitespace-nowrap">

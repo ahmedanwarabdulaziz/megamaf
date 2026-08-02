@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
+import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
 import { logAudit } from '@/lib/audit';
 import { sendPushNotification } from '@/lib/notifications';
@@ -299,11 +300,14 @@ export async function revertClaimToPending(claimId: string) {
   }
 }
 
-export async function rejectClaim(claimId: string) {
+export async function rejectClaim(claimId: string, reason?: string) {
   try {
     const supabase = await createClient();
 
-    // Fetch the original submitter BEFORE the RPC deletes the claim
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) return { error: 'يرجى كتابة سبب الرفض' };
+
+    // Fetch the original submitter for the notification
     const { data: creationAudit } = await supabase
       .from('audit_log')
       .select('employee_id')
@@ -312,29 +316,88 @@ export async function rejectClaim(claimId: string) {
       .eq('action', 'create')
       .maybeSingle();
 
-    // The RPC now DELETES the claim (reverts to previous state) — no 'rejected' status
-    const { error } = await supabase.rpc('reject_claim', { p_claim_id: claimId });
+    // The claim stays in place (still 'pending') tagged with the rejection
+    // reason so the submitter can see it and correct the claim in place.
+    const { error } = await supabase.rpc('reject_claim', { p_claim_id: claimId, p_reason: trimmedReason });
     if (error) return { error: error.message };
 
     // Notify the original submitter
     if (creationAudit?.employee_id) {
       await sendPushNotification(
         [creationAudit.employee_id],
-        'تم رفض المستخلص وحذفه',
-        'تم رفض المستخلص الذي قدمته وحذفه — يمكنك إعادة تقديمه بعد التعديل',
+        'تم رفض المستخلص',
+        `تم رفض المستخلص الذي قدمته — السبب: ${trimmedReason}. يرجى التعديل وإعادة التقديم.`,
         '/claims',
         'claim_rejected'
       );
     }
 
     revalidatePath('/claims');
-    revalidatePath('/projects', 'layout'); // stock levels restored on delete
     return { success: true };
   } catch (e: any) {
     return { error: e.message || 'حدث خطأ' };
   }
 }
 
+export async function deleteClaim(claimId: string) {
+  try {
+    const supabase = await createClient();
+
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id, is_super_admin').eq('auth_user_id', userData.user?.id).single();
+    if (!emp) return { error: 'Employee not found' };
+
+    const { data: existing } = await supabase
+      .from('claims')
+      .select('status, project_id, party_id, claim_type, claim_number')
+      .eq('id', claimId)
+      .single();
+    if (!existing) return { error: 'المستخلص غير موجود' };
+    // Only a pending claim can be deleted — nothing has touched stock or the
+    // ledger yet (approve_claim is what deducts stock), so this is a clean
+    // removal. An approved claim must go through revert-to-pending first.
+    if (existing.status !== 'pending') return { error: 'لا يمكن حذف مستخلص معتمد — يجب إرجاعه لقيد المراجعة أولاً' };
+
+    const { data: hasAccess } = await supabase.rpc('has_project_access', { p_project_id: existing.project_id });
+    if (!hasAccess && !emp.is_super_admin) return { error: 'لا تملك صلاحية على هذا المشروع' };
+
+    // Safety: never delete anything but the LATEST claim for this vendor/
+    // project/type — an older claim may already be relied on by newer claims'
+    // previous_qty chain. In practice a pending claim is always the latest
+    // (creation blocks a second pending claim for the same group), but we
+    // check explicitly rather than assume it.
+    const { data: newerClaim } = await supabase
+      .from('claims')
+      .select('id')
+      .eq('party_id', existing.party_id)
+      .eq('project_id', existing.project_id)
+      .eq('claim_type', existing.claim_type)
+      .gt('claim_number', existing.claim_number)
+      .limit(1)
+      .maybeSingle();
+    if (newerClaim) return { error: 'لا يمكن حذف هذا المستخلص لوجود مستخلص أحدث منه لنفس الجهة والمشروع' };
+
+    const adminClient = createAdminClient();
+    await adminClient.from('attachments').delete().eq('entity_type', 'claim').eq('entity_id', claimId);
+
+    const { error } = await adminClient.from('claims').delete().eq('id', claimId);
+    if (error) return { error: error.message };
+
+    await logAudit({
+      employee_id: emp.id,
+      action: 'delete',
+      entity_type: 'claim',
+      entity_id: claimId,
+      before: existing,
+    });
+
+    revalidatePath('/claims');
+    revalidatePath('/projects', 'layout');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ' };
+  }
+}
 
 export async function updateClaim(claimId: string, formData: FormData, items: any[], attachmentUrls: string[]) {
   try {
@@ -386,8 +449,9 @@ export async function updateClaim(claimId: string, formData: FormData, items: an
       }
     }
 
-    // Update claim header
-    const headerUpdate: any = { claim_date, notes, tax_enabled, tax_rate };
+    // Update claim header. Clear any previous rejection note — it no longer
+    // applies once the claim has been edited.
+    const headerUpdate: any = { claim_date, notes, tax_enabled, tax_rate, rejection_reason: null };
     if (claim.claim_number === 0 && opening_paid_amount !== null) {
       headerUpdate.opening_paid_amount = opening_paid_amount;
     }

@@ -3,7 +3,7 @@ import { getProfile } from '@/lib/supabase/get-profile';
 import { notFound } from 'next/navigation';
 import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
-import { ArrowRight, Receipt, Phone, Building2, Calendar, CreditCard, Clock, FileText, Pencil } from 'lucide-react';
+import { ArrowRight, Receipt, Phone, Building2, Calendar, CreditCard, Clock, FileText, Pencil, AlertTriangle } from 'lucide-react';
 import { InvoiceApproveRejectButtons } from '@/components/invoices/approve-reject-buttons';
 import { DeleteInvoiceButton } from '@/components/invoices/delete-invoice-button';
 import { getBatchSignedUrls } from '@/lib/r2';
@@ -72,6 +72,17 @@ export default async function InvoiceDetailsPage({ params }: { params: Promise<{
           </span>
         </div>
       </div>
+
+      {isRejected && invoice.rejection_reason && (
+        <div className="flex gap-2 items-start bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-400 rounded-lg p-3 text-sm">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">سبب الرفض:</p>
+            <p>{invoice.rejection_reason}</p>
+            <p className="text-xs mt-1 opacity-80">يرجى تعديل الفاتورة وإعادة تقديمها للاعتماد.</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         {/* Info Cards */}

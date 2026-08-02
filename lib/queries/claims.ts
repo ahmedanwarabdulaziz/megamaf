@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 
 const CLAIM_COLUMNS = `
   id, claim_type, party_id, project_id, claim_number, claim_date, status,
-  tax_enabled, tax_rate, notes, opening_paid_amount,
+  tax_enabled, tax_rate, notes, opening_paid_amount, rejection_reason,
   project:projects(name)
 `;
 
@@ -139,7 +139,7 @@ export async function getClaim(id: string) {
     .from('claims')
     .select(`
       id, claim_type, party_id, project_id, claim_number, claim_date, status,
-      tax_enabled, tax_rate, notes, approved_at,
+      tax_enabled, tax_rate, notes, approved_at, rejection_reason,
       project:projects(name),
       items:claim_items(id, description, item_ref, unit, unit_price, previous_qty, current_qty, disbursement_pct, notes)
     `)

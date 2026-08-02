@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import Link from 'next/link';
-import { ArrowRight } from 'lucide-react';
+import { ArrowRight, AlertTriangle } from 'lucide-react';
 import { createClient } from '@/lib/supabase/server';
 import { formatMoney } from '@/lib/money';
 import { requirePageAccess } from '@/lib/require-page-access';
@@ -84,6 +84,17 @@ export default async function ViewClaimPage({ params }: { params: Promise<{ id: 
           <ArrowRight className="w-4 h-4" /> عودة للمستخلصات
         </Link>
       </div>
+
+      {claim.status === 'pending' && claim.rejection_reason && (
+        <div className="flex gap-2 items-start bg-red-500/10 border border-red-500/30 text-red-700 dark:text-red-400 rounded-lg p-3 text-sm">
+          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+          <div>
+            <p className="font-bold">سبب الرفض:</p>
+            <p>{claim.rejection_reason}</p>
+            <p className="text-xs mt-1 opacity-80">يرجى تعديل المستخلص وإعادة تقديمه للاعتماد.</p>
+          </div>
+        </div>
+      )}
 
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
         <div className="p-4 border-b bg-muted/30">

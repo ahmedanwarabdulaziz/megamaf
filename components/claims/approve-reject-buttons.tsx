@@ -7,6 +7,9 @@ import { approveClaim, rejectClaim, revertClaimToPending } from '@/lib/actions/c
 export function ClaimApproveRejectButtons({ claimId }: { claimId: string }) {
   const [isPending, startTransition] = useTransition();
   const [loading, setLoading] = useState(false);
+  const [showRejectModal, setShowRejectModal] = useState(false);
+  const [reason, setReason] = useState('');
+  const [error, setError] = useState('');
 
   function onApprove() {
     startTransition(async () => {
@@ -17,22 +20,29 @@ export function ClaimApproveRejectButtons({ claimId }: { claimId: string }) {
     });
   }
 
-  function onReject() {
-    if (!confirm('هل أنت متأكد من الرفض؟')) return;
+  function onConfirmReject() {
+    if (!reason.trim()) {
+      setError('يرجى كتابة سبب الرفض');
+      return;
+    }
     startTransition(async () => {
       setLoading(true);
-      const result = await rejectClaim(claimId);
-      if (result?.error) alert(result.error);
+      const result = await rejectClaim(claimId, reason);
+      if (result?.error) {
+        setError(result.error);
+      } else {
+        setShowRejectModal(false);
+      }
       setLoading(false);
     });
   }
 
   return (
     <div className="flex gap-2">
-      <Button 
-        size="sm" 
-        variant="default" 
-        className="bg-green-600 hover:bg-green-700" 
+      <Button
+        size="sm"
+        variant="default"
+        className="bg-green-600 hover:bg-green-700"
         onClick={onApprove}
         disabled={isPending || loading}
       >
@@ -41,11 +51,53 @@ export function ClaimApproveRejectButtons({ claimId }: { claimId: string }) {
       <Button
         size="sm"
         variant="destructive"
-        onClick={onReject}
+        onClick={() => { setShowRejectModal(true); setReason(''); setError(''); }}
         disabled={isPending || loading}
       >
         رفض
       </Button>
+
+      {showRejectModal && (
+        <div className="fixed inset-0 z-[60] flex items-end sm:items-center justify-center pb-16 sm:pb-0">
+          <div
+            className="fixed inset-0 bg-background/80 backdrop-blur-sm"
+            onClick={() => !loading && setShowRejectModal(false)}
+          />
+          <div className="relative z-[60] w-full max-w-md bg-card shadow-2xl rounded-t-2xl sm:rounded-xl border-t-4 sm:border-2 border-destructive p-4 sm:p-6 flex flex-col gap-3">
+            <h3 className="text-lg font-semibold">سبب رفض المستخلص</h3>
+            <p className="text-sm text-muted-foreground">
+              سيبقى المستخلص قيد المراجعة مع إظهار هذا السبب لمن قدّمه حتى يتمكن من تصحيحه وإعادة تقديمه.
+            </p>
+            <textarea
+              autoFocus
+              value={reason}
+              onChange={(e) => { setReason(e.target.value); setError(''); }}
+              rows={4}
+              placeholder="اكتب سبب الرفض هنا..."
+              className="w-full p-2 rounded-md border bg-background text-sm resize-none"
+            />
+            {error && <p className="text-sm text-destructive">{error}</p>}
+            <div className="flex justify-end gap-2 pt-2">
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={loading}
+                onClick={() => setShowRejectModal(false)}
+              >
+                إلغاء
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                disabled={loading}
+                onClick={onConfirmReject}
+              >
+                تأكيد الرفض
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,6 +1,6 @@
 import { Fragment } from 'react';
 import Link from 'next/link';
-import { Eye } from 'lucide-react';
+import { Eye, AlertTriangle } from 'lucide-react';
 import { getClaims } from '@/lib/queries/claims';
 import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
@@ -12,6 +12,7 @@ import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
 import { computeClaimFinancials, remainingLabel, remainingColorClass } from '@/lib/claim-financials';
 import { ClaimApproveRejectButtons, RevertClaimToPendingButton } from '@/components/claims/approve-reject-buttons';
+import { DeleteClaimButton } from '@/components/claims/delete-claim-button';
 import { ClaimHistory } from '@/components/claims/claim-history';
 import { ClaimsFilters } from '@/components/claims/claims-filters';
 import { CollectedPaymentsTrigger, type PaymentRecord } from '@/components/claims/collected-payments-modal';
@@ -253,6 +254,12 @@ export default async function ClaimsPage({
                           }`}>
                             {claim.status === 'approved' ? 'معتمد' : claim.status === 'rejected' ? 'مرفوض' : 'قيد المراجعة'}
                           </span>
+                          {claim.status === 'pending' && (claim as any).rejection_reason && (
+                            <div className="flex items-start gap-1 mt-1.5 text-xs text-destructive max-w-[200px]">
+                              <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                              <span className="line-clamp-2">{(claim as any).rejection_reason}</span>
+                            </div>
+                          )}
                         </td>
                         <td className="p-3 font-semibold whitespace-nowrap">{formatMoney(fin.grossTotal)}</td>
                         <td className="p-3 text-amber-600 whitespace-nowrap">{fin.retained > 0 ? formatMoney(fin.retained) : '-'}</td>
@@ -299,6 +306,9 @@ export default async function ClaimsPage({
                               >
                                 ✏️ تعديل
                               </Link>
+                            )}
+                            {claim.status === 'pending' && claim.claim_number !== 0 && (
+                              <DeleteClaimButton claimId={claim.id} />
                             )}
                             {claim.status === 'pending' && (profile.can_approve || profile.is_super_admin) && (
                               <ClaimApproveRejectButtons claimId={claim.id} />

@@ -6094,3 +6094,86 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql SECURITY DEFINER;
 
+-- ============================================================
+-- FILE: 20260802120000_rejection_notes_invoices_claims.sql
+-- ============================================================
+ALTER TABLE public.invoices
+  ADD COLUMN IF NOT EXISTS rejection_reason text;
+
+CREATE OR REPLACE FUNCTION public.reject_invoice(p_invoice_id uuid, p_reason text DEFAULT NULL)
+RETURNS void AS $$
+DECLARE
+  v_status text;
+  v_project_id uuid;
+BEGIN
+  SELECT status, project_id INTO v_status, v_project_id FROM public.invoices WHERE id = p_invoice_id;
+  IF NOT FOUND THEN RAISE EXCEPTION 'Invoice not found'; END IF;
+
+  IF NOT (SELECT can_approve FROM public.employees WHERE id = public.current_employee_id()) AND NOT public.is_super_admin() THEN
+    RAISE EXCEPTION 'Not authorized to reject invoices';
+  END IF;
+
+  IF NOT public.has_project_access(v_project_id) AND NOT public.is_super_admin() THEN
+    RAISE EXCEPTION 'Not authorized on this project';
+  END IF;
+
+  IF v_status != 'pending' THEN
+    RAISE EXCEPTION 'Invoice is not pending';
+  END IF;
+
+  UPDATE public.invoices
+  SET status = 'rejected', rejection_reason = p_reason
+  WHERE id = p_invoice_id;
+
+  INSERT INTO public.audit_log (employee_id, action, entity_type, entity_id, after)
+  VALUES (public.current_employee_id(), 'reject', 'invoice', p_invoice_id, jsonb_build_object('status', 'rejected', 'rejection_reason', p_reason));
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+ALTER TABLE public.claims
+  ADD COLUMN IF NOT EXISTS rejection_reason text;
+
+CREATE OR REPLACE FUNCTION public.reject_claim(p_claim_id uuid, p_reason text DEFAULT NULL)
+RETURNS void AS $$
+DECLARE
+  v_status     text;
+  v_project_id uuid;
+BEGIN
+  SELECT status, project_id
+    INTO v_status, v_project_id
+    FROM public.claims
+   WHERE id = p_claim_id;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Claim not found';
+  END IF;
+
+  IF NOT (
+    SELECT can_approve FROM public.employees WHERE id = public.current_employee_id()
+  ) AND NOT public.is_super_admin() THEN
+    RAISE EXCEPTION 'Not authorized to reject claims';
+  END IF;
+
+  IF NOT public.has_project_access(v_project_id) AND NOT public.is_super_admin() THEN
+    RAISE EXCEPTION 'Not authorized on this project';
+  END IF;
+
+  IF v_status != 'pending' THEN
+    RAISE EXCEPTION 'Only pending claims can be rejected';
+  END IF;
+
+  UPDATE public.claims
+  SET rejection_reason = p_reason
+  WHERE id = p_claim_id;
+
+  INSERT INTO public.audit_log (employee_id, action, entity_type, entity_id, after)
+  VALUES (
+    public.current_employee_id(),
+    'reject',
+    'claim',
+    p_claim_id,
+    jsonb_build_object('rejection_reason', p_reason)
+  );
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
