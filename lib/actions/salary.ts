@@ -274,6 +274,31 @@ export async function addEmployeeToPayrollRun(formData: FormData) {
   }
 }
 
+export async function addEmployeesToPayrollRun(formData: FormData) {
+  try {
+    const supabase = await createClient();
+    const run_id = formData.get('run_id') as string;
+    const employee_ids = formData.getAll('employee_ids[]') as string[];
+    if (!run_id) return { error: 'الدورة غير محددة' };
+    if (!employee_ids.length) return { error: 'يجب اختيار موظف واحد على الأقل' };
+
+    const results = await Promise.all(
+      employee_ids.map(emp_id =>
+        supabase.rpc('add_employee_to_payroll_run', { p_run_id: run_id, p_employee_id: emp_id })
+      )
+    );
+
+    const failed = results.filter(r => r.error);
+    if (failed.length) return { error: failed[0].error!.message };
+
+    revalidatePath(`/salary/runs/${run_id}`);
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ غير متوقع' };
+  }
+}
+
+
 export async function removePayslipFromRun(formData: FormData) {
   try {
     const supabase = await createClient();
