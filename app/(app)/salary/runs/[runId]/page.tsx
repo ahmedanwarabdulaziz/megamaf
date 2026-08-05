@@ -9,6 +9,7 @@ import { AddEmployeeToRunModal } from '@/components/salary/add-employee-to-run-m
 import { PayslipDetailModal } from '@/components/salary/payslip-detail-modal';
 import { RemovePayslipButton } from '@/components/salary/remove-payslip-button';
 import { getProjects } from '@/lib/queries/projects';
+import { AlertTriangle, FolderKanban } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -73,6 +74,12 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
     allocationsByPayslip.get(a.payslip_id)!.push(a);
   }
 
+  // Payslips with no project allocations need to be flagged
+  const unallocatedPayslipIds = new Set(
+    (payslips || []).filter((p: any) => !allocationsByPayslip.has(p.id)).map((p: any) => p.id)
+  );
+  const unallocatedCount = unallocatedPayslipIds.size;
+
   // Loan deductions are only actually applied at approval time — while a run
   // is still draft this is an ESTIMATE (pending installments due this period)
   // so admins can see it will be deducted before they approve, not a promise
@@ -114,6 +121,23 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
         )}
       </div>
 
+      {/* Unallocated warning banner */}
+      {unallocatedCount > 0 && (
+        <div className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 rounded-lg p-4">
+          <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+              {unallocatedCount === 1
+                ? 'موظف واحد لم يتم توزيع راتبه على المشاريع'
+                : `${unallocatedCount} موظفين لم يتم توزيع رواتبهم على المشاريع`}
+            </p>
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+              الصفوف المميزة باللون الأصفر تحتاج إلى توزيع — افتح تفاصيل القسيمة لإضافة التوزيع.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-right">
@@ -128,6 +152,7 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
                 <th className="p-3 font-medium">المدفوع</th>
                 <th className="p-3 font-medium">المتبقي</th>
                 <th className="p-3 font-medium">الحالة</th>
+                <th className="p-3 font-medium">التوزيع</th>
                 <th className="p-3 font-medium"></th>
               </tr>
             </thead>
@@ -148,8 +173,11 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
                   const paidSoFar = paidByPayslip.get(p.id) || 0;
                   const remaining = computePayslipRemaining({ netAmount: displayNet, paidAmount: paidSoFar });
 
+                  const isUnallocated = unallocatedPayslipIds.has(p.id);
+                  const allocationCount = (allocationsByPayslip.get(p.id) || []).length;
+
                   return (
-                    <tr key={p.id} className="hover:bg-muted/30 transition-colors">
+                    <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${isUnallocated ? 'border-r-4 border-r-amber-400 bg-amber-50/30 dark:bg-amber-950/10' : ''}`}>
                       <td className="p-3">
                         <PayslipDetailModal
                           payslip={{
@@ -196,6 +224,19 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
                       <td className="p-3 font-medium">{remaining > 0.01 ? formatMoney(remaining) : '-'}</td>
                       <td className="p-3">
                         <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${STATUS_BADGE[p.status]}`}>{payslipStatusLabel(p.status)}</span>
+                      </td>
+                      <td className="p-3">
+                        {isUnallocated ? (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300 whitespace-nowrap">
+                            <AlertTriangle className="w-3 h-3" />
+                            غير موزع
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300 whitespace-nowrap">
+                            <FolderKanban className="w-3 h-3" />
+                            {allocationCount} {allocationCount === 1 ? 'مشروع' : 'مشاريع'}
+                          </span>
+                        )}
                       </td>
                       <td className="p-3">
                         {p.status === 'approved' && remaining > 0.01 && (
