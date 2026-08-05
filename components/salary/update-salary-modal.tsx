@@ -26,10 +26,15 @@ export function UpdateSalaryModal({ employeeId, employeeName, currentAmount, has
 
   useEffect(() => { setMounted(true); }, []);
 
+  function localToday() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
   function handleOpen() {
     // Pre-fill with current salary value
     setBaseAmount(currentAmount != null ? String(currentAmount) : '');
-    setEffectiveFrom(new Date().toISOString().split('T')[0]);
+    setEffectiveFrom(localToday());
     setIsOpen(true);
   }
 

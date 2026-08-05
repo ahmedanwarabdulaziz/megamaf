@@ -20,7 +20,9 @@ export function SalaryForm({
   const router = useRouter();
   const [employeeId, setEmployeeId] = useState(fixedEmployeeId || '');
   const [baseAmount, setBaseAmount] = useState('');
-  const [effectiveFrom, setEffectiveFrom] = useState(new Date().toISOString().split('T')[0]);
+  const d = new Date();
+  const localToday = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const [effectiveFrom, setEffectiveFrom] = useState(localToday);
   const [loading, setLoading] = useState(false);
   const submittingRef = useRef(false);
 
