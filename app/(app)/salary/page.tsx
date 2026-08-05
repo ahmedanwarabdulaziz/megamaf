@@ -4,6 +4,7 @@ import { requirePageAccess } from '@/lib/require-page-access';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
 import { AddPayrollOnlyModal } from '@/components/salary/add-payroll-only-modal';
+import { UpdateSalaryModal } from '@/components/salary/update-salary-modal';
 
 export const dynamic = 'force-dynamic';
 
@@ -68,9 +69,12 @@ export default async function SalaryPage() {
                       </td>
                       <td className="p-3 font-semibold whitespace-nowrap">{salary ? formatMoney(salary.base_amount) : '—'}</td>
                       <td className="p-3 text-left">
-                        <Link href={`/salary/create?employee_id=${emp.id}`} className="text-xs font-semibold text-primary hover:underline whitespace-nowrap">
-                          {salary ? 'تحديث الراتب' : 'تحديد الراتب'}
-                        </Link>
+                        <UpdateSalaryModal
+                          employeeId={emp.id}
+                          employeeName={emp.full_name}
+                          currentAmount={salary ? Number(salary.base_amount) : null}
+                          hasExisting={!!salary}
+                        />
                       </td>
                     </tr>
                   );
