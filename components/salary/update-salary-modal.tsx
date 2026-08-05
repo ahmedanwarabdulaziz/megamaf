@@ -33,9 +33,11 @@ export function UpdateSalaryModal({ employeeId, employeeName, currentAmount, cur
   }
 
   function handleOpen() {
-    // Pre-fill with current salary value and its original effective_from date
+    // Pre-fill amount from current salary
     setBaseAmount(currentAmount != null ? String(currentAmount) : '');
-    setEffectiveFrom(currentEffectiveFrom || localToday());
+    // effective_from for the NEW salary record must be >= today
+    // (using the old date would make effective_to < effective_from on the closing record)
+    setEffectiveFrom(localToday());
     setIsOpen(true);
   }
 
@@ -90,11 +92,17 @@ export function UpdateSalaryModal({ employeeId, employeeName, currentAmount, cur
 
             <form onSubmit={handleSubmit} className="p-5 space-y-4">
               {hasExisting && currentAmount != null && (
-                <div className="flex items-center gap-2 bg-muted/50 rounded-lg p-3 text-sm">
-                  <span className="text-muted-foreground">الراتب الحالي:</span>
-                  <span className="font-bold text-foreground">
-                    {currentAmount.toLocaleString('ar-EG')} ج.م
-                  </span>
+                <div className="bg-muted/50 rounded-lg p-3 text-sm space-y-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">الراتب الحالي:</span>
+                    <span className="font-bold text-foreground">{currentAmount.toLocaleString('ar-EG')} ج.م</span>
+                  </div>
+                  {currentEffectiveFrom && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">ساري منذ:</span>
+                      <span className="font-medium text-foreground">{currentEffectiveFrom}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
