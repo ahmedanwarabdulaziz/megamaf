@@ -60,54 +60,7 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
     run(() => deleteItemCategory(fd));
   }
 
-  function NameRow({ cat, isMain }: { cat: Category; isMain: boolean }) {
-    const isEditing = editingId === cat.id;
-    return (
-      <div className="flex items-center gap-2 flex-1 min-w-0">
-        {isMain
-          ? <FolderOpen className="w-4 h-4 text-primary flex-shrink-0" />
-          : <Tag className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />}
-        {isEditing ? (
-          <>
-            <input
-              autoFocus
-              value={editingName}
-              onChange={e => setEditingName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveRename(cat.id); } if (e.key === 'Escape') setEditingId(null); }}
-              className="flex-1 min-w-0 p-1.5 rounded border bg-background text-sm"
-            />
-            <button type="button" onClick={() => saveRename(cat.id)} disabled={pending} className="text-green-600 hover:text-green-700 p-1">
-              <Check className="w-4 h-4" />
-            </button>
-            <button type="button" onClick={() => setEditingId(null)} className="text-muted-foreground hover:text-foreground p-1">
-              <X className="w-4 h-4" />
-            </button>
-          </>
-        ) : (
-          <>
-            <span className={`flex-1 truncate ${isMain ? 'font-bold' : ''}`}>{cat.name}</span>
-            <button
-              type="button"
-              title="إعادة تسمية"
-              onClick={() => { setEditingId(cat.id); setEditingName(cat.name); }}
-              className="text-muted-foreground hover:text-primary p-1 transition-colors"
-            >
-              <Pencil className="w-3.5 h-3.5" />
-            </button>
-            <button
-              type="button"
-              title="حذف"
-              onClick={() => remove(cat.id, cat.name)}
-              disabled={pending}
-              className="text-muted-foreground hover:text-destructive p-1 transition-colors"
-            >
-              <Trash2 className="w-3.5 h-3.5" />
-            </button>
-          </>
-        )}
-      </div>
-    );
-  }
+  // NameRow inlined to prevent unmounting on every keystroke
 
   return (
     <div className="space-y-6">
@@ -139,12 +92,92 @@ export function CategoriesManager({ categories }: { categories: Category[] }) {
         {mains.map(main => (
           <div key={main.id} className="bg-card rounded-lg border shadow-sm overflow-hidden">
             <div className="flex items-center gap-2 p-3 bg-muted/40 border-b">
-              <NameRow cat={main} isMain />
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <FolderOpen className="w-4 h-4 text-primary flex-shrink-0" />
+                {editingId === main.id ? (
+                  <>
+                    <input
+                      autoFocus
+                      value={editingName}
+                      onChange={e => setEditingName(e.target.value)}
+                      onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveRename(main.id); } if (e.key === 'Escape') setEditingId(null); }}
+                      className="flex-1 min-w-0 p-1.5 rounded border bg-background text-sm"
+                    />
+                    <button type="button" onClick={() => saveRename(main.id)} disabled={pending} className="text-green-600 hover:text-green-700 p-1">
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button type="button" onClick={() => setEditingId(null)} className="text-muted-foreground hover:text-foreground p-1">
+                      <X className="w-4 h-4" />
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="flex-1 truncate font-bold">{main.name}</span>
+                    <button
+                      type="button"
+                      title="إعادة تسمية"
+                      onClick={() => { setEditingId(main.id); setEditingName(main.name); }}
+                      className="text-muted-foreground hover:text-primary p-1 transition-colors"
+                    >
+                      <Pencil className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      type="button"
+                      title="حذف"
+                      onClick={() => remove(main.id, main.name)}
+                      disabled={pending}
+                      className="text-muted-foreground hover:text-destructive p-1 transition-colors"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </>
+                )}
+              </div>
             </div>
             <div className="divide-y divide-border/60">
               {subsOf(main.id).map(sub => (
                 <div key={sub.id} className="flex items-center gap-2 py-2 pr-8 pl-3 text-sm hover:bg-muted/20">
-                  <NameRow cat={sub} isMain={false} />
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <Tag className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    {editingId === sub.id ? (
+                      <>
+                        <input
+                          autoFocus
+                          value={editingName}
+                          onChange={e => setEditingName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); saveRename(sub.id); } if (e.key === 'Escape') setEditingId(null); }}
+                          className="flex-1 min-w-0 p-1.5 rounded border bg-background text-sm"
+                        />
+                        <button type="button" onClick={() => saveRename(sub.id)} disabled={pending} className="text-green-600 hover:text-green-700 p-1">
+                          <Check className="w-4 h-4" />
+                        </button>
+                        <button type="button" onClick={() => setEditingId(null)} className="text-muted-foreground hover:text-foreground p-1">
+                          <X className="w-4 h-4" />
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <span className="flex-1 truncate">{sub.name}</span>
+                        <button
+                          type="button"
+                          title="إعادة تسمية"
+                          onClick={() => { setEditingId(sub.id); setEditingName(sub.name); }}
+                          className="text-muted-foreground hover:text-primary p-1 transition-colors"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          title="حذف"
+                          onClick={() => remove(sub.id, sub.name)}
+                          disabled={pending}
+                          className="text-muted-foreground hover:text-destructive p-1 transition-colors"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+                  </div>
                 </div>
               ))}
               {/* Add sub-category */}
