@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Link from 'next/link';
-import { X, ExternalLink } from 'lucide-react';
+import { X, ExternalLink, ChevronRight, ChevronLeft } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { payslipStatusLabel } from '@/lib/salary-financials';
 import { PayslipComponentForm } from '@/components/salary/payslip-component-form';
@@ -39,16 +39,34 @@ export function PayslipDetailModal({
   components,
   allocations,
   projects,
+  prevPayslipId,
+  nextPayslipId,
 }: {
   payslip: Payslip;
   components: Component[];
   allocations: AllocationRow[];
   projects: Project[];
+  prevPayslipId?: string;
+  nextPayslipId?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => { setMounted(true); }, []);
+
+  useEffect(() => {
+    function handleOpenEvent(e: Event) {
+      const ce = e as CustomEvent;
+      if (ce.detail === payslip.id) setIsOpen(true);
+      else setIsOpen(false);
+    }
+    window.addEventListener('open-payslip-modal', handleOpenEvent);
+    return () => window.removeEventListener('open-payslip-modal', handleOpenEvent);
+  }, [payslip.id]);
+
+  function navigateTo(id: string) {
+    window.dispatchEvent(new CustomEvent('open-payslip-modal', { detail: id }));
+  }
 
   const isDraft = payslip.status === 'draft';
 
@@ -60,14 +78,14 @@ export function PayslipDetailModal({
             onClick={e => e.stopPropagation()}
           >
             {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-border relative">
               <div className="flex items-center gap-3">
                 <h2 className="text-lg font-bold">{payslip.employeeName}</h2>
                 <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${STATUS_BADGE[payslip.status]}`}>
                   {payslipStatusLabel(payslip.status)}
                 </span>
               </div>
-              <button onClick={() => setIsOpen(false)} className="rounded-full p-1.5 hover:bg-muted transition-colors text-muted-foreground">
+              <button onClick={() => setIsOpen(false)} className="rounded-full p-1.5 hover:bg-muted transition-colors text-muted-foreground z-10">
                 <X className="w-5 h-5" />
               </button>
             </div>
@@ -181,6 +199,26 @@ export function PayslipDetailModal({
               </Link>
             </div>
           </div>
+          
+          {/* Navigation Arrows */}
+          {prevPayslipId && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); navigateTo(prevPayslipId); }}
+              className="absolute right-4 md:right-10 top-1/2 -translate-y-1/2 p-4 bg-background/80 hover:bg-background border shadow-lg rounded-full backdrop-blur transition-all text-muted-foreground hover:text-foreground z-[110]"
+              title="السابق"
+            >
+              <ChevronRight className="w-8 h-8" />
+            </button>
+          )}
+          {nextPayslipId && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); navigateTo(nextPayslipId); }}
+              className="absolute left-4 md:left-10 top-1/2 -translate-y-1/2 p-4 bg-background/80 hover:bg-background border shadow-lg rounded-full backdrop-blur transition-all text-muted-foreground hover:text-foreground z-[110]"
+              title="التالي"
+            >
+              <ChevronLeft className="w-8 h-8" />
+            </button>
+          )}
         </div>,
         document.body
       )

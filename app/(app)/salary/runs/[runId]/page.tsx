@@ -162,8 +162,10 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
                   <td colSpan={10} className="p-8 text-center text-muted-foreground">لا توجد قسائم رواتب</td>
                 </tr>
               ) : (
-                (payslips || []).map((p: any) => {
+                (payslips || []).map((p: any, i: number, arr: any[]) => {
                   const isDraft = p.status === 'draft';
+                  const prevPayslipId = i > 0 ? arr[i - 1].id : undefined;
+                  const nextPayslipId = i < arr.length - 1 ? arr[i + 1].id : undefined;
                   const estimatedLoanDeduction = estimatedLoanByEmployee.get(p.employee_id) || 0;
                   const loanDisplay = isDraft ? estimatedLoanDeduction : Number(p.loan_deduction_total);
                   // While draft, net_amount doesn't reflect loans yet (that's only
@@ -203,6 +205,8 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
                             allocated_amount: Number(a.allocated_amount),
                           }))}
                           projects={projectList}
+                          prevPayslipId={prevPayslipId}
+                          nextPayslipId={nextPayslipId}
                         />
                       </td>
                       <td className="p-3">{formatMoney(p.base_amount)}</td>
