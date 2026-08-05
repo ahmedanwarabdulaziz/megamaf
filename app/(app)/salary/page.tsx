@@ -73,6 +73,7 @@ export default async function SalaryPage() {
                           employeeId={emp.id}
                           employeeName={emp.full_name}
                           currentAmount={salary ? Number(salary.base_amount) : null}
+                          currentEffectiveFrom={salary?.effective_from ?? null}
                           hasExisting={!!salary}
                         />
                       </td>

@@ -11,10 +11,11 @@ type Props = {
   employeeId: string;
   employeeName: string;
   currentAmount?: number | null;
+  currentEffectiveFrom?: string | null;
   hasExisting: boolean;
 };
 
-export function UpdateSalaryModal({ employeeId, employeeName, currentAmount, hasExisting }: Props) {
+export function UpdateSalaryModal({ employeeId, employeeName, currentAmount, currentEffectiveFrom, hasExisting }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -32,9 +33,9 @@ export function UpdateSalaryModal({ employeeId, employeeName, currentAmount, has
   }
 
   function handleOpen() {
-    // Pre-fill with current salary value
+    // Pre-fill with current salary value and its original effective_from date
     setBaseAmount(currentAmount != null ? String(currentAmount) : '');
-    setEffectiveFrom(localToday());
+    setEffectiveFrom(currentEffectiveFrom || localToday());
     setIsOpen(true);
   }
 
