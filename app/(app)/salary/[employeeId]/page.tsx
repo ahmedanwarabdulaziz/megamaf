@@ -17,7 +17,7 @@ export default async function EmployeeSalaryPage({ params }: { params: Promise<{
   const { employeeId } = await params;
   const supabase = await createClient();
 
-  const [{ data: employee }, { data: salaries }, { data: bankAccounts }, { data: employees }, loanSummary] = await Promise.all([
+  const [{ data: employee }, { data: salaries }, { data: bankAccounts }, { data: employees }, loanSummary, { data: earliestOpenLoanDate }] = await Promise.all([
     supabase.from('employees').select('id, full_name, employment_type').eq('id', employeeId).single(),
     supabase
       .from('employee_salaries')
@@ -27,6 +27,7 @@ export default async function EmployeeSalaryPage({ params }: { params: Promise<{
     supabase.from('v_bank_account_balances').select('*').order('account_name'),
     supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name'),
     getEmployeeLoanSummary(employeeId),
+    supabase.rpc('get_earliest_open_payroll_date'),
   ]);
 
   if (!employee) notFound();
@@ -102,7 +103,7 @@ export default async function EmployeeSalaryPage({ params }: { params: Promise<{
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
         <div className="p-4 border-b bg-muted/30 flex justify-between items-center">
           <h3 className="font-bold">السلف</h3>
-          <DisburseLoanModal employeeId={employee.id} bankAccounts={bankAccounts || []} employees={employees || []} />
+          <DisburseLoanModal employeeId={employee.id} bankAccounts={bankAccounts || []} employees={employees || []} minLoanDate={earliestOpenLoanDate || null} />
         </div>
         {loans.length === 0 ? (
           <p className="p-4 text-sm text-muted-foreground">لا توجد سلف</p>
@@ -114,7 +115,14 @@ export default async function EmployeeSalaryPage({ params }: { params: Promise<{
                 <Link key={l.loan.id} href={`/salary/loans/${l.loan.id}`} className="flex justify-between items-center p-3 hover:bg-muted/30 transition-colors">
                   <div>
                     <div className="font-medium">{formatMoney(l.loan.principal_amount)}</div>
-                    <div className="text-xs text-muted-foreground">{new Date(l.loan.disbursed_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })} — {loanStatusLabel(l.loan.status)}</div>
+                    <div className="text-xs text-muted-foreground mt-0.5">
+                      {new Date(l.loan.disbursed_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })} — {loanStatusLabel(l.loan.status)}
+                    </div>
+                    <div className="text-[11px] text-muted-foreground/80 mt-1">
+                      المصدر: {l.loan.funding_source === 'bank' 
+                        ? (bankAccounts?.find((b: any) => b.bank_account_id === l.loan.bank_account_id)?.account_name || 'خزينة / بنك')
+                        : `عهدة ${(employees?.find((e: any) => e.id === l.loan.funding_employee_id)?.full_name || 'موظف')}`}
+                    </div>
                   </div>
                   <div className="text-left">
                     <div className={`font-bold ${loanRemainingColorClass(fin.remaining)}`}>{formatMoney(fin.remaining)}</div>

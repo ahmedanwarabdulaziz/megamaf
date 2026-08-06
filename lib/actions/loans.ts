@@ -85,7 +85,7 @@ export async function disburseLoan(formData: FormData) {
     if (d.funding_source === 'bank') {
       if (!d.bank_account_id) return { error: 'يجب اختيار الحساب البنكي' };
 
-      const { data, error } = await supabase.rpc('disburse_loan', {
+      const { data, error } = await supabase.rpc('request_loan_from_bank', {
         p_employee_id: d.employee_id,
         p_bank_account_id: d.bank_account_id,
         p_amount: d.amount,
@@ -98,7 +98,8 @@ export async function disburseLoan(formData: FormData) {
       if (error) return { error: error.message };
 
       revalidatePath(`/salary/${d.employee_id}`);
-      return { success: true, id: data as string };
+      revalidatePath('/expenses/approvals');
+      return { success: true, id: data as string, pending: true };
     } else {
       if (!d.funding_employee_id) {
         return { error: 'يجب اختيار الموظف صاحب العهدة' };

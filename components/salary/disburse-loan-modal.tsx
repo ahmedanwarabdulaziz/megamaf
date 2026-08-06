@@ -16,10 +16,12 @@ export function DisburseLoanModal({
   employeeId,
   bankAccounts,
   employees,
+  minLoanDate,
 }: {
   employeeId: string;
   bankAccounts: BankAccount[];
   employees: Employee[];
+  minLoanDate?: string | null;
 }) {
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -58,9 +60,14 @@ export function DisburseLoanModal({
       alert('يجب اختيار الحساب البنكي');
       return;
     }
+    const formData = new FormData(e.currentTarget);
+    const selectedDate = formData.get('date') as string;
+    if (minLoanDate && selectedDate < minLoanDate) {
+      alert(`لا يمكن تسجيل سلفة بتاريخ ضمن شهر رواتب معتمد أو منتهٍ. أقرب تاريخ متاح هو ${minLoanDate}`);
+      return;
+    }
     submittingRef.current = true;
     setLoading(true);
-    const formData = new FormData(e.currentTarget);
     formData.set('employee_id', employeeId);
     formData.set('repayment_type', repaymentType);
     formData.set('amount', String(amount));
@@ -83,7 +90,7 @@ export function DisburseLoanModal({
       } else {
         setIsOpen(false);
         if ((result as any).pending) {
-          alert('تم إرسال طلب السلفة — بانتظار اعتماد المصروف من عهدة الموظف المحدد.');
+          alert('تم إرسال طلب السلفة — بانتظار الاعتماد من شاشة اعتمادات المصروفات.');
         }
         router.refresh();
       }
@@ -103,7 +110,24 @@ export function DisburseLoanModal({
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium mb-1">تاريخ الصرف</label>
-                <input required type="date" name="date" autoComplete="off" defaultValue={new Date().toISOString().split('T')[0]} className="w-full p-2 rounded border bg-background" />
+                <input
+                  required
+                  type="date"
+                  name="date"
+                  autoComplete="off"
+                  min={minLoanDate || undefined}
+                  defaultValue={
+                    minLoanDate && minLoanDate > new Date().toISOString().split('T')[0]
+                      ? minLoanDate
+                      : new Date().toISOString().split('T')[0]
+                  }
+                  className="w-full p-2 rounded border bg-background"
+                />
+                {minLoanDate && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    لا يمكن اختيار تاريخ قبل {minLoanDate} (شهور الرواتب المعتمدة أو المنتهية مغلقة)
+                  </p>
+                )}
               </div>
 
               <div>
@@ -137,17 +161,22 @@ export function DisburseLoanModal({
               </div>
 
               {fundingSource === 'bank' ? (
-                <div>
-                  <label className="block text-sm font-medium mb-1">الحساب البنكي</label>
-                  <select required value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className="w-full p-2 rounded border bg-background">
-                    <option value="">-- اختر الحساب البنكي --</option>
-                    {bankAccounts.map(b => (
-                      <option key={b.bank_account_id} value={b.bank_account_id}>
-                        {b.bank_name} - {b.account_name} ({formatMoney(b.current_balance)})
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <>
+                  <div>
+                    <label className="block text-sm font-medium mb-1">الحساب البنكي</label>
+                    <select required value={bankAccountId} onChange={e => setBankAccountId(e.target.value)} className="w-full p-2 rounded border bg-background">
+                      <option value="">-- اختر الحساب البنكي --</option>
+                      {bankAccounts.map(b => (
+                        <option key={b.bank_account_id} value={b.bank_account_id}>
+                          {b.bank_name} - {b.account_name} ({formatMoney(b.current_balance)})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    سيتم تسجيل هذا المبلغ كمصروف "سلفة من الراتب" بانتظار الاعتماد. ستُصرف السلفة وتُخصم من البنك فعلياً بعد اعتماد المصروف من صفحة اعتمادات المصروفات.
+                  </p>
+                </>
               ) : (
                 <>
                   <div>

@@ -34,12 +34,18 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ loa
   const supabase = await createClient();
 
   const [{ data: loan }, { data: installments }, { data: repayments }] = await Promise.all([
-    supabase.from('employee_loans').select('*, employees(id, full_name)').eq('id', loanId).single(),
+    supabase.from('employee_loans').select('*').eq('id', loanId).single(),
     supabase.from('loan_installments').select('*').eq('loan_id', loanId).order('due_date'),
     supabase.from('loan_repayments').select('*').eq('loan_id', loanId).order('repayment_date', { ascending: false }),
   ]);
 
   if (!loan) notFound();
+
+  const { data: employee } = await supabase.from('employees').select('id, full_name').eq('id', loan.employee_id).single();
+  loan.employees = employee;
+
+  const { data: bankAccount } = loan.bank_account_id ? await supabase.from('bank_accounts').select('account_name').eq('id', loan.bank_account_id).single() : { data: null };
+  const { data: fundingEmployee } = loan.funding_employee_id ? await supabase.from('employees').select('full_name').eq('id', loan.funding_employee_id).single() : { data: null };
 
   const totalRepaid = (installments || []).reduce((sum: number, i: any) => sum + Number(i.paid_amount || 0), 0);
   const fin = computeLoanFinancials({ principalAmount: Number(loan.principal_amount), totalRepaid });
@@ -65,6 +71,14 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ loa
       <div className="bg-card p-4 rounded-lg border shadow-sm space-y-2 text-sm">
         <div className="flex justify-between"><span className="text-muted-foreground">المبلغ الأصلي:</span><span className="font-bold text-primary">{formatMoney(loan.principal_amount)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">تاريخ الصرف:</span><span className="font-medium">{new Date(loan.disbursed_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span></div>
+        <div className="flex justify-between">
+          <span className="text-muted-foreground">المصدر:</span>
+          <span className="font-medium">
+            {loan.funding_source === 'bank' 
+              ? (bankAccount?.account_name || 'خزينة / بنك') 
+              : `عهدة ${fundingEmployee?.full_name || 'موظف'}`}
+          </span>
+        </div>
         <div className="flex justify-between"><span className="text-muted-foreground">طريقة السداد:</span><span className="font-medium">{REPAYMENT_TYPE_LABELS[loan.repayment_type]}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">الحالة:</span><span className="font-medium">{loanStatusLabel(loan.status)}</span></div>
         <div className="flex justify-between border-t pt-2">
