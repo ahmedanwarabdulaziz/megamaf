@@ -29,7 +29,10 @@ export default async function ExpenseApprovalsPage({
 
   const startDate = start_date || defaultStart;
   const endDate = end_date || defaultEnd;
-  const isShowAll = show_all === 'true';
+  // Default to showing all dates when the page loads with no filters at
+  // all. Once the user explicitly picks a date range (or checks "show all"),
+  // that choice is respected via the query params.
+  const isShowAll = show_all === 'true' || (show_all === undefined && !start_date && !end_date);
 
   const [categories, projects] = await Promise.all([
     getExpenseCategories(),
