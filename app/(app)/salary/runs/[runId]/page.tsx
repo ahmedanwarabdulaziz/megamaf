@@ -80,6 +80,12 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
   );
   const unallocatedCount = unallocatedPayslipIds.size;
 
+  // Payslips whose loan installment couldn't be fully deducted this run
+  // (net pay too low to cover it) — the shortfall rolls forward silently
+  // to a future run unless flagged here.
+  const shortfallPayslips = (payslips || []).filter((p: any) => Number(p.loan_shortfall_amount || 0) > 0.01);
+  const shortfallCount = shortfallPayslips.length;
+
   // Loan deductions are only actually applied at approval time — while a run
   // is still draft this is an ESTIMATE (pending installments due this period)
   // so admins can see it will be deducted before they approve, not a promise
@@ -133,6 +139,23 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
             </p>
             <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
               الصفوف المميزة باللون الأصفر تحتاج إلى توزيع — افتح تفاصيل القسيمة لإضافة التوزيع.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Loan deduction shortfall warning banner */}
+      {shortfallCount > 0 && (
+        <div className="flex items-start gap-3 bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-700 rounded-lg p-4">
+          <AlertTriangle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-semibold text-red-800 dark:text-red-300">
+              {shortfallCount === 1
+                ? 'موظف واحد لم يُخصم قسط سلفته بالكامل هذه الدورة'
+                : `${shortfallCount} موظفين لم يُخصم قسط سلفهم بالكامل هذه الدورة`}
+            </p>
+            <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">
+              الراتب الصافي لم يكن كافياً لتغطية القسط بالكامل — المتبقي سيُخصم تلقائياً في دورة رواتب قادمة.
             </p>
           </div>
         </div>
@@ -216,6 +239,12 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
                         {loanDisplay > 0 ? `-${formatMoney(loanDisplay)}` : '-'}
                         {isDraft && estimatedLoanDeduction > 0 && (
                           <div className="text-[10px] text-amber-600 font-normal">متوقع عند الاعتماد</div>
+                        )}
+                        {!isDraft && Number(p.loan_shortfall_amount || 0) > 0.01 && (
+                          <div className="text-[10px] text-red-600 font-semibold flex items-center gap-0.5">
+                            <AlertTriangle className="w-2.5 h-2.5" />
+                            متبقي {formatMoney(p.loan_shortfall_amount)} لم يُخصم
+                          </div>
                         )}
                       </td>
                       <td className="p-3 font-bold text-primary">
