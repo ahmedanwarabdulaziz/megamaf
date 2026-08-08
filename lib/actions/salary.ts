@@ -7,8 +7,13 @@ import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import crypto from 'crypto';
 
+// MAF Main Company uses a padded placeholder id ('00000000-...-000000000001'),
+// not a real RFC-4122 UUID (invalid version nibble) — z.string().uuid() in
+// Zod 4 rejects it, so project_id fields use a loose format check instead.
+const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const allocationSchema = z.object({
-  project_id: z.string().uuid(),
+  project_id: z.string().regex(uuidRegex, 'Invalid UUID'),
   allocation_type: z.enum(['percentage', 'fixed_amount']),
   allocation_value: z.coerce.number().positive(),
 });
@@ -316,6 +321,22 @@ export async function removePayslipFromRun(formData: FormData) {
   }
 }
 
+export async function deletePayrollRun(formData: FormData) {
+  try {
+    const supabase = await createClient();
+    const run_id = formData.get('run_id') as string;
+    if (!run_id) return { error: 'الدورة غير محددة' };
+
+    const { error } = await supabase.rpc('delete_payroll_run', { p_run_id: run_id });
+    if (error) return { error: error.message };
+
+    revalidatePath('/salary/runs');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ غير متوقع' };
+  }
+}
+
 export async function approvePayrollRun(formData: FormData) {
   try {
     const supabase = await createClient();
@@ -358,6 +379,94 @@ export async function payPayslipFromBank(formData: FormData) {
   }
 }
 
+const bulkPayItemSchema = z.object({
+  payslip_id: z.string().uuid(),
+  amount: z.coerce.number().positive(),
+});
+
+const bulkPaySchema = z.object({
+  bank_account_id: z.string().uuid(),
+  payment_date: z.string(),
+  memo: z.string().optional(),
+  items: z.array(bulkPayItemSchema).min(1, 'يجب اختيار قسيمة واحدة على الأقل'),
+});
+
+// Bank-only: each selected payslip is paid in full (the client sends its
+// already-known "remaining" as amount). pay_payslip_from_bank independently
+// re-validates that amount against the real remaining balance server-side,
+// so a stale client value just fails that one row rather than overpaying.
+export async function bulkPayPayslipsFromBank(formData: FormData) {
+  try {
+    const supabase = await createClient();
+    const employeeData = await getCurrentEmployee(supabase);
+    if (!(await hasSalaryAccess(supabase, employeeData))) {
+      return { error: 'غير مصرح: هذه العملية تتطلب صلاحية الرواتب' };
+    }
+
+    let itemsRaw: unknown;
+    try {
+      itemsRaw = JSON.parse((formData.get('items') as string) || '[]');
+    } catch {
+      return { error: 'بيانات الدفع الجماعي غير صالحة' };
+    }
+
+    const parsed = bulkPaySchema.safeParse({
+      bank_account_id: formData.get('bank_account_id'),
+      payment_date: formData.get('payment_date'),
+      memo: formData.get('memo') || undefined,
+      items: itemsRaw,
+    });
+    if (!parsed.success) {
+      return { error: 'بيانات الدفع الجماعي غير صالحة: ' + parsed.error.issues.map(e => e.path.join('.') + ': ' + e.message).join(' | ') };
+    }
+
+    const { bank_account_id, payment_date, memo, items } = parsed.data;
+    const run_id = formData.get('run_id') as string | null;
+
+    const results = await Promise.all(
+      items.map(async item => {
+        const { error } = await supabase.rpc('pay_payslip_from_bank', {
+          p_payslip_id: item.payslip_id,
+          p_bank_account_id: bank_account_id,
+          p_amount: item.amount,
+          p_date: payment_date,
+          p_memo: memo || null,
+        });
+        return { payslip_id: item.payslip_id, error: error?.message };
+      })
+    );
+
+    const failed = results.filter(r => r.error);
+    const paidCount = items.length - failed.length;
+
+    if (paidCount > 0) {
+      await logAudit({
+        employee_id: employeeData!.id,
+        action: 'update',
+        entity_type: 'payslip_payment_bulk',
+        entity_id: run_id || bank_account_id,
+        after: { bank_account_id, payment_date, paid_count: paidCount, failed_count: failed.length },
+      });
+    }
+
+    revalidatePath('/salary/runs');
+    if (run_id) revalidatePath(`/salary/runs/${run_id}`);
+
+    if (failed.length === items.length) {
+      return { error: 'فشل الدفع لجميع القسائم المحددة: ' + failed[0].error };
+    }
+    if (failed.length > 0) {
+      return {
+        success: true,
+        error: `تم الدفع لـ ${paidCount} من ${items.length}. فشل الباقي: ${failed.map(f => f.error).join(' | ')}`,
+      };
+    }
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ غير متوقع' };
+  }
+}
+
 export async function payPayslipFromExpense(formData: FormData) {
   try {
     const supabase = await createClient();
@@ -380,6 +489,96 @@ export async function payPayslipFromExpense(formData: FormData) {
 
     revalidatePath('/salary/runs');
     if (run_id) revalidatePath(`/salary/runs/${run_id}`);
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ غير متوقع' };
+  }
+}
+
+const bulkPayExpenseSchema = z.object({
+  funding_employee_id: z.string().uuid(),
+  expense_id: z.string().uuid(),
+  payment_date: z.string(),
+  memo: z.string().optional(),
+  items: z.array(bulkPayItemSchema).min(1, 'يجب اختيار قسيمة واحدة على الأقل'),
+});
+
+// One employee custody (approved expense) funds several payslips. Unlike the
+// bank path, this must run sequentially, not Promise.all: pay_payslip_from_expense
+// re-derives the expense's remaining balance from v_expense_vendor_paid on each
+// call with no row lock on the expense itself, so parallel calls could both read
+// the same leftover balance and jointly overspend it. The caller is expected to
+// have already capped each item's amount to what the expense can actually cover
+// (the bulk-pay bar allocates it client-side) — this still stops at the first
+// failure rather than continuing, since that means the assumption no longer holds.
+export async function bulkPayPayslipsFromExpense(formData: FormData) {
+  try {
+    const supabase = await createClient();
+    const employeeData = await getCurrentEmployee(supabase);
+    if (!(await hasSalaryAccess(supabase, employeeData))) {
+      return { error: 'غير مصرح: هذه العملية تتطلب صلاحية الرواتب' };
+    }
+
+    let itemsRaw: unknown;
+    try {
+      itemsRaw = JSON.parse((formData.get('items') as string) || '[]');
+    } catch {
+      return { error: 'بيانات الدفع الجماعي غير صالحة' };
+    }
+
+    const parsed = bulkPayExpenseSchema.safeParse({
+      funding_employee_id: formData.get('funding_employee_id'),
+      expense_id: formData.get('expense_id'),
+      payment_date: formData.get('payment_date'),
+      memo: formData.get('memo') || undefined,
+      items: itemsRaw,
+    });
+    if (!parsed.success) {
+      return { error: 'بيانات الدفع الجماعي غير صالحة: ' + parsed.error.issues.map(e => e.path.join('.') + ': ' + e.message).join(' | ') };
+    }
+
+    const { funding_employee_id, expense_id, payment_date, memo, items } = parsed.data;
+    const run_id = formData.get('run_id') as string | null;
+
+    const results: { payslip_id: string; error?: string }[] = [];
+    for (const item of items) {
+      const { error } = await supabase.rpc('pay_payslip_from_expense', {
+        p_payslip_id: item.payslip_id,
+        p_funding_employee_id: funding_employee_id,
+        p_expense_id: expense_id,
+        p_amount: item.amount,
+        p_date: payment_date,
+        p_memo: memo || null,
+      });
+      results.push({ payslip_id: item.payslip_id, error: error?.message });
+      if (error) break;
+    }
+
+    const failed = results.filter(r => r.error);
+    const paidCount = results.length - failed.length;
+
+    if (paidCount > 0) {
+      await logAudit({
+        employee_id: employeeData!.id,
+        action: 'update',
+        entity_type: 'payslip_payment_bulk',
+        entity_id: run_id || expense_id,
+        after: { expense_id, funding_employee_id, payment_date, paid_count: paidCount, failed_count: failed.length },
+      });
+    }
+
+    revalidatePath('/salary/runs');
+    if (run_id) revalidatePath(`/salary/runs/${run_id}`);
+
+    if (paidCount === 0) {
+      return { error: 'فشل الدفع لجميع القسائم المحددة: ' + (failed[0]?.error || '') };
+    }
+    if (paidCount < items.length) {
+      return {
+        success: true,
+        error: `تم الدفع لـ ${paidCount} من ${items.length}. ${failed[0]?.error ? 'السبب: ' + failed[0].error : ''}`,
+      };
+    }
     return { success: true };
   } catch (e: any) {
     return { error: e.message || 'حدث خطأ غير متوقع' };

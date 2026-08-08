@@ -8,6 +8,10 @@ import { PayPayslipModal } from '@/components/salary/pay-payslip-modal';
 import { AddEmployeeToRunModal } from '@/components/salary/add-employee-to-run-modal';
 import { PayslipDetailModal } from '@/components/salary/payslip-detail-modal';
 import { RemovePayslipButton } from '@/components/salary/remove-payslip-button';
+import { DeletePayrollRunButton } from '@/components/salary/delete-payroll-run-button';
+import { BulkPayProvider } from '@/components/salary/bulk-pay-provider';
+import { SelectPayslipCheckbox } from '@/components/salary/select-payslip-checkbox';
+import { SelectAllCheckbox } from '@/components/salary/select-all-checkbox';
 import { getProjects } from '@/lib/queries/projects';
 import { AlertTriangle, FolderKanban } from 'lucide-react';
 
@@ -110,6 +114,18 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
 
   const projectList = (projects || []).map((p: any) => ({ id: p.id, name: p.name }));
 
+  // Same "approved with a remaining balance" gate the individual دفع button
+  // uses — that's what a payslip needs to be selectable for a bulk payment.
+  const eligiblePayslips = (payslips || [])
+    .map((p: any) => {
+      const paidSoFar = paidByPayslip.get(p.id) || 0;
+      const remaining = computePayslipRemaining({ netAmount: Number(p.net_amount), paidAmount: paidSoFar });
+      return { id: p.id, employeeName: p.employees?.full_name || '', remaining, status: p.status };
+    })
+    .filter((p: any) => p.status === 'approved' && p.remaining > 0.01)
+    .map((p: any) => ({ id: p.id, employeeName: p.employeeName, remaining: p.remaining }));
+  const eligiblePayslipIds = new Set(eligiblePayslips.map(p => p.id));
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center flex-wrap gap-3">
@@ -123,6 +139,11 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
           <div className="flex items-center gap-2">
             <AddEmployeeToRunModal runId={run.id} employees={availableEmployees} />
             <ApproveRunButton runId={run.id} />
+            <DeletePayrollRunButton
+              runId={run.id}
+              label={`${MONTH_NAMES[run.period_month - 1]} ${run.period_year}`}
+              redirectTo="/salary/runs"
+            />
           </div>
         )}
       </div>
@@ -161,11 +182,15 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
         </div>
       )}
 
+      <BulkPayProvider runId={run.id} eligiblePayslips={eligiblePayslips} bankAccounts={bankAccounts || []} employees={employees || []}>
       <div className="bg-card rounded-lg border shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm text-right">
             <thead className="bg-muted/50 border-b">
               <tr>
+                <th className="p-3 font-medium w-8">
+                  <SelectAllCheckbox eligibleIds={eligiblePayslips.map(p => p.id)} />
+                </th>
                 <th className="p-3 font-medium">الموظف</th>
                 <th className="p-3 font-medium">الأساسي</th>
                 <th className="p-3 font-medium">المكافآت</th>
@@ -182,7 +207,7 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
             <tbody className="divide-y divide-border">
               {(payslips || []).length === 0 ? (
                 <tr>
-                  <td colSpan={10} className="p-8 text-center text-muted-foreground">لا توجد قسائم رواتب</td>
+                  <td colSpan={11} className="p-8 text-center text-muted-foreground">لا توجد قسائم رواتب</td>
                 </tr>
               ) : (
                 (payslips || []).map((p: any, i: number, arr: any[]) => {
@@ -203,6 +228,9 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
 
                   return (
                     <tr key={p.id} className={`hover:bg-muted/30 transition-colors ${isUnallocated ? 'border-r-4 border-r-amber-400 bg-amber-50/30 dark:bg-amber-950/10' : ''}`}>
+                      <td className="p-3">
+                        <SelectPayslipCheckbox payslipId={p.id} eligible={eligiblePayslipIds.has(p.id)} />
+                      </td>
                       <td className="p-3">
                         <PayslipDetailModal
                           payslip={{
@@ -295,6 +323,7 @@ export default async function PayrollRunDetailPage({ params }: { params: Promise
           </table>
         </div>
       </div>
+      </BulkPayProvider>
     </div>
   );
 }
