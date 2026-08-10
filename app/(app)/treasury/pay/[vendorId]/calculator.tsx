@@ -46,7 +46,7 @@ type CreditEntry = {
   memo: string | null;
 };
 
-export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, employees, projects, claimSummaries, creditEntries = [] }: { vendorId: string, openDocs: any[], bankAccounts: any[], employees: {id: string, full_name: string}[], projects: {id: string, name: string}[], claimSummaries?: ClaimSummary[], creditEntries?: CreditEntry[] }) {
+export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, projects, claimSummaries, creditEntries = [] }: { vendorId: string, openDocs: any[], banks: any[], employees: {id: string, full_name: string}[], projects: {id: string, name: string}[], claimSummaries?: ClaimSummary[], creditEntries?: CreditEntry[] }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState<number>(0);
@@ -142,7 +142,8 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
     // Auto-allocate top-to-bottom
     // Note: openDocs already arrives clean from the server:
     // - prior_claim rows for projects with in-system claims are excluded
-    // - claim rows have amount_due patched to summary.remaining
+    // - claim rows carry that specific claim's own bucket in amount_due/amount_paid
+    //   (relabeled claim#0-only rows are the one exception — see page.tsx)
     let remaining = amount;
 
     // Settling from an existing credit requires assign_vendor_payment's
@@ -157,15 +158,23 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
       : (projectId ? openDocs.filter(d => d.project_id === projectId) : openDocs);
 
     const newAllocations = filteredDocs.map(doc => {
-      // For cumulative claims: use summary values so description and
-      // المتبقي للدفع match what's shown in ملخص آخر مستخلص معتمد
+      // For cumulative claims: use the summary only for the description label and
+      // the informational cumulative breakdown shown under it. The actual payable
+      // amount (remainingDue/max) must stay doc.amount_due - doc.amount_paid — that's
+      // THIS specific claim's own bucket (total_due_this_claim minus what's actually
+      // allocated to it), the same scoping record_vendor_payment's RPC validates
+      // against. Using the project-wide cumulative summary.remaining here instead
+      // caused two bugs: a claim with real payable room in its own bucket could
+      // vanish from this table (cumulative remaining went negative because an older
+      // claim in the same project absorbed extra payment), or the input could accept
+      // more than this claim's own bucket allows (cumulative remaining overstated
+      // because an older claim's payment sits unallocated as vendor credit) — the
+      // latter is what caused "Allocation of 30000 exceeds remaining due 27003.75".
       const summary = doc.document_type === 'claim'
         ? claimSummaries?.find(s => s.project_id === doc.project_id)
         : undefined;
 
-      const remainingDue = summary
-        ? summary.remaining
-        : doc.amount_due - doc.amount_paid;
+      const remainingDue = doc.amount_due - doc.amount_paid;
 
       const description = summary
         ? `مستخلص رقم ${summary.claim_number}`
@@ -412,8 +421,14 @@ export function VendorPaymentCalculator({ vendorId, openDocs, bankAccounts, empl
               <label className="block text-sm font-medium mb-1">الخزينة / الحساب البنكي المسدد منه</label>
               <select required value={bankId} onChange={e => setBankId(e.target.value)} className="w-full p-2 rounded border bg-background">
                 <option value="">اختر الحساب...</option>
-                {bankAccounts.map(b => (
-                  <option key={b.bank_account_id} value={b.bank_account_id}>{b.bank_name} - {b.account_name} ({formatMoney(b.current_balance)})</option>
+                {banks.map(bank => (
+                  <optgroup key={bank.id} label={bank.name}>
+                    {bank.accounts?.map((acc: any) => (
+                      <option key={acc.bank_account_id} value={acc.bank_account_id}>
+                        {acc.account_name} - {acc.account_number} ({formatMoney(acc.current_balance)})
+                      </option>
+                    ))}
+                  </optgroup>
                 ))}
               </select>
             </div>

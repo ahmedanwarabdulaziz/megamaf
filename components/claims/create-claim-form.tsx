@@ -11,6 +11,7 @@ import { Plus, Trash2, Loader2, Package, X, ChevronUp, ChevronDown } from 'lucid
 import { formatMoney } from '@/lib/money';
 import { SearchableSelect } from '@/components/ui/searchable-select';
 import { groupOptionsByCategory } from '@/lib/item-category-options';
+import { CollectedPaymentsTrigger, type PaymentRecord } from '@/components/claims/collected-payments-modal';
 
 // ── Types ────────────────────────────────────────────────────
 interface BundleLine {
@@ -110,6 +111,7 @@ export function CreateClaimForm({
   // Paid amount across all previous claims
   const [alreadyPaidAmount, setAlreadyPaidAmount] = useState(0);
   const [openingPaidAmount, setOpeningPaidAmount] = useState(0);
+  const [paymentRecords, setPaymentRecords] = useState<PaymentRecord[]>([]);
 
   // ── Pending-claim warning ────────────────────────────────────
   useEffect(() => {
@@ -136,6 +138,7 @@ export function CreateClaimForm({
         setItems([emptyItem()]);
         setAlreadyPaidAmount(0);
         setOpeningPaidAmount(0);
+        setPaymentRecords([]);
         return;
       }
       setFetchingPrevious(true);
@@ -163,10 +166,11 @@ export function CreateClaimForm({
       }
 
       // Fetch the unified total paid for this party and project from the account statement views
+      // — same source and shape /claims/[id] uses, so the "المحصّل فعلياً" breakdown matches exactly.
       const accountView = claimType === 'owner' ? 'v_owner_account' : 'v_vendor_account';
       const { data: accData } = await supabase
         .from(accountView)
-        .select('amount_paid')
+        .select('document_id, document_type, document_date, description, amount_paid')
         .eq('party_id', partyId)
         .eq('project_id', projectId);
 
@@ -174,6 +178,18 @@ export function CreateClaimForm({
 
       setAlreadyPaidAmount(inSystemPaid);
       setOpeningPaidAmount(totalOpeningPaid);
+      setPaymentRecords(
+        (accData || [])
+          .filter((row: any) => Number(row.amount_paid || 0) > 0)
+          .sort((a: any, b: any) => new Date(b.document_date).getTime() - new Date(a.document_date).getTime())
+          .map((row: any) => ({
+            id: `${row.document_type}_${row.document_id}`,
+            document_type: row.document_type,
+            document_date: row.document_date,
+            description: row.description,
+            amount_paid: Number(row.amount_paid || 0),
+          }))
+      );
 
       const lastClaim = lastClaimResult.data;
       if (lastClaim) {
@@ -250,6 +266,7 @@ export function CreateClaimForm({
   const totalDue  = netCumulative + taxAmount;
   const alreadyPaid = alreadyPaidAmount;
   const remaining   = Math.max(0, totalDue - alreadyPaid);
+  const partyName   = fixedPartyName || selectedParty?.name || '';
 
   // ── Submit ───────────────────────────────────────────────────
   async function handleSubmit(formData: FormData) {
@@ -818,10 +835,15 @@ export function CreateClaimForm({
 
           {/* Collected (prior paid) */}
           {alreadyPaid > 0 && (
-            <div className="flex justify-between text-sm text-green-700 dark:text-green-400 font-medium">
+            <CollectedPaymentsTrigger
+              partyName={partyName}
+              total={alreadyPaid}
+              records={paymentRecords}
+              className="flex justify-between w-full text-sm text-green-700 dark:text-green-400 font-medium hover:underline decoration-dotted underline-offset-4 text-right"
+            >
               <span>المحصّل فعلياً (جميع المستخلصات السابقة):</span>
               <span>- {formatMoney(alreadyPaid)}</span>
-            </div>
+            </CollectedPaymentsTrigger>
           )}
 
           {/* Remaining headline */}

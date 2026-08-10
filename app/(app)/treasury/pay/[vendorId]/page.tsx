@@ -3,6 +3,7 @@ import { notFound } from 'next/navigation';
 import { VendorPaymentCalculator } from './calculator';
 import { computeClaimFinancials } from '@/lib/claim-financials';
 import { requirePageAccess } from '@/lib/require-page-access';
+import { getBanks } from '@/lib/queries/banks';
 
 export default async function PayVendorPage({ params }: { params: Promise<{ vendorId: string }> }) {
   await requirePageAccess('treasury');
@@ -13,11 +14,11 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   if (!vendor) notFound();
 
   const [
-    { data: bankAccounts },
+    banks,
     { data: employees },
     { data: creditEntries },
   ] = await Promise.all([
-    supabase.from('v_bank_account_balances').select('*').order('account_name'),
+    getBanks(),
     supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name'),
     supabase.from('v_vendor_unallocated_credit').select('*').eq('vendor_id', vendorId).order('entry_date'),
   ]);
@@ -124,82 +125,45 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   const latestClaimList = Array.from(latestClaimPerProjectMap.values());
   const latestClaimIds = latestClaimList.map(c => c.id);
 
-  // Fetch ALL claim IDs for this vendor (not just latest) so we can sum
-  // payments across every claim in a project. Payments may be allocated
-  // against older claims (e.g. Claim #1 paid, but Claim #2 is latest).
-  const allClaimIds = (latestClaims || []).map((c: any) => c.id);
-
   const [
     { data: claimTotalsData },
-    { data: allClaimPaidData },
-    { data: vendorInvoices },
-    { data: vendorRetentions },
     { data: zeroClaims },
+    { data: vendorLedgerPayments },
   ] = await Promise.all([
     latestClaimIds.length > 0
       ? supabase.from('v_claim_totals')
           .select('claim_id, claim_cumulative_total, claim_cumulative_retained, claim_cumulative_payable')
           .in('claim_id', latestClaimIds)
       : { data: [] as any[] },
-    allClaimIds.length > 0
-      ? supabase.from('v_claim_paid').select('claim_id, paid_amount').in('claim_id', allClaimIds)
-      : { data: [] as any[] },
-    supabase.from('invoices').select('id, project_id').eq('vendor_id', vendorId).eq('status', 'approved'),
-    supabase.from('retention_releases').select('id, project_id').eq('party_id', vendorId).eq('claim_type', 'vendor'),
     supabase.from('claims').select('project_id, opening_paid_amount').eq('party_id', vendorId).eq('claim_type', 'vendor').eq('claim_number', 0),
+    supabase.from('ledger_entries').select('project_id, amount').eq('counterparty_type', 'vendor').eq('counterparty_id', vendorId).eq('direction', 'out'),
   ]);
 
-  const invoiceIdsAll = (vendorInvoices || []).map((i: any) => i.id);
-  const retentionIdsAll = (vendorRetentions || []).map((r: any) => r.id);
-
-  const [
-    { data: allInvoicePaidData },
-    { data: allRetentionPaidData },
-  ] = await Promise.all([
-    invoiceIdsAll.length > 0
-      ? supabase.from('v_invoice_paid').select('invoice_id, paid_amount').in('invoice_id', invoiceIdsAll)
-      : { data: [] as any[] },
-    retentionIdsAll.length > 0
-      ? supabase.from('v_retention_paid').select('retention_id, paid_amount').in('retention_id', retentionIdsAll)
-      : { data: [] as any[] },
-  ]);
-
-  // Build "how much has actually been paid" per project purely from
-  // allocation-tracking views (v_claim_paid / v_invoice_paid / v_retention_paid),
-  // each grouped by the document's OWN project_id — NOT from the payment ledger
-  // row's project tag. A single payment can be split (via payment_allocations)
-  // across documents in different projects, and the ledger row's project_id —
-  // a single value — can't represent that split correctly.
-  // NOTE: v_claim_paid already folds claim#0's opening_paid_amount into its
-  // paid_amount on this database (confirmed against live data — this isn't in
-  // the local migration files, so treat the live view as ground truth). Do NOT
-  // add opening_paid_amount again below, or claim#0 rows get double-counted.
+  // Build "how much has actually been paid" per project from the RAW ledger
+  // amount that left the treasury, not just the portion formally allocated to a
+  // specific claim/invoice/retention (via payment_allocations) — a payment can be
+  // left partially or fully unallocated (sitting as vendor credit) and that money
+  // is still paid. Mirrors the fix already applied to /claims and v_vendor_balances,
+  // see supabase/migrations/20260723120000_fix_vendor_balances_raw_paid.sql — this
+  // page was still on the old allocation-based accounting, which understated how
+  // much had actually been paid by exactly the vendor's unallocated credit balance,
+  // overstating "remaining" here vs. what /vendors/[id]/statement correctly showed.
   const paidByProject = new Map<string, number>();
   const addPaid = (projectId: string | null | undefined, amount: number) => {
     if (!projectId || !amount) return;
     paidByProject.set(projectId, (paidByProject.get(projectId) || 0) + amount);
   };
 
-  const claimProjectById = new Map((latestClaims || []).map((c: any) => [c.id, c.project_id]));
-  for (const row of allClaimPaidData || []) {
-    addPaid(claimProjectById.get(row.claim_id), Number(row.paid_amount || 0));
+  for (const row of vendorLedgerPayments || []) {
+    addPaid(row.project_id, Number(row.amount || 0));
   }
 
-  const invoiceProjectById = new Map((vendorInvoices || []).map((i: any) => [i.id, i.project_id]));
-  for (const row of allInvoicePaidData || []) {
-    addPaid(invoiceProjectById.get(row.invoice_id), Number(row.paid_amount || 0));
-  }
-
-  const retentionProjectById = new Map((vendorRetentions || []).map((r: any) => [r.id, r.project_id]));
-  for (const row of allRetentionPaidData || []) {
-    addPaid(retentionProjectById.get(row.retention_id), Number(row.paid_amount || 0));
-  }
-
-  // Build a map: "project_id" → opening_paid_amount from Claim#0 (display only —
-  // already included in paidByProject above via v_claim_paid, see note there).
+  // Opening balance paid before the system — not a ledger row, so add it separately.
   const openingPaidByProject = new Map<string, number>();
   for (const zc of zeroClaims || []) {
-    openingPaidByProject.set(zc.project_id, Number(zc.opening_paid_amount || 0));
+    const opening = Number(zc.opening_paid_amount || 0);
+    openingPaidByProject.set(zc.project_id, opening);
+    if (opening > 0) addPaid(zc.project_id, opening);
   }
 
   // Build per-project claim summaries using the shared utility
@@ -262,13 +226,32 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
       !priorClaims?.some(pc => pc.id === d.document_id)
     ) {
       d.document_type = 'claim';
+      d._relabeledFromPriorClaim = true;
     }
   });
 
-  // Patch claim docs (including relabeled claim#0 rows) with cumulative remaining
-  // from claimSummaries so the openDocs filter uses the correct number (not the raw doc amount).
+  // Patch ONLY relabeled claim#0 rows with the cumulative remaining from
+  // claimSummaries — for those, v_vendor_account gave prior_claim-shaped values
+  // (prior_certified_amount / prior_paid_amount) that don't mean anything as a
+  // claim bucket, and since claim#0 is the vendor's only claim in this case, the
+  // project's cumulative remaining IS that single bucket's remaining anyway.
+  //
+  // Genuine numbered claims (#1+) are deliberately left untouched here: their
+  // amount_due/amount_paid already came from v_vendor_account + the v_claim_paid
+  // patch above, i.e. that SPECIFIC claim's own incremental bucket (total_due_this_claim
+  // minus payment_allocations against that exact claim id) — the same scoping
+  // record_vendor_payment's RPC validates against. Overwriting it with the
+  // cumulative project-wide "remaining" was wrong whenever older claims in the
+  // same project were over- or under-filled relative to their own bucket (common
+  // with cumulative claims): it could hide a claim that still has real payable
+  // room in its own bucket (cumulative remaining went negative because an older
+  // claim absorbed extra payment) or let the UI offer to allocate more than this
+  // claim's own bucket has room for (cumulative remaining overstated because an
+  // older claim's payment sits unallocated as vendor credit instead) — the latter
+  // is what caused a real submission to fail with "Allocation of 30000 exceeds
+  // remaining due 27003.75 for document ...".
   allDocs.forEach(d => {
-    if (d.document_type === 'claim') {
+    if (d.document_type === 'claim' && d._relabeledFromPriorClaim) {
       const s = claimSummaries.find(cs => cs.project_id === d.project_id);
       if (s) {
         d.amount_due  = s.remaining;
@@ -295,7 +278,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
         <p className="text-muted-foreground mt-1">المقاول: {vendor.name}</p>
       </div>
 
-      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} bankAccounts={bankAccounts || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} creditEntries={creditEntries || []} />
+      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} banks={banks || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} creditEntries={creditEntries || []} />
     </div>
   );
 }
