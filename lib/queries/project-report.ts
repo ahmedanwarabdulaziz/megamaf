@@ -28,6 +28,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   deduction: 'خصم',
   transfer_in: 'تحويل وارد',
   transfer_out: 'تحويل صادر',
+  expense_disbursement: 'صرف مصروف',
 };
 
 export async function getProjectReportData(projectId: string): Promise<ProjectReportData | null> {

@@ -23,6 +23,7 @@ const categoryMap: Record<string, string> = {
   'salary_payment': 'دفعة راتب',
   'loan_disbursement': 'صرف سلفة',
   'expense_direct': 'مصروف مباشر',
+  'expense_disbursement': 'صرف مصروف',
 };
 
 const counterpartyTypeMap: Record<string, string> = {
