@@ -18,7 +18,33 @@ const createExpenseSchema = z.object({
   amount: z.coerce.number().positive(),
   notes: z.string().optional(),
   attachment_url: z.string().optional(),
+  funding_type: z.enum(['bank', 'employee_custody']).optional(),
+  funding_bank_account_id: z.string().regex(uuidRegex, 'Invalid UUID').optional(),
+  funding_employee_id: z.string().regex(uuidRegex, 'Invalid UUID').optional(),
 });
+
+/** Shared by createExpense/updateExpense: validates the optional funding
+ *  choice (bank account or another employee's custody) against the
+ *  requester's has_expense_funding_access flag. Nothing is disbursed here —
+ *  that only happens inside approve_expense() at approval time. */
+function validateFunding(
+  parsed: { funding_type?: 'bank' | 'employee_custody'; funding_bank_account_id?: string; funding_employee_id?: string },
+  targetEmployeeId: string,
+  employeeData: { is_super_admin: boolean; has_expense_funding_access?: boolean }
+): { error: string } | null {
+  if (!parsed.funding_type) return null;
+  if (!employeeData.is_super_admin && !employeeData.has_expense_funding_access) {
+    return { error: 'لا تملك صلاحية اختيار مصدر تمويل للمصروف' };
+  }
+  if (parsed.funding_type === 'bank' && !parsed.funding_bank_account_id) {
+    return { error: 'يجب اختيار الحساب البنكي' };
+  }
+  if (parsed.funding_type === 'employee_custody') {
+    if (!parsed.funding_employee_id) return { error: 'يجب اختيار الموظف الممول' };
+    if (parsed.funding_employee_id === targetEmployeeId) return { error: 'لا يمكن اختيار نفس الموظف كمصدر تمويل' };
+  }
+  return null;
+}
 
 export async function createExpense(formData: FormData) {
   try {
@@ -30,6 +56,9 @@ export async function createExpense(formData: FormData) {
       expense_date: formData.get('expense_date'),
       amount: formData.get('amount'),
       notes: formData.get('notes'),
+      funding_type: (formData.get('funding_type') as string) || undefined,
+      funding_bank_account_id: (formData.get('funding_bank_account_id') as string) || undefined,
+      funding_employee_id: (formData.get('funding_employee_id') as string) || undefined,
     });
 
     if (!parsed.success) {
@@ -40,7 +69,7 @@ export async function createExpense(formData: FormData) {
     const { data: userData } = await supabase.auth.getUser();
     const { data: employeeData, error: empError } = await supabase
       .from('employees')
-      .select('id, is_super_admin, has_custody_access')
+      .select('id, is_super_admin, has_custody_access, has_expense_funding_access')
       .eq('auth_user_id', userData.user?.id)
       .single();
 
@@ -65,9 +94,12 @@ export async function createExpense(formData: FormData) {
         .single();
       if (!targetEmp) return { error: 'الموظف المحدد غير موجود' };
       targetEmployeeId = targetEmp.id;
-    } else if (!employeeData.is_super_admin && !employeeData.has_custody_access) {
+    } else if (!employeeData.is_super_admin && !employeeData.has_custody_access && !employeeData.has_expense_funding_access) {
       return { error: 'لا تملك صلاحية تسجيل المصروفات' };
     }
+
+    const fundingError = validateFunding(parsed.data, targetEmployeeId, employeeData);
+    if (fundingError) return fundingError;
 
     // Enforce date backdating logic (max 15 days for non-admins)
     const expenseDate = new Date(parsed.data.expense_date);
@@ -93,6 +125,9 @@ export async function createExpense(formData: FormData) {
         expense_date: parsed.data.expense_date,
         amount: parsed.data.amount,
         notes: parsed.data.notes,
+        funding_type: parsed.data.funding_type || null,
+        funding_bank_account_id: parsed.data.funding_type === 'bank' ? parsed.data.funding_bank_account_id : null,
+        funding_employee_id: parsed.data.funding_type === 'employee_custody' ? parsed.data.funding_employee_id : null,
       })
       .select('id')
       .single();
@@ -337,12 +372,15 @@ const updateExpenseSchema = z.object({
   expense_date: z.string(),
   amount: z.coerce.number().positive(),
   notes: z.string().optional(),
+  funding_type: z.enum(['bank', 'employee_custody']).optional(),
+  funding_bank_account_id: z.string().regex(uuidRegex, 'Invalid UUID').optional(),
+  funding_employee_id: z.string().regex(uuidRegex, 'Invalid UUID').optional(),
 });
 
 export async function updateExpense(formData: FormData) {
   try {
     const supabase = await createClient();
-    
+
     const parsed = updateExpenseSchema.safeParse({
       id: formData.get('id'),
       project_id: (formData.get('project_id') as string) || MAIN_COMPANY_PROJECT_ID,
@@ -350,6 +388,9 @@ export async function updateExpense(formData: FormData) {
       expense_date: formData.get('expense_date'),
       amount: formData.get('amount'),
       notes: formData.get('notes'),
+      funding_type: (formData.get('funding_type') as string) || undefined,
+      funding_bank_account_id: (formData.get('funding_bank_account_id') as string) || undefined,
+      funding_employee_id: (formData.get('funding_employee_id') as string) || undefined,
     });
 
     if (!parsed.success) {
@@ -359,7 +400,7 @@ export async function updateExpense(formData: FormData) {
     const { data: userData } = await supabase.auth.getUser();
     const { data: employeeData } = await supabase
       .from('employees')
-      .select('id, is_super_admin')
+      .select('id, is_super_admin, has_expense_funding_access')
       .eq('auth_user_id', userData.user?.id)
       .single();
 
@@ -371,12 +412,15 @@ export async function updateExpense(formData: FormData) {
       .select('status, employee_id')
       .eq('id', parsed.data.id)
       .single();
-      
+
     if (!existing) return { error: 'المصروف غير موجود' };
     if (existing.status === 'approved') return { error: 'لا يمكن تعديل مصروف معتمد' };
     if (!employeeData.is_super_admin && existing.employee_id !== employeeData.id) {
        return { error: 'لا تملك صلاحية تعديل مصروف شخص آخر' };
     }
+
+    const fundingError = validateFunding(parsed.data, existing.employee_id, employeeData);
+    if (fundingError) return fundingError;
 
     if (!employeeData.is_super_admin && parsed.data.project_id !== MAIN_COMPANY_PROJECT_ID) {
       const { data: hasAccess, error: accessError } = await supabase.rpc('has_project_access', { p_project_id: parsed.data.project_id });
@@ -408,6 +452,9 @@ export async function updateExpense(formData: FormData) {
         expense_date: parsed.data.expense_date,
         amount: parsed.data.amount,
         notes: parsed.data.notes,
+        funding_type: parsed.data.funding_type || null,
+        funding_bank_account_id: parsed.data.funding_type === 'bank' ? parsed.data.funding_bank_account_id : null,
+        funding_employee_id: parsed.data.funding_type === 'employee_custody' ? parsed.data.funding_employee_id : null,
         status: 'pending',
         rejection_reason: null
       })

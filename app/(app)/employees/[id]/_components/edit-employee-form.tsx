@@ -52,6 +52,10 @@ export function EditEmployeeForm({ employee }: { employee: any }) {
           <input type="checkbox" name="has_custody_access" value="true" defaultChecked={employee.has_custody_access} className="h-4 w-4 rounded border-primary" />
           صلاحية استلام عهدة وتسجيل مصروفات
         </label>
+        <label className="flex items-center gap-2 text-sm text-blue-600 font-medium">
+          <input type="checkbox" name="has_expense_funding_access" value="true" defaultChecked={employee.has_expense_funding_access} className="h-4 w-4 rounded border-primary" />
+          يمكنه اختيار مصدر تمويل (بنك / عهدة موظف آخر) عند تسجيل مصروف
+        </label>
         <label className="flex items-center gap-2 text-sm text-destructive font-bold">
           <input type="checkbox" name="is_super_admin" value="true" defaultChecked={employee.is_super_admin} className="h-4 w-4 rounded border-primary" />
           مدير نظام (صلاحيات كاملة)

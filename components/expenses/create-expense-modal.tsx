@@ -18,12 +18,16 @@ export function CreateExpenseModal({
   isSuperAdmin,
   employees = [],
   bankAccounts = [],
+  hasExpenseFundingAccess = false,
+  currentEmployeeId,
 }: {
   categories: any[];
   projects: any[];
   isSuperAdmin: boolean;
   employees?: Employee[];
   bankAccounts?: BankAccount[];
+  hasExpenseFundingAccess?: boolean;
+  currentEmployeeId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -35,6 +39,9 @@ export function CreateExpenseModal({
   const [targetEmployeeId, setTargetEmployeeId] = useState('');
   const [payDirectly, setPayDirectly] = useState(false);
   const [bankAccountId, setBankAccountId] = useState('');
+  const [fundingType, setFundingType] = useState('');
+  const [fundingBankAccountId, setFundingBankAccountId] = useState('');
+  const [fundingEmployeeId, setFundingEmployeeId] = useState('');
 
   const close = () => {
     setOpen(false);
@@ -45,6 +52,9 @@ export function CreateExpenseModal({
     setTargetEmployeeId('');
     setPayDirectly(false);
     setBankAccountId('');
+    setFundingType('');
+    setFundingBankAccountId('');
+    setFundingEmployeeId('');
   };
 
   if (!open) return <Button onClick={() => setOpen(true)}>تسجيل مصروف</Button>;
@@ -115,6 +125,29 @@ export function CreateExpenseModal({
     ...(employees || []).map((emp: any) => ({ value: emp.id, label: emp.full_name }))
   ];
 
+  const fundingBankGroups: Record<string, BankAccount[]> = {};
+  bankAccounts.forEach(b => {
+    (fundingBankGroups[b.bank_name] ||= []).push(b);
+  });
+  const fundingBankOptions = Object.entries(fundingBankGroups).flatMap(([bankName, accounts]) => [
+    {
+      value: `group-${bankName}`,
+      label: bankName,
+      isGroupHeader: true,
+      className: 'bg-blue-50 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100 font-bold',
+    },
+    ...accounts.map(a => ({
+      value: a.bank_account_id,
+      label: `— ${a.account_name}`,
+      badge: formatMoney(a.current_balance),
+      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-700',
+    })),
+  ]);
+
+  const fundingEmployeeOptions = employees
+    .filter(e => e.id !== (targetEmployeeId || currentEmployeeId))
+    .map(e => ({ value: e.id, label: e.full_name }));
+
   // ── Form submit ─────────────────────────────────────────────────────────
   async function action(formData: FormData) {
     if (submittingRef.current) return;
@@ -125,6 +158,15 @@ export function CreateExpenseModal({
 
       if (payDirectly && !bankAccountId) {
         setError('يجب اختيار الحساب البنكي عند الدفع المباشر');
+        return;
+      }
+
+      if (!payDirectly && fundingType === 'bank' && !fundingBankAccountId) {
+        setError('يجب اختيار الحساب البنكي لمصدر التمويل');
+        return;
+      }
+      if (!payDirectly && fundingType === 'employee_custody' && !fundingEmployeeId) {
+        setError('يجب اختيار الموظف الممول');
         return;
       }
 
@@ -222,6 +264,55 @@ export function CreateExpenseModal({
                     </p>
                   )}
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Funding source — visible to employees granted has_expense_funding_access.
+              Independent of "دفع مباشر" above: this stays in the normal pending →
+              approval flow, disbursed automatically the moment an admin approves it. */}
+          {hasExpenseFundingAccess && !payDirectly && (
+            <div className="space-y-2 p-3 rounded-md border bg-muted/30">
+              <label className="block text-sm font-medium">مصدر التمويل (اختياري)</label>
+              <select
+                value={fundingType}
+                onChange={e => { setFundingType(e.target.value); setFundingBankAccountId(''); setFundingEmployeeId(''); }}
+                className="w-full p-2 rounded-md border bg-background"
+              >
+                <option value="">-- من عهدتي الخاصة (افتراضي) --</option>
+                <option value="bank">حساب بنكي</option>
+                <option value="employee_custody">عهدة موظف آخر</option>
+              </select>
+              <input type="hidden" name="funding_type" value={fundingType} />
+
+              {fundingType === 'bank' && (
+                <div>
+                  <input type="hidden" name="funding_bank_account_id" value={fundingBankAccountId} required />
+                  <SearchableSelect
+                    options={fundingBankOptions}
+                    value={fundingBankAccountId}
+                    onChange={setFundingBankAccountId}
+                    placeholder="-- اختر الحساب البنكي --"
+                  />
+                </div>
+              )}
+
+              {fundingType === 'employee_custody' && (
+                <div>
+                  <input type="hidden" name="funding_employee_id" value={fundingEmployeeId} required />
+                  <SearchableSelect
+                    options={fundingEmployeeOptions}
+                    value={fundingEmployeeId}
+                    onChange={setFundingEmployeeId}
+                    placeholder="-- اختر الموظف الممول --"
+                  />
+                </div>
+              )}
+
+              {fundingType && (
+                <p className="text-xs text-muted-foreground">
+                  سيتم الصرف تلقائياً من هذا المصدر فور اعتماد المصروف من الإدارة.
+                </p>
               )}
             </div>
           )}
@@ -336,10 +427,18 @@ export function EditExpenseModal({
   expense,
   categories,
   projects,
+  employees = [],
+  bankAccounts = [],
+  hasExpenseFundingAccess = false,
+  currentEmployeeId,
 }: {
   expense: any;
   categories: any[];
   projects: any[];
+  employees?: Employee[];
+  bankAccounts?: BankAccount[];
+  hasExpenseFundingAccess?: boolean;
+  currentEmployeeId?: string;
 }) {
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -351,6 +450,9 @@ export function EditExpenseModal({
   const [amount, setAmount] = useState(expense.amount || '');
   const [expenseDate, setExpenseDate] = useState(expense.expense_date || '');
   const [notes, setNotes] = useState(expense.notes || '');
+  const [fundingType, setFundingType] = useState(expense.funding_type || '');
+  const [fundingBankAccountId, setFundingBankAccountId] = useState(expense.funding_bank_account_id || '');
+  const [fundingEmployeeId, setFundingEmployeeId] = useState(expense.funding_employee_id || '');
 
   const close = () => {
     setOpen(false);
@@ -423,6 +525,29 @@ export function EditExpenseModal({
     ...projects.filter((p: any) => p.id !== '00000000-0000-0000-0000-000000000001').map((p: any) => ({ value: p.id, label: p.name }))
   ];
 
+  const editFundingBankGroups: Record<string, BankAccount[]> = {};
+  bankAccounts.forEach(b => {
+    (editFundingBankGroups[b.bank_name] ||= []).push(b);
+  });
+  const editFundingBankOptions = Object.entries(editFundingBankGroups).flatMap(([bankName, accounts]) => [
+    {
+      value: `group-${bankName}`,
+      label: bankName,
+      isGroupHeader: true,
+      className: 'bg-blue-50 text-blue-900 dark:bg-blue-900/40 dark:text-blue-100 font-bold',
+    },
+    ...accounts.map(a => ({
+      value: a.bank_account_id,
+      label: `— ${a.account_name}`,
+      badge: formatMoney(a.current_balance),
+      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-700',
+    })),
+  ]);
+
+  const editFundingEmployeeOptions = employees
+    .filter(e => e.id !== (expense.employee_id || currentEmployeeId))
+    .map(e => ({ value: e.id, label: e.full_name }));
+
   async function action(formData: FormData) {
     if (submittingRef.current) return;
     submittingRef.current = true;
@@ -430,6 +555,15 @@ export function EditExpenseModal({
       setLoading(true);
       setError('');
       formData.append('id', expense.id);
+
+      if (fundingType === 'bank' && !fundingBankAccountId) {
+        setError('يجب اختيار الحساب البنكي لمصدر التمويل');
+        return;
+      }
+      if (fundingType === 'employee_custody' && !fundingEmployeeId) {
+        setError('يجب اختيار الموظف الممول');
+        return;
+      }
 
       for (const file of files) {
         const ext = file.name.split('.').pop();
@@ -501,6 +635,46 @@ export function EditExpenseModal({
               </div>
             )}
           </div>
+
+          {hasExpenseFundingAccess && (
+            <div className="space-y-2 p-3 rounded-md border bg-muted/30">
+              <label className="block text-sm font-medium">مصدر التمويل (اختياري)</label>
+              <select
+                value={fundingType}
+                onChange={e => { setFundingType(e.target.value); setFundingBankAccountId(''); setFundingEmployeeId(''); }}
+                className="w-full p-2 rounded-md border bg-background"
+              >
+                <option value="">-- من عهدتي الخاصة (افتراضي) --</option>
+                <option value="bank">حساب بنكي</option>
+                <option value="employee_custody">عهدة موظف آخر</option>
+              </select>
+              <input type="hidden" name="funding_type" value={fundingType} />
+
+              {fundingType === 'bank' && (
+                <div>
+                  <input type="hidden" name="funding_bank_account_id" value={fundingBankAccountId} required />
+                  <SearchableSelect
+                    options={editFundingBankOptions}
+                    value={fundingBankAccountId}
+                    onChange={setFundingBankAccountId}
+                    placeholder="-- اختر الحساب البنكي --"
+                  />
+                </div>
+              )}
+
+              {fundingType === 'employee_custody' && (
+                <div>
+                  <input type="hidden" name="funding_employee_id" value={fundingEmployeeId} required />
+                  <SearchableSelect
+                    options={editFundingEmployeeOptions}
+                    value={fundingEmployeeId}
+                    onChange={setFundingEmployeeId}
+                    placeholder="-- اختر الموظف الممول --"
+                  />
+                </div>
+              )}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>

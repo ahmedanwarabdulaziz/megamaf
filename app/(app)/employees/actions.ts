@@ -33,6 +33,7 @@ export async function saveEmployee(formData: FormData) {
   const can_approve = formData.get('can_approve') === 'true'
   const is_super_admin = formData.get('is_super_admin') === 'true'
   const has_custody_access = formData.get('has_custody_access') === 'true'
+  const has_expense_funding_access = formData.get('has_expense_funding_access') === 'true'
   const pin = formData.get('pin') as string
   
   try {
@@ -81,6 +82,7 @@ export async function saveEmployee(formData: FormData) {
         can_approve,
         is_super_admin,
         has_custody_access,
+        has_expense_funding_access,
         auth_user_id: authUserId
       }).select().single()
       
@@ -121,7 +123,7 @@ export async function saveEmployee(formData: FormData) {
       // is baked into the employee's auth email (`${username}@megamaf.local`),
       // which is never kept in sync — changing it here silently locks the
       // employee out of login.
-      const payload: any = { full_name, role, is_active, can_approve, is_super_admin, has_custody_access }
+      const payload: any = { full_name, role, is_active, can_approve, is_super_admin, has_custody_access, has_expense_funding_access }
       if (pin) {
         const pin_hash = await hashPin(pin)
         await adminClient.from('employee_secrets')

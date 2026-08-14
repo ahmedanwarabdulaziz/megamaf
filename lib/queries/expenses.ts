@@ -154,7 +154,9 @@ export async function getAllExpenses(filters: { startDate?: string, endDate?: st
       employee:employees!expenses_employee_id_fkey(full_name),
       approver:employees!expenses_approved_by_fkey(full_name),
       owner:project_owners(name),
-      category:expense_categories(name)
+      category:expense_categories(name),
+      funding_bank:bank_accounts!expenses_funding_bank_account_id_fkey(account_name, banks(name)),
+      funding_employee:employees!expenses_funding_employee_id_fkey(full_name)
     `)
     .order('expense_date', { ascending: false });
 

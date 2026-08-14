@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, Landmark, Users } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { ApproveRejectButtons } from '@/components/expenses/approve-reject-buttons';
@@ -76,8 +76,35 @@ export function ExpenseApprovalsList({
             </button>
             {isOpen && (
               <div className="divide-y">
-                {group.expenses.map((expense: any) => (
-                  <div key={expense.id} className="p-4 flex flex-col gap-3">
+                {group.expenses.map((expense: any) => {
+                  const isBankFunded = expense.funding_type === 'bank';
+                  const isCustodyFunded = expense.funding_type === 'employee_custody';
+                  return (
+                  <div
+                    key={expense.id}
+                    className={cn(
+                      'p-4 flex flex-col gap-3',
+                      isBankFunded && 'border-r-4 border-blue-500 bg-blue-500/5',
+                      isCustodyFunded && 'border-r-4 border-purple-500 bg-purple-500/5'
+                    )}
+                  >
+                    {(isBankFunded || isCustodyFunded) && (
+                      <div
+                        className={cn(
+                          'flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-md w-fit',
+                          isBankFunded
+                            ? 'bg-blue-500/15 text-blue-700 dark:text-blue-400'
+                            : 'bg-purple-500/15 text-purple-700 dark:text-purple-400'
+                        )}
+                      >
+                        {isBankFunded ? <Landmark className="w-3.5 h-3.5 shrink-0" /> : <Users className="w-3.5 h-3.5 shrink-0" />}
+                        <span>
+                          {isBankFunded
+                            ? `صرف تلقائي عند الاعتماد من: ${expense.funding_bank?.banks?.name} - ${expense.funding_bank?.account_name}`
+                            : `صرف تلقائي عند الاعتماد من عهدة: ${expense.funding_employee?.full_name}`}
+                        </span>
+                      </div>
+                    )}
                     <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-3">
                       <div className="min-w-0">
                         <p className="font-bold truncate">{expense.category?.name}</p>
@@ -117,7 +144,8 @@ export function ExpenseApprovalsList({
                       </div>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>

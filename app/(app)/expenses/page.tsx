@@ -31,6 +31,7 @@ export default async function EmployeeExpensesPage({
 
   const isApprover = employee.can_approve || employee.is_super_admin;
   const isSuperAdmin = employee.is_super_admin;
+  const canPickFundingSource = isSuperAdmin || !!employee.has_expense_funding_access;
 
   const now = new Date();
   const year = now.getFullYear();
@@ -46,7 +47,7 @@ export default async function EmployeeExpensesPage({
   const [categories, projects, banks] = await Promise.all([
     getExpenseCategories(),
     getProjects(),
-    isSuperAdmin ? getBanks() : Promise.resolve([]),
+    canPickFundingSource ? getBanks() : Promise.resolve([]),
   ]);
 
   const activeCategories = categories.filter(c => c.is_active);
@@ -102,7 +103,7 @@ export default async function EmployeeExpensesPage({
   if (isApprover) {
     const [{ data: ownerData }, { data: empData }, { data: custodyData }] = await Promise.all([
       supabase.from('project_owners').select('id, name').order('name'),
-      employee.is_super_admin
+      canPickFundingSource
         ? supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name')
         : Promise.resolve({ data: [] }),
       custodyBalancePromise,
@@ -111,8 +112,14 @@ export default async function EmployeeExpensesPage({
     allEmployees = empData || [];
     custodyBalance = custodyData;
   } else {
-    const { data: custodyData } = await custodyBalancePromise;
+    const [{ data: custodyData }, { data: empData }] = await Promise.all([
+      custodyBalancePromise,
+      canPickFundingSource
+        ? supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name')
+        : Promise.resolve({ data: [] }),
+    ]);
     custodyBalance = custodyData;
+    allEmployees = empData || [];
   }
 
   return (
@@ -121,13 +128,15 @@ export default async function EmployeeExpensesPage({
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <h1 className="text-2xl font-bold">المصروفات</h1>
         <div className="flex gap-2">
-          {(tab === 'mine' || tab === 'all') && (employee.has_custody_access || employee.is_super_admin) && (
+          {(tab === 'mine' || tab === 'all') && (employee.has_custody_access || employee.is_super_admin || employee.has_expense_funding_access) && (
             <CreateExpenseModal
               categories={activeCategories}
               projects={projects || []}
               isSuperAdmin={employee.is_super_admin}
               employees={allEmployees}
               bankAccounts={bankAccounts}
+              hasExpenseFundingAccess={canPickFundingSource}
+              currentEmployeeId={employee.id}
             />
           )}
           {tab === 'owners' && isApprover && (
@@ -253,6 +262,10 @@ export default async function EmployeeExpensesPage({
             expenses={myExpenses}
             categories={activeCategories}
             projects={projects || []}
+            employees={allEmployees}
+            bankAccounts={bankAccounts}
+            hasExpenseFundingAccess={canPickFundingSource}
+            currentEmployeeId={employee.id}
           />
         </div>
       )}

@@ -184,6 +184,12 @@ export default async function EmployeeDetailPage({ params }: { params: Promise<{
                 activeClass="bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/30 dark:border-blue-700 dark:text-blue-400"
               />
               <FlagBadge
+                label="يمكنه اختيار مصدر تمويل عند تسجيل مصروف"
+                active={!!employee.has_expense_funding_access}
+                icon={Landmark}
+                activeClass="bg-blue-50 border-blue-300 text-blue-700 dark:bg-blue-950/30 dark:border-blue-700 dark:text-blue-400"
+              />
+              <FlagBadge
                 label={employee.role === 'owner' ? 'المالك / المدير العام' : 'موظف (standard)'}
                 active={employee.role === 'owner'}
                 icon={employee.role === 'owner' ? UserCheck : UserX}

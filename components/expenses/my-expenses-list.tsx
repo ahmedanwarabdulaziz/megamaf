@@ -11,10 +11,18 @@ export function MyExpensesList({
   expenses,
   categories,
   projects,
+  employees = [],
+  bankAccounts = [],
+  hasExpenseFundingAccess = false,
+  currentEmployeeId,
 }: {
   expenses: any[];
   categories: any[];
   projects: any[];
+  employees?: { id: string; full_name: string }[];
+  bankAccounts?: { bank_account_id: string; bank_name: string; account_name: string; current_balance: number }[];
+  hasExpenseFundingAccess?: boolean;
+  currentEmployeeId?: string;
 }) {
   const [notesSearch, setNotesSearch] = useState('');
 
@@ -72,6 +80,10 @@ export function MyExpensesList({
                         expense={expense}
                         categories={categories}
                         projects={projects}
+                        employees={employees}
+                        bankAccounts={bankAccounts}
+                        hasExpenseFundingAccess={hasExpenseFundingAccess}
+                        currentEmployeeId={currentEmployeeId}
                       />
                       <DeleteExpenseButton expenseId={expense.id} />
                     </>

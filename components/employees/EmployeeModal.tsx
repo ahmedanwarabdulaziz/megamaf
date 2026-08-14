@@ -78,6 +78,11 @@ export function EmployeeModal({ projects }: { projects?: any[] }) {
         </div>
 
         <div className="flex items-center gap-2">
+          <input type="checkbox" name="has_expense_funding_access" value="true" id="has_expense_funding_access" className="h-4 w-4 rounded border-primary" />
+          <label htmlFor="has_expense_funding_access" className="text-sm text-blue-600 font-medium">يمكنه اختيار مصدر تمويل (بنك / عهدة موظف آخر) عند تسجيل مصروف</label>
+        </div>
+
+        <div className="flex items-center gap-2">
           <input type="checkbox" name="is_super_admin" value="true" id="is_super_admin" className="h-4 w-4 rounded border-primary" />
           <label htmlFor="is_super_admin" className="text-sm font-bold text-destructive">مدير نظام (صلاحيات كاملة)</label>
         </div>
