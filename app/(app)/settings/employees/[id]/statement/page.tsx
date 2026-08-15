@@ -35,7 +35,7 @@ export default async function EmployeeStatementPage({
       .order('entry_date', { ascending: true }),
     supabase
       .from('expenses')
-      .select('id, amount, expense_date, notes, created_at, projects(name), expense_categories(name)')
+      .select('id, amount, expense_date, notes, created_at, category_id, projects(name), expense_categories(name)')
       .eq('employee_id', id)
       .eq('status', 'approved')
       .eq('is_direct', false)
@@ -43,6 +43,22 @@ export default async function EmployeeStatementPage({
   ]);
 
   if (!employee) notFound();
+
+  // A salary-advance expense (fixed "سلفة من الراتب" category) is booked
+  // against the funding employee's own custody, not the borrower's — join
+  // employee_loans back in so the statement shows who the loan is actually for.
+  const SALARY_ADVANCE_CATEGORY_ID = '00000000-0000-0000-0000-000000000010';
+  const loanExpenseIds = (expenses ?? []).filter(e => e.category_id === SALARY_ADVANCE_CATEGORY_ID).map(e => e.id);
+  const loanBorrowerByExpenseId: Record<string, string> = {};
+  if (loanExpenseIds.length > 0) {
+    const { data: loans } = await supabase
+      .from('employee_loans')
+      .select('expense_id, borrower:employees!employee_loans_employee_id_fkey(full_name)')
+      .in('expense_id', loanExpenseIds);
+    for (const l of loans || []) {
+      if (l.expense_id) loanBorrowerByExpenseId[l.expense_id] = (l.borrower as any)?.full_name || '';
+    }
+  }
 
   // ── Fetch Attachments ─────────────────────────────────────────────────────
   const expenseIds = (expenses ?? []).map(e => e.id);
@@ -89,11 +105,12 @@ export default async function EmployeeStatementPage({
   }
 
   for (const exp of expenses ?? []) {
+    const loanBorrower = loanBorrowerByExpenseId[exp.id];
     rows.push({
       date: exp.expense_date,
       created_at: exp.created_at,
       project_name: (exp.projects as any)?.name ?? '—',
-      description: exp.notes || 'مصروف معتمد',
+      description: loanBorrower ? `سلفة راتب لصالح: ${loanBorrower}` : (exp.notes || 'مصروف معتمد'),
       amount_disbursed: 0,
       amount_spent: Number(exp.amount),
       document_type: 'expense',

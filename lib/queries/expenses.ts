@@ -178,12 +178,30 @@ export async function getAllExpenses(filters: { startDate?: string, endDate?: st
   }
 
   const { data: expenses, error } = await query;
-  
+
   if (error) {
     console.error('[getAllExpenses]', error);
     return [];
   }
   if (!expenses || expenses.length === 0) return [];
+
+  // A salary-advance expense (fixed "سلفة من الراتب" category) is booked
+  // against the funding employee's own account, not the borrower's — join
+  // employee_loans back in so callers can show who the loan is actually for.
+  const SALARY_ADVANCE_CATEGORY_ID = '00000000-0000-0000-0000-000000000010';
+  const loanExpenseIds = expenses.filter(e => e.category_id === SALARY_ADVANCE_CATEGORY_ID).map(e => e.id);
+  const loanBorrowerByExpenseId: Record<string, { employee_id: string; full_name: string }> = {};
+  if (loanExpenseIds.length > 0) {
+    const { data: loans } = await supabase
+      .from('employee_loans')
+      .select('expense_id, employee_id, borrower:employees!employee_loans_employee_id_fkey(full_name)')
+      .in('expense_id', loanExpenseIds);
+    for (const l of loans || []) {
+      if (l.expense_id) {
+        loanBorrowerByExpenseId[l.expense_id] = { employee_id: l.employee_id, full_name: (l.borrower as any)?.full_name };
+      }
+    }
+  }
 
   const { data: attachments } = await supabase
     .from('attachments')
@@ -193,7 +211,8 @@ export async function getAllExpenses(filters: { startDate?: string, endDate?: st
 
   return expenses.map(e => ({
     ...e,
-    attachments: attachments?.filter(a => a.entity_id === e.id) || []
+    attachments: attachments?.filter(a => a.entity_id === e.id) || [],
+    loan_borrower: loanBorrowerByExpenseId[e.id] || null,
   }));
 }
 

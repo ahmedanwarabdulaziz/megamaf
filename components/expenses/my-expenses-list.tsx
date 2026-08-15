@@ -56,6 +56,9 @@ export function MyExpensesList({
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4">
                 <div>
                   <p className="font-bold">{expense.project?.name} - {expense.category?.name}</p>
+                  {expense.loan_borrower && (
+                    <p className="text-xs font-semibold text-amber-600">سلفة لصالح: {expense.loan_borrower.full_name}</p>
+                  )}
                   <p className="text-sm text-muted-foreground">{expense.notes}</p>
                   <div className="flex items-center gap-2 mt-1 text-xs text-muted-foreground">
                     <span>{expense.expense_date}</span>

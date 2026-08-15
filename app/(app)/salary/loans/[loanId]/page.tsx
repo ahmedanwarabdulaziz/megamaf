@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { requirePageAccess } from '@/lib/require-page-access';
 import { formatMoney } from '@/lib/money';
-import { computeLoanFinancials, loanRemainingColorClass, loanRemainingLabel, loanStatusLabel } from '@/lib/salary-financials';
+import { computeLoanFinancials, loanRemainingColorClass, loanRemainingLabel, loanStatusLabel, loanStatusBadgeClass } from '@/lib/salary-financials';
 import { CancelLoanButton } from '@/components/salary/cancel-loan-button';
 
 export const dynamic = 'force-dynamic';
@@ -68,6 +68,13 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ loa
         </div>
       )}
 
+      {loan.status === 'active' && (
+        <div className="bg-green-50 dark:bg-green-950/20 border border-green-300 text-green-700 dark:text-green-300 text-sm p-3 rounded-lg">
+          تم اعتماد هذه السلفة وصرفها فعلياً لـ{loan.employees?.full_name || 'الموظف'} بتاريخ{' '}
+          {new Date(loan.disbursed_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}.
+        </div>
+      )}
+
       <div className="bg-card p-4 rounded-lg border shadow-sm space-y-2 text-sm">
         <div className="flex justify-between"><span className="text-muted-foreground">المبلغ الأصلي:</span><span className="font-bold text-primary">{formatMoney(loan.principal_amount)}</span></div>
         <div className="flex justify-between"><span className="text-muted-foreground">تاريخ الصرف:</span><span className="font-medium">{new Date(loan.disbursed_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}</span></div>
@@ -80,7 +87,10 @@ export default async function LoanDetailPage({ params }: { params: Promise<{ loa
           </span>
         </div>
         <div className="flex justify-between"><span className="text-muted-foreground">طريقة السداد:</span><span className="font-medium">{REPAYMENT_TYPE_LABELS[loan.repayment_type]}</span></div>
-        <div className="flex justify-between"><span className="text-muted-foreground">الحالة:</span><span className="font-medium">{loanStatusLabel(loan.status)}</span></div>
+        <div className="flex justify-between items-center">
+          <span className="text-muted-foreground">الحالة:</span>
+          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${loanStatusBadgeClass(loan.status)}`}>{loanStatusLabel(loan.status)}</span>
+        </div>
         <div className="flex justify-between border-t pt-2">
           <span className="font-bold">المتبقي:</span>
           <span className={`font-bold ${loanRemainingColorClass(fin.remaining)}`}>{formatMoney(fin.remaining)} — {loanRemainingLabel(fin.remaining)}</span>

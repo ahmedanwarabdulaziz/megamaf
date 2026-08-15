@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { requirePageAccess } from '@/lib/require-page-access';
 import { Button } from '@/components/ui/button';
 import { formatMoney } from '@/lib/money';
-import { computeLoanFinancials, loanRemainingColorClass, loanRemainingLabel, loanStatusLabel } from '@/lib/salary-financials';
+import { computeLoanFinancials, loanRemainingColorClass, loanRemainingLabel, loanStatusLabel, loanStatusBadgeClass } from '@/lib/salary-financials';
 import { getEmployeeLoanSummary } from '@/lib/actions/loans';
 import { DisburseLoanModal } from '@/components/salary/disburse-loan-modal';
 
@@ -110,23 +110,33 @@ export default async function EmployeeSalaryPage({ params }: { params: Promise<{
         ) : (
           <div className="divide-y divide-border">
             {loans.map((l: any) => {
+              const isCancelled = l.loan.status === 'cancelled';
               const fin = computeLoanFinancials({ principalAmount: Number(l.loan.principal_amount), totalRepaid: l.totalRepaid });
               return (
-                <Link key={l.loan.id} href={`/salary/loans/${l.loan.id}`} className="flex justify-between items-center p-3 hover:bg-muted/30 transition-colors">
+                <Link key={l.loan.id} href={`/salary/loans/${l.loan.id}`} className={`flex justify-between items-center p-3 hover:bg-muted/30 transition-colors ${isCancelled ? 'opacity-60' : ''}`}>
                   <div>
-                    <div className="font-medium">{formatMoney(l.loan.principal_amount)}</div>
+                    <div className="font-medium flex items-center gap-2">
+                      {formatMoney(l.loan.principal_amount)}
+                      <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${loanStatusBadgeClass(l.loan.status)}`}>{loanStatusLabel(l.loan.status)}</span>
+                    </div>
                     <div className="text-xs text-muted-foreground mt-0.5">
-                      {new Date(l.loan.disbursed_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })} — {loanStatusLabel(l.loan.status)}
+                      {new Date(l.loan.disbursed_date).toLocaleDateString('en-GB', { timeZone: 'UTC' })}
                     </div>
                     <div className="text-[11px] text-muted-foreground/80 mt-1">
-                      المصدر: {l.loan.funding_source === 'bank' 
+                      المصدر: {l.loan.funding_source === 'bank'
                         ? (bankAccounts?.find((b: any) => b.bank_account_id === l.loan.bank_account_id)?.account_name || 'خزينة / بنك')
                         : `عهدة ${(employees?.find((e: any) => e.id === l.loan.funding_employee_id)?.full_name || 'موظف')}`}
                     </div>
                   </div>
                   <div className="text-left">
-                    <div className={`font-bold ${loanRemainingColorClass(fin.remaining)}`}>{formatMoney(fin.remaining)}</div>
-                    <div className="text-xs text-muted-foreground">{loanRemainingLabel(fin.remaining)}</div>
+                    {isCancelled ? (
+                      <div className="text-xs text-muted-foreground">لا يوجد مبلغ مستحق</div>
+                    ) : (
+                      <>
+                        <div className={`font-bold ${loanRemainingColorClass(fin.remaining)}`}>{formatMoney(fin.remaining)}</div>
+                        <div className="text-xs text-muted-foreground">{loanRemainingLabel(fin.remaining)}</div>
+                      </>
+                    )}
                   </div>
                 </Link>
               );

@@ -1,7 +1,7 @@
 'use client';
 
 import { useState } from 'react';
-import { ChevronDown, Landmark, Users } from 'lucide-react';
+import { ChevronDown, Landmark, Users, HandCoins } from 'lucide-react';
 import { formatMoney } from '@/lib/money';
 import { cn } from '@/lib/utils';
 import { ApproveRejectButtons } from '@/components/expenses/approve-reject-buttons';
@@ -79,13 +79,15 @@ export function ExpenseApprovalsList({
                 {group.expenses.map((expense: any) => {
                   const isBankFunded = expense.funding_type === 'bank';
                   const isCustodyFunded = expense.funding_type === 'employee_custody';
+                  const loanBorrower = expense.loan_borrower;
                   return (
                   <div
                     key={expense.id}
                     className={cn(
                       'p-4 flex flex-col gap-3',
                       isBankFunded && 'border-r-4 border-blue-500 bg-blue-500/5',
-                      isCustodyFunded && 'border-r-4 border-purple-500 bg-purple-500/5'
+                      isCustodyFunded && 'border-r-4 border-purple-500 bg-purple-500/5',
+                      loanBorrower && 'border-r-4 border-amber-500 bg-amber-500/5'
                     )}
                   >
                     {(isBankFunded || isCustodyFunded) && (
@@ -103,6 +105,12 @@ export function ExpenseApprovalsList({
                             ? `صرف تلقائي عند الاعتماد من: ${expense.funding_bank?.banks?.name} - ${expense.funding_bank?.account_name}`
                             : `صرف تلقائي عند الاعتماد من عهدة: ${expense.funding_employee?.full_name}`}
                         </span>
+                      </div>
+                    )}
+                    {loanBorrower && (
+                      <div className="flex items-center gap-2 text-xs font-bold px-3 py-1.5 rounded-md w-fit bg-amber-500/15 text-amber-700 dark:text-amber-400">
+                        <HandCoins className="w-3.5 h-3.5 shrink-0" />
+                        <span>سلفة راتب لصالح: {loanBorrower.full_name}</span>
                       </div>
                     )}
                     <div className="flex flex-col sm:flex-row justify-between sm:items-start gap-3">

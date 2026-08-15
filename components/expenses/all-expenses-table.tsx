@@ -62,6 +62,9 @@ export function AllExpensesTable({
                   ) : (
                     <span className="text-primary">{expense.employee?.full_name}</span>
                   )}
+                  {expense.loan_borrower && (
+                    <div className="text-xs font-normal text-amber-600 mt-0.5">سلفة لصالح: {expense.loan_borrower.full_name}</div>
+                  )}
                 </td>
                 <td className="p-4 text-muted-foreground">{expense.project?.name || '-'}</td>
                 <td className="p-4 text-muted-foreground">{expense.category?.name || '-'}</td>
