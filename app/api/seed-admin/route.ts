@@ -5,6 +5,13 @@ import crypto from 'crypto'
 
 export async function GET() {
   try {
+    // Bootstrap is intentionally available only during local development.
+    // Production environments must provision the first admin through a
+    // controlled deployment/database procedure, never through a public GET.
+    if (process.env.NODE_ENV === 'production') {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 })
+    }
+
     const adminClient = createAdminClient()
     
     // Check if any super admin already exists in the employees table
@@ -103,8 +110,9 @@ export async function GET() {
       }
     })
 
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error('Seed Admin Error:', error)
-    return NextResponse.json({ success: false, error: error.message }, { status: 500 })
+    const message = error instanceof Error ? error.message : 'Unable to seed admin account'
+    return NextResponse.json({ success: false, error: message }, { status: 500 })
   }
 }

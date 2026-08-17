@@ -66,12 +66,16 @@ export function BulkPayBar({
   // past the point where it runs out simply don't get paid this round.
   let expenseAllocation: (Row & { amount: number })[] = [];
   if (fundingSource === 'expense' && selectedExpense) {
-    let remainingBalance = selectedExpense.available;
-    expenseAllocation = selectedRows.map(r => {
-      const amount = Math.max(0, Math.min(r.remaining, remainingBalance));
-      remainingBalance -= amount;
-      return { ...r, amount };
-    });
+    expenseAllocation = selectedRows.reduce<{ remaining: number; rows: (Row & { amount: number })[] }>(
+      (acc, r) => {
+        const amount = Math.max(0, Math.min(r.remaining, acc.remaining));
+        return {
+          remaining: acc.remaining - amount,
+          rows: [...acc.rows, { ...r, amount }],
+        };
+      },
+      { remaining: selectedExpense.available, rows: [] },
+    ).rows;
   }
   const expenseAllocatedTotal = expenseAllocation.reduce((sum, r) => sum + r.amount, 0);
   const expenseCoveredCount = expenseAllocation.filter(r => r.amount > 0).length;

@@ -14,10 +14,6 @@ export function PasskeyManager() {
 
   const supabase = createClient()
 
-  useEffect(() => {
-    fetchPasskeys()
-  }, [])
-
   async function fetchPasskeys() {
     setLoading(true)
     setError(null)
@@ -32,6 +28,10 @@ export function PasskeyManager() {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    fetchPasskeys()
+  }, [])
 
   async function handleEnrollPasskey() {
     setEnrolling(true)

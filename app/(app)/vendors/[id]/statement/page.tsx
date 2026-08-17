@@ -66,7 +66,7 @@ export default async function VendorStatementPage({ params }: { params: Promise<
     attachmentsByLedgerId.set(a.entity_id, list);
   }
 
-  let rows: any[] = [];
+  const rows: any[] = [];
   
   // Prior Claims
   for (const p of priorClaims || []) {

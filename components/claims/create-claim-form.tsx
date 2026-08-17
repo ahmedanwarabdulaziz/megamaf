@@ -199,7 +199,7 @@ export function CreateClaimForm({
         if (controller.signal.aborted) return;
 
         // Load bundle rows for stock items
-        let bundleMap = new Map<string, any[]>();
+        const bundleMap = new Map<string, any[]>();
         if (prevItems && prevItems.length > 0) {
           try {
             const { data: bundles } = await supabase

@@ -3,6 +3,8 @@ import { LoginForm } from "./login-form"
 import { createAdminClient } from "@/lib/supabase/admin"
 
 async function checkNoUsers(): Promise<boolean> {
+  if (process.env.NODE_ENV === 'production') return false
+
   try {
     const admin = createAdminClient()
     const { count, error } = await admin

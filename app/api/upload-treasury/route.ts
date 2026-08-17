@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { createR2Client, R2_BUCKET_TREASURY } from '@/lib/r2';
 import { createClient } from '@/lib/supabase/server';
+import { validateAttachmentUpload } from '@/lib/upload-validation';
 
 /** Uploads treasury payment attachments to their own R2 bucket (see lib/r2.ts). */
 export async function POST(req: NextRequest) {
@@ -11,11 +12,16 @@ export async function POST(req: NextRequest) {
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 
     const formData = await req.formData();
-    const file = formData.get('file') as File;
-    const key = formData.get('key') as string;
+    const file = formData.get('file');
+    const key = formData.get('key');
 
-    if (!file || !key) {
+    if (!(file instanceof File) || typeof key !== 'string') {
       return NextResponse.json({ error: 'Missing file or key' }, { status: 400 });
+    }
+
+    const validationError = validateAttachmentUpload(file, key);
+    if (validationError) {
+      return NextResponse.json({ error: validationError }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
@@ -31,8 +37,9 @@ export async function POST(req: NextRequest) {
     );
 
     return NextResponse.json({ success: true, key });
-  } catch (e: any) {
+  } catch (e: unknown) {
     console.error('R2 treasury upload error:', e);
-    return NextResponse.json({ error: e.message || 'Upload failed' }, { status: 500 });
+    const message = e instanceof Error ? e.message : 'Upload failed';
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

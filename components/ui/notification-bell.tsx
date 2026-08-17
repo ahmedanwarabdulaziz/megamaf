@@ -42,6 +42,9 @@ export function NotificationBell() {
     if ("serviceWorker" in navigator && "PushManager" in window) {
       setPushSupported(true);
     }
+    // The helper is intentionally kept below the effect to avoid recreating
+    // the realtime subscription on every render.
+    // eslint-disable-next-line react-hooks/immutability
     fetchNotifications();
 
     // Subscribe to new notifications realtime
