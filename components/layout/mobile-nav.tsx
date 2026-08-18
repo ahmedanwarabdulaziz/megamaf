@@ -6,7 +6,7 @@ import { usePathname } from 'next/navigation';
 import {
   Home, LogOut, Landmark, Receipt, CheckSquare, Users, Settings,
   Wallet, FileText, FileSignature, Contact, Warehouse, ArrowLeftRight,
-  X, Menu, ChevronLeft, BarChart3, FolderKanban, Banknote,
+  X, Menu, ChevronLeft, BarChart3, FolderKanban, Banknote, DatabaseBackup,
 } from 'lucide-react';
 import { usePendingApprovalsCount } from './use-pending-approvals-count';
 import { usePendingClaimsCount } from './use-pending-claims-count';
@@ -122,6 +122,7 @@ export function MobileNav({
         ...(canSeeEmployees ? [{ href: '/employees', label: 'الموظفون', icon: <Users className="w-5 h-5" /> }] : []),
         ...(canSeeOwners ? [{ href: '/settings/owners', label: 'الملاك', icon: <Contact className="w-5 h-5" /> }] : []),
         ...(canSeeSettings ? [{ href: '/settings', label: 'الإعدادات', icon: <Settings className="w-5 h-5" /> }] : []),
+        ...(isSuperAdmin ? [{ href: '/settings/backups', label: 'النسخ الاحتياطي', icon: <DatabaseBackup className="w-5 h-5" /> }] : []),
         ...(isSuperAdmin ? [{ href: '/reports', label: 'التقارير', icon: <BarChart3 className="w-5 h-5" /> }] : []),
       ],
     },

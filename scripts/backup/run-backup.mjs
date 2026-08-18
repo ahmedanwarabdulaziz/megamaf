@@ -337,14 +337,18 @@ function countCopyRows(sql) {
 }
 
 async function backupSource({ mode, catalog, report, runDirectory }) {
-  const commit = await commandOutput("git", ["rev-parse", "HEAD"], {
+  const sourceRef = process.env.BACKUP_SOURCE_REF?.trim() || "HEAD";
+  const commit = await commandOutput("git", ["rev-parse", sourceRef], {
     cwd: repositoryRoot,
     label: "git commit detection",
   });
-  const branch = await commandOutput("git", ["branch", "--show-current"], {
-    cwd: repositoryRoot,
-    label: "git branch detection",
-  });
+  const branch =
+    sourceRef === "HEAD"
+      ? await commandOutput("git", ["branch", "--show-current"], {
+          cwd: repositoryRoot,
+          label: "git branch detection",
+        })
+      : sourceRef;
   const trackedChanges = await commandOutput(
     "git",
     ["status", "--porcelain", "--untracked-files=no"],
@@ -375,7 +379,7 @@ async function backupSource({ mode, catalog, report, runDirectory }) {
   });
   await runCommand(
     "git",
-    ["archive", "--format=zip", `--output=${sourceFile}`, "HEAD"],
+    ["archive", "--format=zip", `--output=${sourceFile}`, sourceRef],
     { cwd: repositoryRoot, label: "source snapshot" },
   );
   await Promise.all([

@@ -39,7 +39,10 @@ export async function proxy(request: NextRequest) {
   const isLoginRoute = pathname.startsWith('/login')
   const isChangePasswordRoute = pathname === '/change-password'
   // Public API routes that must work without authentication
-  const isPublicApiRoute = pathname.startsWith('/api/seed-admin')
+  // Backup agents have no browser session. Their API routes authenticate with
+  // one-time pairing codes or revocable bearer tokens inside each handler.
+  const isPublicApiRoute =
+    pathname.startsWith('/api/seed-admin') || pathname.startsWith('/api/backup-agent/')
   const isProtectedRoute = !isLoginRoute && !isPublicApiRoute
 
   // Not logged in → redirect to login

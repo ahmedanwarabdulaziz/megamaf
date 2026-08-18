@@ -36,6 +36,36 @@ npm run backup:source
 By default, output is stored in the `production-backups` directory beside the
 repository. Set `BACKUP_OUTPUT_DIR` to use another location.
 
+## Admin Backup Devices page
+
+After migration `20260818234000_backup_devices.sql` is applied, super-admins can
+open **Settings > Backups** (`/settings/backups`) to manage designated Windows
+backup computers.
+
+To add a computer:
+
+1. Enter a computer name and create a one-time pairing code. The code expires
+   after 15 minutes and is stored by the server only as a SHA-256 hash.
+2. Download the Windows installer from the page and run it on the new computer.
+3. Enter the app URL, pairing code, local backup folder, and database settings.
+   R2 settings are optional and can be configured only on computers that should
+   perform incremental or full attachment backups.
+4. The installer stores credentials only in the protected local agent folder,
+   registers a Windows Scheduled Task, and checks for approved jobs once a
+   minute.
+5. Return to the page to choose the primary device and run a database,
+   incremental, or full backup.
+
+The browser never receives database, R2, or device-token secrets. Pairing codes
+are one-use, device tokens can be revoked from the page, and only one job can be
+queued or running per computer. Jobs wait safely while a computer is offline.
+The application stores only status, checksums, archive metadata, and the local
+path reported for admin visibility; backup contents remain on that computer.
+
+The new computer needs Node.js LTS, Git for Windows, and Docker Desktop. If the
+GitHub repository is private, its Windows user must sign in to GitHub before the
+installer can clone the agent source.
+
 ## Required configuration
 
 Keep all values in `.env.local`, GitHub Actions secrets, or the local backup

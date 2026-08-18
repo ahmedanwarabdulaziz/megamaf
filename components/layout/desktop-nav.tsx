@@ -4,7 +4,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   Home, Landmark, Receipt, CheckSquare, Users,
-  Wallet, FileText, FileSignature, Contact, Warehouse, ArrowLeftRight, Banknote
+  Wallet, FileText, FileSignature, Contact, Warehouse, ArrowLeftRight, Banknote, DatabaseBackup
 } from 'lucide-react';
 import { usePendingApprovalsCount } from './use-pending-approvals-count';
 import { usePendingClaimsCount } from './use-pending-claims-count';
@@ -67,7 +67,7 @@ export function DesktopNav({
     }`;
 
   return (
-    <nav className="flex-1 space-y-1 p-2">
+    <nav className="flex-1 space-y-1 overflow-y-auto p-2">
       {/* Dashboard only visible to super-admins */}
       {isSuperAdmin && (
         <Link href="/" className={navClass('/')}>
@@ -216,6 +216,13 @@ export function DesktopNav({
         <Link href="/settings/expenses" className={navClass('/settings/expenses')}>
           <Receipt className="h-5 w-5" />
           فئات المصروفات
+        </Link>
+      )}
+
+      {isSuperAdmin && (
+        <Link href="/settings/backups" className={navClass('/settings/backups')}>
+          <DatabaseBackup className="h-5 w-5" />
+          النسخ الاحتياطي
         </Link>
       )}
       

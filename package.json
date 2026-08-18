@@ -12,7 +12,9 @@
     "backup:full": "node scripts/backup/run-backup.mjs --mode full",
     "backup:source": "node scripts/backup/run-backup.mjs --mode source",
     "backup:drive:authorize": "node scripts/backup/authorize-google-drive.mjs",
-    "backup:prune:preview": "node scripts/backup/prune-backups.mjs"
+    "backup:prune:preview": "node scripts/backup/prune-backups.mjs",
+    "backup:agent:setup": "node scripts/backup-agent/setup.mjs",
+    "backup:agent": "node scripts/backup-agent/agent.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1070.0",
