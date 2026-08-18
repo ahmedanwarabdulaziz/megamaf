@@ -1,16 +1,19 @@
 'use client'
 
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   CheckCircle2,
   Clock3,
   Cloud,
   DatabaseBackup,
   Download,
+  FolderDown,
+  HardDriveDownload,
   Loader2,
   Play,
   RefreshCw,
   ShieldCheck,
+  Square,
   XCircle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -40,6 +43,42 @@ type StoredBackup = {
   createdAt: string | null
 }
 
+type AttachmentObject = {
+  key: string
+  bytes: number
+  lastModified: string | null
+  etag: string | null
+  url: string
+}
+
+type AttachmentBackupProgress = {
+  files: number
+  bytes: number
+  current: string
+}
+
+type LocalFileHandle = {
+  createWritable: () => Promise<WritableStream<Uint8Array>>
+}
+
+type LocalDirectoryHandle = {
+  getDirectoryHandle: (
+    name: string,
+    options: { create: boolean },
+  ) => Promise<LocalDirectoryHandle>
+  getFileHandle: (
+    name: string,
+    options: { create: boolean },
+  ) => Promise<LocalFileHandle>
+}
+
+type DirectoryPickerWindow = Window & {
+  showDirectoryPicker?: (options: {
+    id: string
+    mode: 'readwrite'
+  }) => Promise<LocalDirectoryHandle>
+}
+
 export function CloudBackupsClient() {
   const [runs, setRuns] = useState<WorkflowRun[]>([])
   const [backups, setBackups] = useState<StoredBackup[]>([])
@@ -47,6 +86,10 @@ export function CloudBackupsClient() {
   const [loading, setLoading] = useState(true)
   const [triggering, setTriggering] = useState(false)
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [downloadingAttachments, setDownloadingAttachments] = useState(false)
+  const [attachmentProgress, setAttachmentProgress] =
+    useState<AttachmentBackupProgress | null>(null)
+  const attachmentAbortController = useRef<AbortController | null>(null)
   const [message, setMessage] = useState<{
     type: 'success' | 'error'
     text: string
@@ -129,6 +172,131 @@ export function CloudBackupsClient() {
     } finally {
       setDownloading(null)
     }
+  }
+
+  async function downloadAttachments() {
+    const picker = (window as DirectoryPickerWindow).showDirectoryPicker
+    if (!picker) {
+      setMessage({
+        type: 'error',
+        text: 'تنزيل المرفقات يحتاج متصفح Google Chrome أو Microsoft Edge على كمبيوتر.',
+      })
+      return
+    }
+
+    setMessage(null)
+    let selectedDirectory: LocalDirectoryHandle
+    try {
+      selectedDirectory = await picker({
+        id: 'megamaf-attachment-backups',
+        mode: 'readwrite',
+      })
+    } catch (error) {
+      if (isAbortError(error)) return
+      setMessage({ type: 'error', text: errorMessage(error) })
+      return
+    }
+
+    const controller = new AbortController()
+    attachmentAbortController.current = controller
+    setDownloadingAttachments(true)
+    setAttachmentProgress({ files: 0, bytes: 0, current: 'جاري تجهيز النسخة...' })
+
+    const exportedAt = new Date()
+    const manifest: {
+      version: number
+      exportedAt: string
+      files: Array<{
+        bucket: string
+        key: string
+        localPath: string
+        bytes: number
+        lastModified: string | null
+        etag: string | null
+      }>
+    } = { version: 1, exportedAt: exportedAt.toISOString(), files: [] }
+
+    try {
+      const root = await selectedDirectory.getDirectoryHandle(
+        `MegaMaf Attachments ${fileTimestamp(exportedAt)}`,
+        { create: true },
+      )
+
+      for (const bucket of ['general', 'treasury'] as const) {
+        const bucketDirectory = await root.getDirectoryHandle(bucket, { create: true })
+        let cursor: string | null = null
+
+        do {
+          controller.signal.throwIfAborted()
+          const query = new URLSearchParams({ bucket })
+          if (cursor) query.set('cursor', cursor)
+          const response = await fetch(`/api/admin/attachment-backup?${query}`, {
+            cache: 'no-store',
+            signal: controller.signal,
+          })
+          const payload = await response.json()
+          if (!response.ok) {
+            throw new Error(payload.error ?? 'تعذر تجهيز قائمة المرفقات.')
+          }
+
+          for (const object of (payload.objects ?? []) as AttachmentObject[]) {
+            controller.signal.throwIfAborted()
+            const localParts = safeLocalPath(object.key)
+            const localPath = [bucket, ...localParts].join('/')
+            setAttachmentProgress((current) => ({
+              files: current?.files ?? 0,
+              bytes: current?.bytes ?? 0,
+              current: localPath,
+            }))
+
+            await streamObjectToDirectory(
+              bucketDirectory,
+              localParts,
+              object.url,
+              controller.signal,
+            )
+            manifest.files.push({
+              bucket,
+              key: object.key,
+              localPath,
+              bytes: object.bytes,
+              lastModified: object.lastModified,
+              etag: object.etag,
+            })
+            setAttachmentProgress((current) => ({
+              files: (current?.files ?? 0) + 1,
+              bytes: (current?.bytes ?? 0) + object.bytes,
+              current: localPath,
+            }))
+          }
+          cursor = typeof payload.nextCursor === 'string' ? payload.nextCursor : null
+        } while (cursor)
+      }
+
+      await writeJsonFile(root, 'backup-manifest.json', manifest)
+      const totalBytes = manifest.files.reduce((sum, file) => sum + file.bytes, 0)
+      setMessage({
+        type: 'success',
+        text: `اكتملت نسخة المرفقات: ${manifest.files.length} ملف (${formatBytes(
+          totalBytes,
+        )}) وحُفظت في المجلد الذي اخترته.`,
+      })
+    } catch (error) {
+      setMessage({
+        type: 'error',
+        text: isAbortError(error)
+          ? 'تم إيقاف التنزيل. الملفات التي اكتملت ستظل محفوظة ويمكن حذف المجلد الجزئي يدوياً.'
+          : `${errorMessage(error)} إذا ظهر خطأ شبكة، تأكد من إعداد CORS في R2.`,
+      })
+    } finally {
+      attachmentAbortController.current = null
+      setDownloadingAttachments(false)
+      setAttachmentProgress(null)
+    }
+  }
+
+  function cancelAttachmentDownload() {
+    attachmentAbortController.current?.abort()
   }
 
   return (
@@ -221,6 +389,56 @@ export function CloudBackupsClient() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HardDriveDownload className="h-5 w-5" />
+            نسخة محلية من جميع المرفقات
+          </CardTitle>
+          <CardDescription>
+            اختر مجلداً على هذا الكمبيوتر لتنزيل مرفقات النظام ومرفقات الخزينة مباشرة من R2، مع الحفاظ على ترتيب المجلدات وإضافة ملف فهرس للتحقق.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-lg border bg-muted/40 p-4 text-sm text-muted-foreground">
+            يعمل التنزيل على هذا الجهاز فقط، ولا يمر حجم الملفات عبر Vercel. أبقِ الصفحة والكمبيوتر مفتوحين حتى تظهر رسالة الاكتمال.
+          </div>
+          {attachmentProgress && (
+            <div className="space-y-2 rounded-lg border p-4 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="font-medium">تم حفظ {attachmentProgress.files} ملف</span>
+                <span dir="ltr">{formatBytes(attachmentProgress.bytes)}</span>
+              </div>
+              <p className="truncate text-xs text-muted-foreground" dir="ltr">
+                {attachmentProgress.current}
+              </p>
+            </div>
+          )}
+          <div className="flex flex-wrap gap-2">
+            <Button
+              size="lg"
+              onClick={downloadAttachments}
+              disabled={downloadingAttachments}
+            >
+              {downloadingAttachments ? (
+                <Loader2 className="ml-2 h-5 w-5 animate-spin" />
+              ) : (
+                <FolderDown className="ml-2 h-5 w-5" />
+              )}
+              {downloadingAttachments
+                ? 'جاري تنزيل المرفقات'
+                : 'تنزيل جميع المرفقات على هذا الكمبيوتر'}
+            </Button>
+            {downloadingAttachments && (
+              <Button variant="outline" size="lg" onClick={cancelAttachmentDownload}>
+                <Square className="ml-2 h-4 w-4" />
+                إيقاف
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -357,4 +575,56 @@ function formatBytes(value: number) {
 
 function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : 'حدث خطأ غير متوقع.'
+}
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError'
+}
+
+function fileTimestamp(value: Date) {
+  const iso = value.toISOString().replaceAll(':', '-')
+  return `${iso.slice(0, -5)}Z`
+}
+
+function safeLocalPath(key: string) {
+  const parts = key
+    .split('/')
+    .filter((part) => part && part !== '.' && part !== '..')
+    .map((part) =>
+      part
+        .replace(/[<>:"|?*\x00-\x1f]/g, '_')
+        .replace(/[. ]+$/g, '_')
+        .slice(0, 180),
+    )
+  return parts.length > 0 ? parts : ['unnamed-file']
+}
+
+async function streamObjectToDirectory(
+  root: LocalDirectoryHandle,
+  parts: string[],
+  url: string,
+  signal: AbortSignal,
+) {
+  let directory = root
+  for (const part of parts.slice(0, -1)) {
+    directory = await directory.getDirectoryHandle(part, { create: true })
+  }
+  const response = await fetch(url, { signal })
+  if (!response.ok || !response.body) {
+    throw new Error(`فشل تنزيل الملف (${response.status}).`)
+  }
+  const file = await directory.getFileHandle(parts.at(-1)!, { create: true })
+  const writable = await file.createWritable()
+  await response.body.pipeTo(writable, { signal })
+}
+
+async function writeJsonFile(
+  directory: LocalDirectoryHandle,
+  name: string,
+  value: unknown,
+) {
+  const file = await directory.getFileHandle(name, { create: true })
+  const writable = await file.createWritable()
+  const body = new TextEncoder().encode(`${JSON.stringify(value, null, 2)}\n`)
+  await new Blob([body]).stream().pipeTo(writable)
 }
