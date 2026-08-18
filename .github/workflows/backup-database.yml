@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
-      BACKUP_OUTPUT_DIR: ${{ runner.temp }}/megamaf-backups
+      BACKUP_OUTPUT_DIR: /tmp/megamaf-backups
       BACKUP_DB_HOST: ${{ vars.BACKUP_DB_HOST }}
       BACKUP_DB_PORT: ${{ vars.BACKUP_DB_PORT }}
       BACKUP_DB_NAME: ${{ vars.BACKUP_DB_NAME }}
