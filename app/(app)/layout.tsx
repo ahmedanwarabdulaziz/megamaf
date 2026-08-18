@@ -9,6 +9,7 @@ import { PasskeyManager } from "@/components/profile/passkey-manager"
 import { NotificationBell } from "@/components/ui/notification-bell"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { DesktopNav } from "@/components/layout/desktop-nav"
+import { BackupHealthIndicator } from "@/components/layout/backup-health-indicator"
 
 export default async function AppLayout({
   children,
@@ -106,6 +107,7 @@ export default async function AppLayout({
               isSuperAdmin={isSuperAdmin}
             />
             <div className="flex items-center gap-2">
+              <BackupHealthIndicator />
               <NotificationBell />
             </div>
           </header>
