@@ -36,6 +36,10 @@ yarn-error.log*
 # vercel
 .vercel
 
+# backup runtime output and local state (never commit production data)
+/backup-output/
+/.backup-state/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

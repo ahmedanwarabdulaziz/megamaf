@@ -1,5 +1,10 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Production backups
+
+See [docs/backup/README.md](docs/backup/README.md) for the verified database,
+source, R2, Google Drive, retention, and restore workflow.
+
 ## Getting Started
 
 First, run the development server:
