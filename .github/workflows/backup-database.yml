@@ -1,0 +1,52 @@
+name: Backup production database
+
+on:
+  schedule:
+    - cron: "0 0 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: megamaf-production-database-backup
+  cancel-in-progress: false
+
+jobs:
+  backup:
+    if: ${{ vars.BACKUP_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      BACKUP_OUTPUT_DIR: ${{ runner.temp }}/megamaf-backups
+      BACKUP_DB_HOST: ${{ vars.BACKUP_DB_HOST }}
+      BACKUP_DB_PORT: ${{ vars.BACKUP_DB_PORT }}
+      BACKUP_DB_NAME: ${{ vars.BACKUP_DB_NAME }}
+      BACKUP_DB_USER: ${{ vars.BACKUP_DB_USER }}
+      SUPABASE_DB_PASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+      R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+      R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+      R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+      R2_BACKUP_BUCKET_NAME: ${{ vars.R2_BACKUP_BUCKET_NAME }}
+      R2_DATABASE_BACKUP_PREFIX: database-backups
+
+    steps:
+      - name: Check out the production source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install pinned tools
+        run: npm ci
+
+      - name: Create and verify database backup
+        run: node scripts/backup/run-backup.mjs --mode database --skip-source
+
+      - name: Upload and verify backup in private R2 storage
+        run: node scripts/backup/upload-r2.mjs

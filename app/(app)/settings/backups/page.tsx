@@ -1,9 +1,9 @@
 import { requireAdmin } from '@/lib/require-page-access'
-import { BackupDevicesClient } from './backup-devices-client'
+import { CloudBackupsClient } from './cloud-backups-client'
 
 export const dynamic = 'force-dynamic'
 
-export default async function BackupDevicesPage() {
+export default async function CloudBackupsPage() {
   await requireAdmin()
-  return <BackupDevicesClient />
+  return <CloudBackupsClient />
 }
