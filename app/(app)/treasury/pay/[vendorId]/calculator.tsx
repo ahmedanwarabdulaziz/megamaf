@@ -22,6 +22,7 @@ type AvailableExpense = {
 };
 
 type ClaimSummary = {
+  claim_id: string;
   project_id: string;
   project_name: string;
   claim_number: number;
@@ -157,6 +158,20 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
       ? (projectId ? openDocs.filter(d => d.project_id === projectId && d.document_type !== 'prior_claim') : [])
       : (projectId ? openDocs.filter(d => d.project_id === projectId) : openDocs);
 
+    // A claim's own bucket (remainingDue below) can sum to MORE than the project
+    // truly owes, whenever an older claim in the same project absorbed extra
+    // payment — that overpayment nets out in the cumulative remaining shown on
+    // the summary card, but summing individual buckets loses it (a bucket can't
+    // go negative). So auto-fill must cap total allocation across a project's
+    // claim + prior_claim (claim #0) rows combined at that SAME cumulative
+    // remaining, or a large payment amount could silently allocate more than the
+    // vendor is actually still owed. Whatever isn't consumed stays in `remaining`
+    // for later (non-claim) documents, same as any other row skipped for lack of room.
+    const claimGroupCapRemaining = new Map<string, number>();
+    for (const s of claimSummaries || []) {
+      claimGroupCapRemaining.set(s.project_id, Math.max(0, s.netCumulative + s.tax - s.totalPaid));
+    }
+
     const newAllocations = filteredDocs.map(doc => {
       // For cumulative claims: use the summary only for the description label and
       // the informational cumulative breakdown shown under it. The actual payable
@@ -170,17 +185,27 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
       // more than this claim's own bucket allows (cumulative remaining overstated
       // because an older claim's payment sits unallocated as vendor credit) — the
       // latter is what caused "Allocation of 30000 exceeds remaining due 27003.75".
+      // Multiple claim rows can now appear for the same project (older unpaid
+      // claims are no longer hidden), so the cumulative breakdown must only
+      // attach to the ONE row it actually describes — matched by claim id, not
+      // just project id, or every claim row for the project would show an
+      // identical copy of the same project-wide breakdown.
       const summary = doc.document_type === 'claim'
-        ? claimSummaries?.find(s => s.project_id === doc.project_id)
+        ? claimSummaries?.find(s => s.project_id === doc.project_id && s.claim_id === doc.document_id)
         : undefined;
 
       const remainingDue = doc.amount_due - doc.amount_paid;
 
-      const description = summary
-        ? `مستخلص رقم ${summary.claim_number}`
-        : doc.description;
+      const description = doc.description;
 
-      const allocAmount = Math.min(remaining, remainingDue);
+      let allocAmount;
+      if (doc.document_type === 'claim' || doc.document_type === 'prior_claim') {
+        const capLeft = claimGroupCapRemaining.get(doc.project_id) ?? remainingDue;
+        allocAmount = Math.min(remaining, remainingDue, capLeft);
+        claimGroupCapRemaining.set(doc.project_id, capLeft - allocAmount);
+      } else {
+        allocAmount = Math.min(remaining, remainingDue);
+      }
       remaining -= allocAmount;
       return {
         target_type:   doc.document_type,
@@ -206,6 +231,55 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
   const updateAllocation = (index: number, val: number) => {
     const newAllocations = [...allocations];
     newAllocations[index].amount = Math.min(val, newAllocations[index].max);
+    setAllocations(newAllocations);
+  };
+
+  // Multiple claim rows for the same project (e.g. an older unpaid claim plus
+  // the latest one) are merged into a single visual row so the user sees one
+  // "مستخلص رقم N" line with the true combined remaining — matching the
+  // project's cumulative summary — instead of several near-duplicate rows.
+  // Each underlying claim keeps its own target_id/amount/max though, since
+  // record_vendor_payment validates a payment against ONE specific claim's own
+  // bucket. Typing a total into the merged row's input fans it out across the
+  // underlying claims oldest-first, capped at each one's own max, so the
+  // submitted allocations always stay within what the backend will accept.
+  type DisplayRow =
+    | { type: 'single'; index: number }
+    | { type: 'group'; indices: number[] };
+
+  const displayRows = useMemo(() => {
+    const rows: DisplayRow[] = [];
+    const groupRowByProject = new Map<string, DisplayRow & { type: 'group' }>();
+    allocations.forEach((a, idx) => {
+      // A claim #0 balance stays tagged 'prior_claim' (not relabeled to 'claim')
+      // whenever a newer numbered claim exists for the project — see page.tsx's
+      // relabeling comment — so it must merge into the same project group too,
+      // or its share of the total silently shows up as a second row again.
+      if (a.target_type === 'claim' || a.target_type === 'prior_claim') {
+        const existing = groupRowByProject.get(a.project_id);
+        if (existing) {
+          existing.indices.push(idx);
+        } else {
+          const row: DisplayRow & { type: 'group' } = { type: 'group', indices: [idx] };
+          groupRowByProject.set(a.project_id, row);
+          rows.push(row);
+        }
+      } else {
+        rows.push({ type: 'single', index: idx });
+      }
+    });
+    return rows;
+  }, [allocations]);
+
+  const updateGroupAllocation = (indices: number[], val: number, cap: number) => {
+    const newAllocations = [...allocations];
+    let remaining = Math.min(Math.max(0, val), cap);
+    for (const idx of indices) {
+      const max = newAllocations[idx].max;
+      const amt = Math.min(remaining, max);
+      newAllocations[idx] = { ...newAllocations[idx], amount: amt };
+      remaining -= amt;
+    }
     setAllocations(newAllocations);
   };
 
@@ -672,8 +746,35 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
-            {allocations.map((alloc, idx) => (
-              <tr key={alloc.target_id} className={alloc.amount > 0 ? 'bg-primary/5' : ''}>
+            {displayRows.map((row) => {
+              const indices = row.type === 'group' ? row.indices : [row.index];
+              const rows = indices.map(i => allocations[i]);
+              // The row carrying the cumulative breakdown (grossTotal > 0) is the
+              // one matched to claimSummaries in the effect above — use it for the
+              // merged row's description/breakdown; fall back to the most recent
+              // claim in the group (indices are oldest-first) if none matched.
+              const summaryRow = rows.find(r => r.grossTotal > 0) || rows[rows.length - 1];
+              // The group's true remaining is the SAME cumulative formula as the
+              // summary card (netCumulative + tax - totalPaid) — not a sum of the
+              // rows' own buckets, since a bucket can't go negative and would
+              // therefore lose an older claim's overpayment netting against this one.
+              const groupCap = summaryRow.grossTotal > 0
+                ? Math.max(0, summaryRow.netCumulative + summaryRow.tax - summaryRow.totalPaid)
+                : rows.reduce((sum, r) => sum + r.max, 0);
+              const alloc = row.type === 'single'
+                ? rows[0]
+                : {
+                    ...summaryRow,
+                    max:    groupCap,
+                    amount: rows.reduce((sum, r) => sum + r.amount, 0),
+                  };
+              const rowKey = row.type === 'group' ? `claim-group-${alloc.project_id}` : alloc.target_id;
+              const handleChange = (val: number) => {
+                if (row.type === 'group') updateGroupAllocation(indices, val, groupCap);
+                else updateAllocation(row.index, val);
+              };
+              return (
+              <tr key={rowKey} className={alloc.amount > 0 ? 'bg-primary/5' : ''}>
 
                 {/* Description + breakdown for claim rows */}
                 <td className="p-3">
@@ -691,7 +792,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
                         </div>
                       )}
                       <div className="flex justify-between gap-6 border-t border-primary/20 pt-1 mt-0.5 text-foreground font-semibold">
-                        <span>المتبقي للدفع:</span>
+                        <span>الصافي التراكمي (قابل للدفع):</span>
                         <span className="text-primary">{formatMoney(alloc.netCumulative)}</span>
                       </div>
                       {alloc.tax > 0 && (
@@ -706,6 +807,10 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
                           <span className="font-medium">- {formatMoney(alloc.totalPaid)}</span>
                         </div>
                       )}
+                      <div className="flex justify-between gap-6 border-t border-primary/20 pt-1 mt-0.5 text-foreground font-semibold">
+                        <span>المتبقي للدفع:</span>
+                        <span className="text-primary">{formatMoney(alloc.netCumulative + alloc.tax - alloc.totalPaid)}</span>
+                      </div>
                     </div>
                   )}
                 </td>
@@ -727,12 +832,13 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
                     min="0"
                     max={alloc.max}
                     value={alloc.amount || ''}
-                    onChange={e => updateAllocation(idx, parseFloat(e.target.value) || 0)}
+                    onChange={e => handleChange(parseFloat(e.target.value) || 0)}
                     className="w-full p-2 rounded border bg-background text-primary font-medium text-left"
                   />
                 </td>
               </tr>
-            ))}
+              );
+            })}
             {allocations.length === 0 && (
               <tr>
                 <td colSpan={4} className="p-8 text-center text-muted-foreground">لا يوجد مستندات مفتوحة لهذا المقاول. أي مبلغ سيتم تسجيله كرصيد دائن.</td>

@@ -66,22 +66,18 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     created_at: pc.created_at
   }));
 
-  // Filter to only keep the LATEST claim per project to avoid double counting cumulative claims
-  const latestClaimPerProject = new Map<string, any>();
-  
-  docs?.forEach(d => {
-    if (d.document_type === 'claim') {
-      const existing = latestClaimPerProject.get(d.project_id);
-      // Keep if it's the first one, or if its document_date is newer
-      if (!existing || new Date(d.document_date).getTime() > new Date(existing.document_date).getTime()) {
-        latestClaimPerProject.set(d.project_id, d);
-      }
-    }
-  });
-
-  const filteredDocs = docs?.filter(d => 
-    d.document_type !== 'claim' || latestClaimPerProject.get(d.project_id)?.document_id === d.document_id
-  );
+  // Keep EVERY approved claim as its own payable row, not just the latest per
+  // project. Each claim's amount_due (v_claim_totals.total_due_this_claim) is
+  // already that SPECIFIC claim's own incremental bucket — the delta over the
+  // previous claim, not a running cumulative total — so listing all of them
+  // does not double count. Dropping older claims here used to hide any balance
+  // still owed on them (e.g. claim #1 never fully paid before claim #2 was
+  // raised): the vendor was genuinely still owed that money, but no row in
+  // this table let you allocate a payment to it, even though the cumulative
+  // "remaining" summary above correctly included it. Confirmed against real
+  // data: summing (amount_due - amount_paid) across every claim for a project
+  // equals exactly the cumulative remaining shown in the summary card.
+  const filteredDocs = docs;
 
   // Deduplicate: if v_vendor_account (migration 0039+) already returned prior_claim rows,
   // don't add duplicates from the separate vendor_prior_claims fetch.
@@ -185,6 +181,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     });
 
     return {
+      claim_id:     c.id,   // identifies the specific claim row this summary belongs to, so the UI attaches the cumulative breakdown to only that one row when multiple claims for the project are listed
       project_id:   c.project_id,
       project_name: projectName,
       claim_number: fin.claim_number,
@@ -261,12 +258,14 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   });
 
   // Filter for payables that still have a balance.
-  // Exclude prior_claim / opening_balance rows for projects that have a higher claim
-  // (their balance is already folded into that claim's cumulative total).
+  // A prior_claim (claim #0) row's own amount_due is only ever its own
+  // certified/paid amounts — a later claim's total_due_this_claim excludes
+  // claim #0's certified total from its own bucket entirely (it's not a
+  // running cumulative figure), so claim #0's balance is never folded into a
+  // later claim. It must stay its own payable row even when a higher claim
+  // exists, or its unpaid balance becomes uncollectable through this screen.
   const openDocs = allDocs.filter(d => {
     if (d.document_type === 'payment') return false;
-    if ((d.document_type === 'prior_claim' || d.document_type === 'opening_balance')
-        && projectsWithHigherClaim.has(d.project_id)) return false;
     return (d.amount_due - d.amount_paid) > 0;
   });
 
