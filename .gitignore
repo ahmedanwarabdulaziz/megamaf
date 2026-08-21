@@ -20,6 +20,14 @@
 # production
 /build
 
+# generated service-worker artifacts (Serwist builds these from app/sw.ts)
+/public/sw.js
+/public/sw.js.map
+/public/workbox-*.js
+/public/worker-*.js
+/public/swe-worker-*.js
+/public/swe-worker-*.js.map
+
 # misc
 .DS_Store
 *.pem

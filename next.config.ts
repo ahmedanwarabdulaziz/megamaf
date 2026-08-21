@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import withSerwistInit from "@serwist/next";
 
 const nextConfig: NextConfig = {
   compress: true,          // gzip all HTTP responses in production
@@ -10,17 +11,11 @@ const nextConfig: NextConfig = {
   },
 };
 
-// Only enable PWA in production. In development the static sw.js in /public
-// would be served and cache stale JS bundles, breaking HMR.
-const config =
-  process.env.NODE_ENV === "production"
-    ? // eslint-disable-next-line @typescript-eslint/no-require-imports
-      require("@ducanh2912/next-pwa").default({
-        dest: "public",
-        register: true,
-        skipWaiting: true,
-        customWorkerDir: "worker",
-      })(nextConfig)
-    : nextConfig;
+const withSerwist = withSerwistInit({
+  swSrc: "app/sw.ts",
+  swDest: "public/sw.js",
+  register: true,
+  disable: process.env.NODE_ENV !== "production",
+});
 
-export default config;
+export default withSerwist(nextConfig);
