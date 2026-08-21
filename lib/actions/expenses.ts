@@ -6,6 +6,8 @@ import { logAudit } from '@/lib/audit';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { sendPushNotification } from '@/lib/notifications';
+import { getProfile } from '@/lib/supabase/get-profile';
+import { canEditPage } from '@/lib/require-page-access';
 
 const MAIN_COMPANY_PROJECT_ID = '00000000-0000-0000-0000-000000000001';
 
@@ -618,53 +620,48 @@ export async function disburseCustody(formData: FormData) {
 
 export async function deleteCustodyDisbursement(id: string) {
   try {
-    const supabase = await createClient();
+    const { user, profile, supabase } = await getProfile();
+    if (
+      !user ||
+      !profile ||
+      profile.is_active === false ||
+      !canEditPage(profile, 'treasury/custody')
+    ) {
+      return { error: 'Unauthorized' };
+    }
+
+    if (!uuidRegex.test(id)) return { error: 'Invalid entry ID' };
+
+    // The service-role client is created only after authorization. It is used
+    // solely to validate the exact ledger row independently of read policies.
     const adminSupabase = createAdminClient();
-
-    // Verify user is authorized to delete (must have access or be super admin)
-    const { data: userData } = await supabase.auth.getUser();
-    if (!userData.user) return { error: 'Unauthorized' };
-
-    const { data: actingEmployee } = await supabase
-      .from('employees')
-      .select('id')
-      .eq('auth_user_id', userData.user.id)
-      .single();
-
-    // Use admin client to fetch the entry
     const { data: entry } = await adminSupabase
       .from('ledger_entries')
-      .select('*')
+      .select('id, category, direction, employee_id, counterparty_type, counterparty_id, amount, entry_date')
       .eq('id', id)
       .single();
 
     if (!entry) return { error: 'Entry not found' };
 
-    if (entry.category !== 'custody_disbursement') return { error: 'Invalid entry type' };
+    if (
+      entry.category !== 'custody_disbursement' ||
+      entry.direction !== 'in' ||
+      entry.counterparty_type !== 'bank' ||
+      !entry.employee_id ||
+      !entry.counterparty_id
+    ) {
+      return { error: 'Invalid entry type' };
+    }
 
-    // Delete the employee ledger entry (using admin client to bypass RLS)
-    const { error: err1 } = await adminSupabase.from('ledger_entries').delete().eq('id', id);
-    if (err1) throw err1;
-
-    // Delete the corresponding bank ledger entry (match by counterparty, amount, date)
-    const { error: err2, count } = await adminSupabase
-      .from('ledger_entries')
-      .delete({ count: 'exact' })
-      .eq('category', 'custody_disbursement')
-      .eq('direction', 'out')
-      .eq('bank_account_id', entry.counterparty_id)
-      .eq('counterparty_id', entry.employee_id)
-      .eq('amount', entry.amount)
-      .eq('entry_date', entry.entry_date);
-
-    if (err2) throw err2;
-    // Note: count may be 0 if the bank entry was already deleted — that's acceptable
-
-    // Recalculate employee custody balance
-    await adminSupabase.rpc('settle_employee_custody', { p_employee_id: entry.employee_id });
+    // The authenticated RPC checks edit access again and atomically deletes
+    // the employee entry plus its exact timestamp-matched bank entry.
+    const { error: deleteError } = await supabase.rpc('delete_custody_disbursement', {
+      p_id: id,
+    });
+    if (deleteError) throw deleteError;
 
     await logAudit({
-      employee_id: actingEmployee?.id,
+      employee_id: profile.id,
       action: 'delete',
       entity_type: 'custody_disbursement',
       entity_id: id,
@@ -676,7 +673,7 @@ export async function deleteCustodyDisbursement(id: string) {
     revalidatePath('/banks');
     return { success: true };
   } catch (e: any) {
-    return { error: e.message || 'حدث خطأ أثناء الحذف' };
+    return { error: e.message || 'Failed to delete custody disbursement' };
   }
 }
 
