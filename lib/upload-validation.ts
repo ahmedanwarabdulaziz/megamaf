@@ -8,7 +8,15 @@ const ALLOWED_ATTACHMENT_TYPES = new Set([
   'image/webp',
 ])
 
-export function validateAttachmentUpload(file: File, key: string): string | null {
+const ATTACHMENT_EXTENSIONS: Record<string, string> = {
+  'application/pdf': 'pdf',
+  'image/jpeg': 'jpg',
+  'image/png': 'png',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
+}
+
+export function validateAttachmentUpload(file: File): string | null {
   if (!(file instanceof File) || !file.size) {
     return 'A valid non-empty file is required'
   }
@@ -21,11 +29,13 @@ export function validateAttachmentUpload(file: File, key: string): string | null
     return 'Only PDF and common image files are allowed'
   }
 
-  // Existing clients generate flat random filenames. Keep that contract while
-  // preventing path traversal and arbitrary object prefixes.
-  if (!/^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$/.test(key)) {
-    return 'Invalid attachment key'
-  }
-
   return null
+}
+
+export function attachmentExtension(file: File): string | null {
+  return ATTACHMENT_EXTENSIONS[file.type.toLowerCase()] ?? null
+}
+
+export function isValidAttachmentKey(key: unknown): key is string {
+  return typeof key === 'string' && /^[A-Za-z0-9][A-Za-z0-9._-]{0,179}$/.test(key)
 }

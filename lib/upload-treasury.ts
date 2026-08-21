@@ -1,22 +1,17 @@
-/**
- * Upload a treasury payment attachment to its own R2 bucket via /api/upload-treasury.
- * Mirrors lib/upload.ts, kept separate so treasury attachments never touch the
- * general expenses/invoices/claims bucket.
- */
-export async function uploadTreasuryFile(file: File, key: string): Promise<{ error?: string }> {
+/** Upload a vendor-payment file; the authenticated server creates the R2 key. */
+export async function uploadTreasuryFile(file: File): Promise<{ key?: string; error?: string }> {
   const form = new FormData();
   form.append('file', file);
-  form.append('key', key);
+  form.append('purpose', 'vendor_payment');
 
   const res = await fetch('/api/upload-treasury', {
     method: 'POST',
     body: form,
   });
+  const body = await res.json().catch(() => ({}));
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    return { error: body.error || 'Upload failed' };
-  }
+  if (!res.ok) return { error: body.error || 'Upload failed' };
+  if (typeof body.key !== 'string') return { error: 'Upload completed without a file key' };
 
-  return {};
+  return { key: body.key };
 }

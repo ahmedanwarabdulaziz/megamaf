@@ -171,11 +171,9 @@ export function CreateExpenseModal({
       }
 
       for (const file of files) {
-        const ext = file.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-        const { error: uploadError } = await uploadFile(file, fileName);
-        if (uploadError) throw new Error(uploadError);
-        formData.append('attachment_url', fileName);
+        const { key, error: uploadError } = await uploadFile(file, 'expense');
+        if (uploadError || !key) throw new Error(uploadError || 'Upload failed');
+        formData.append('attachment_url', key);
       }
 
       const result = payDirectly ? await createDirectExpense(formData) : await createExpense(formData);
@@ -566,11 +564,9 @@ export function EditExpenseModal({
       }
 
       for (const file of files) {
-        const ext = file.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-        const { error: uploadError } = await uploadFile(file, fileName);
-        if (uploadError) throw new Error(uploadError);
-        formData.append('attachment_url', fileName);
+        const { key, error: uploadError } = await uploadFile(file, 'expense');
+        if (uploadError || !key) throw new Error(uploadError || 'Upload failed');
+        formData.append('attachment_url', key);
       }
 
       const result = await updateExpense(formData);

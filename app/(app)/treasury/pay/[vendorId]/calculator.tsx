@@ -301,11 +301,9 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
       const uploadedPaths: string[] = [];
       if (fundingSource !== 'credit') {
         for (const file of files) {
-          const fileExt = file.name.split('.').pop();
-          const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-          const { error: uploadError } = await uploadTreasuryFile(file, fileName);
-          if (uploadError) throw new Error(uploadError);
-          uploadedPaths.push(fileName);
+          const { key, error: uploadError } = await uploadTreasuryFile(file);
+          if (uploadError || !key) throw new Error(uploadError || 'Upload failed');
+          uploadedPaths.push(key);
         }
       }
 

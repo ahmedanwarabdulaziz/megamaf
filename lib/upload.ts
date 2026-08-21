@@ -1,21 +1,22 @@
-/**
- * Upload a file to R2 via the server-side /api/upload route.
- * This avoids CORS issues that occur when uploading directly to R2 from the browser.
- */
-export async function uploadFile(file: File, key: string): Promise<{ error?: string }> {
+import type { AttachmentPurpose } from '@/lib/attachment-security';
+
+/** Upload through the authenticated server route; the server creates the R2 key. */
+export async function uploadFile(
+  file: File,
+  purpose: Exclude<AttachmentPurpose, 'vendor_payment'>,
+): Promise<{ key?: string; error?: string }> {
   const form = new FormData();
   form.append('file', file);
-  form.append('key', key);
+  form.append('purpose', purpose);
 
   const res = await fetch('/api/upload', {
     method: 'POST',
     body: form,
   });
+  const body = await res.json().catch(() => ({}));
 
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}));
-    return { error: body.error || 'Upload failed' };
-  }
+  if (!res.ok) return { error: body.error || 'Upload failed' };
+  if (typeof body.key !== 'string') return { error: 'Upload completed without a file key' };
 
-  return {};
+  return { key: body.key };
 }

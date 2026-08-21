@@ -202,11 +202,9 @@ export function EditClaimForm({
       const supabase = createClient();
       const attachmentUrls: string[] = [];
       for (const file of files) {
-        const ext = file.name.split('.').pop();
-        const fileName = `${Math.random().toString(36).substring(2)}_${Date.now()}.${ext}`;
-        const { error: uploadError } = await uploadFile(file, fileName);
-        if (uploadError) throw new Error(uploadError);
-        attachmentUrls.push(fileName);
+        const { key, error: uploadError } = await uploadFile(file, 'claim');
+        if (uploadError || !key) throw new Error(uploadError || 'Upload failed');
+        attachmentUrls.push(key);
       }
       formData.append('tax_enabled', taxEnabled.toString());
       formData.append('tax_rate', taxRate.toString());

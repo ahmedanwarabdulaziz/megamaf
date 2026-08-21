@@ -104,11 +104,9 @@ export function OwnerReceiptCalculator({
       // Upload attachments first
       const uploadedPaths: string[] = [];
       for (const file of files) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
-        const { error: uploadError } = await uploadFile(file, fileName);
-        if (uploadError) throw new Error(uploadError);
-        uploadedPaths.push(fileName);
+        const { key, error: uploadError } = await uploadFile(file, 'ledger_entry');
+        if (uploadError || !key) throw new Error(uploadError || 'Upload failed');
+        uploadedPaths.push(key);
       }
 
       const formData = new FormData();

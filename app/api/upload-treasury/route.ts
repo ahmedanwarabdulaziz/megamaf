@@ -1,28 +1,38 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { PutObjectCommand } from '@aws-sdk/client-s3';
 import { createR2Client, R2_BUCKET_TREASURY } from '@/lib/r2';
-import { createClient } from '@/lib/supabase/server';
 import { validateAttachmentUpload } from '@/lib/upload-validation';
+import { getProfile } from '@/lib/supabase/get-profile';
+import { canUploadAttachment, createAttachmentKey } from '@/lib/attachment-security';
 
 /** Uploads treasury payment attachments to their own R2 bucket (see lib/r2.ts). */
 export async function POST(req: NextRequest) {
   try {
-    const supabase = await createClient();
-    const { data: { user } } = await supabase.auth.getUser();
+    const { user, profile } = await getProfile();
     if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    if (!profile || profile.is_active === false) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
 
     const formData = await req.formData();
     const file = formData.get('file');
-    const key = formData.get('key');
+    const purpose = formData.get('purpose');
 
-    if (!(file instanceof File) || typeof key !== 'string') {
-      return NextResponse.json({ error: 'Missing file or key' }, { status: 400 });
+    if (!(file instanceof File) || typeof purpose !== 'string') {
+      return NextResponse.json({ error: 'Missing file or purpose' }, { status: 400 });
     }
 
-    const validationError = validateAttachmentUpload(file, key);
+    if (!canUploadAttachment(profile, purpose, 'treasury')) {
+      return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
+    }
+
+    const validationError = validateAttachmentUpload(file);
     if (validationError) {
       return NextResponse.json({ error: validationError }, { status: 400 });
     }
+
+    const key = createAttachmentKey(file);
+    if (!key) return NextResponse.json({ error: 'Invalid attachment type' }, { status: 400 });
 
     const buffer = Buffer.from(await file.arrayBuffer());
 
@@ -36,7 +46,7 @@ export async function POST(req: NextRequest) {
       })
     );
 
-    return NextResponse.json({ success: true, key });
+    return NextResponse.json({ success: true, key }, { status: 201 });
   } catch (e: unknown) {
     console.error('R2 treasury upload error:', e);
     const message = e instanceof Error ? e.message : 'Upload failed';
