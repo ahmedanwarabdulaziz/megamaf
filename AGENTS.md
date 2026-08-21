@@ -148,3 +148,41 @@ Before submitting any server-side code, verify:
 - [ ] Navigation links use `<Link>`, not `<button onClick={() => router.push(...)}>` 
 - [ ] Layout only fetches profile/permission data, not page-specific data
 <!-- END:performance-rules -->
+
+<!-- BEGIN:testing-rules -->
+# Automated Test Rules — MegaMaf
+
+MegaMaf is a live financial application. Every agent changing application code
+must preserve the automatic safety gate.
+
+## Required checks
+
+Before completing or pushing an application change:
+
+1. Run `npm test`.
+2. Run `npm run lint`.
+3. Run `npm run build` (the build runs `npm test` again intentionally).
+4. Add or update tests when behavior, permissions, calculations, or API access
+   changes.
+
+Never bypass, skip, or remove a failing test to make a deployment pass. Fix the
+regression or explain why the expected behavior itself must change.
+
+## Production-data safety
+
+Automated tests under `tests/` must be isolated:
+
+- Mock Supabase, GitHub, R2, email, and other external services.
+- Never load `.env.local`.
+- Never connect to the production or restoration databases.
+- Never create, update, or delete real records.
+
+Root-level files named `test-*.js`, `check-*.js`, or `*.sql` are historical
+manual diagnostics and may access a real database. Do not execute them as part
+of the automatic suite or without explicit user approval.
+
+## Deployment gate
+
+`npm run build` starts with `npm test`. A failed test must fail the build so
+Vercel does not deploy the affected version.
+<!-- END:testing-rules -->

@@ -4,9 +4,11 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack",
+    "build": "npm test && next build --webpack",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "backup:database": "node scripts/backup/run-backup.mjs --mode database",
     "backup:incremental": "node scripts/backup/run-backup.mjs --mode incremental",
     "backup:full": "node scripts/backup/run-backup.mjs --mode full",
@@ -55,6 +57,7 @@
     "eslint-config-next": "16.2.9",
     "supabase": "2.115.0",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.11"
   }
 }
