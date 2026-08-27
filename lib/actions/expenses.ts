@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { logAudit } from '@/lib/audit';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { z } from 'zod';
 import { sendPushNotification } from '@/lib/notifications';
 import { getProfile } from '@/lib/supabase/get-profile';
@@ -158,17 +159,20 @@ export async function createExpense(formData: FormData) {
       after: parsed.data,
     });
 
-    // Notify approvers
+    // Notify approvers — deferred via after() so the notification's own DB
+    // round trips (insert + subscription lookup) don't add to the save's
+    // perceived latency; after() still guarantees it runs (unlike a bare
+    // un-awaited call, which a serverless function can cut off mid-flight).
     const { data: approvers } = await supabase.from('employees').select('id').or('is_super_admin.eq.true,can_approve.eq.true');
     if (approvers && approvers.length > 0) {
       const approverIds = approvers.map(a => a.id);
-      await sendPushNotification(
+      after(() => sendPushNotification(
         approverIds,
         'مصروف جديد بانتظار الاعتماد',
         `تم تقديم مصروف عهدة جديد`,
         '/expenses/approvals',
         'expense_submitted'
-      );
+      ));
     }
 
     revalidatePath('/expenses');
@@ -507,13 +511,13 @@ export async function approveExpense(expenseId: string) {
     if (error) return { error: error.message };
     
     if (expenseRecord) {
-       await sendPushNotification(
+       after(() => sendPushNotification(
          [expenseRecord.employee_id],
          'تم اعتماد المصروف',
          `تم اعتماد المصروف رقم ${expenseRecord.expense_number} الخاص بك`,
          `/expenses`,
          'expense_approved'
-       );
+       ));
     }
 
     revalidatePath('/expenses/approvals');
@@ -537,13 +541,13 @@ export async function rejectExpense(expenseId: string, reason?: string) {
     if (error) return { error: error.message };
 
     if (expenseRecord) {
-       await sendPushNotification(
+       after(() => sendPushNotification(
          [expenseRecord.employee_id],
          'تم رفض المصروف',
          `تم رفض المصروف رقم ${expenseRecord.expense_number} الذي قدمته`,
          `/expenses`,
          'expense_rejected'
-       );
+       ));
     }
 
     revalidatePath('/expenses/approvals');
@@ -752,16 +756,16 @@ export async function createOwnerExpense(formData: FormData) {
 
     await logAudit({ employee_id: emp.id, action: 'create', entity_type: 'owner_expense', entity_id: data.id, after: parsed.data });
 
-    // Notify approvers
+    // Notify approvers — deferred, see createExpense() above for why.
     const { data: approvers } = await supabase.from('employees').select('id').or('is_super_admin.eq.true,can_approve.eq.true');
     if (approvers && approvers.length > 0) {
-      await sendPushNotification(
+      after(() => sendPushNotification(
         approvers.map(a => a.id),
         'مصروف مالك جديد بانتظار الاعتماد',
         'تم تسجيل مصروف جديد لأحد الملاك',
         '/expenses/approvals',
         'expense_submitted'
-      );
+      ));
     }
 
     revalidatePath('/expenses');

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { logAudit } from '@/lib/audit';
 import { sendPushNotification } from '@/lib/notifications';
 
@@ -244,13 +245,13 @@ export async function createClaim(formData: FormData, items: any[], attachmentUr
     const { data: admins } = await supabase.from('employees').select('id').eq('is_super_admin', true);
     if (admins && admins.length > 0) {
       const adminIds = admins.map(a => a.id);
-      await sendPushNotification(
+      after(() => sendPushNotification(
         adminIds,
         'مستخلص جديد بانتظار الاعتماد',
         `تم تقديم مستخلص جديد رقم ${nextClaimNumber}`,
         '/claims',
         'claim_submitted'
-      );
+      ));
     }
 
     revalidatePath('/claims');
@@ -270,13 +271,13 @@ export async function approveClaim(claimId: string) {
     // We could notify the submitter here by checking the audit log to find who created it
     const { data: creationAudit } = await supabase.from('audit_log').select('employee_id').eq('entity_type', 'claim').eq('entity_id', claimId).eq('action', 'create').single();
     if (creationAudit) {
-       await sendPushNotification(
+       after(() => sendPushNotification(
          [creationAudit.employee_id],
          'تم اعتماد المستخلص',
          'تم اعتماد المستخلص الخاص بك بنجاح',
          `/claims`,
          'claim_approved'
-       );
+       ));
     }
 
     revalidatePath('/claims');
@@ -323,13 +324,13 @@ export async function rejectClaim(claimId: string, reason?: string) {
 
     // Notify the original submitter
     if (creationAudit?.employee_id) {
-      await sendPushNotification(
+      after(() => sendPushNotification(
         [creationAudit.employee_id],
         'تم رفض المستخلص',
         `تم رفض المستخلص الذي قدمته — السبب: ${trimmedReason}. يرجى التعديل وإعادة التقديم.`,
         '/claims',
         'claim_rejected'
-      );
+      ));
     }
 
     revalidatePath('/claims');

@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { sendPushNotification } from '@/lib/notifications';
 
 // Server-side guard mirroring the vendor/project scoping check in lib/actions/claims.ts —
@@ -94,13 +95,13 @@ export async function payVendor(formData: FormData, allocations: any[], attachme
   const { data: admins } = await supabase.from('employees').select('id').eq('is_super_admin', true);
   if (admins && admins.length > 0) {
     const adminIds = admins.map(a => a.id);
-    await sendPushNotification(
+    after(() => sendPushNotification(
       adminIds,
       'تم صرف دفعة لمقاول',
       `تم صرف ${amount} للمقاول`,
       `/vendors/${vendor_id}/statement`,
       'payment_paid'
-    );
+    ));
   }
 
   revalidatePath('/treasury');
@@ -172,13 +173,13 @@ export async function payVendorFromExpense(formData: FormData, allocations: any[
   const { data: admins } = await supabase.from('employees').select('id').eq('is_super_admin', true);
   if (admins && admins.length > 0) {
     const adminIds = admins.map(a => a.id);
-    await sendPushNotification(
+    after(() => sendPushNotification(
       adminIds,
       'تم صرف دفعة لمقاول من عهدة موظف',
       `تم صرف ${amount} للمقاول من مصروف معتمد`,
       `/vendors/${vendor_id}/statement`,
       'payment_paid'
-    );
+    ));
   }
 
   revalidatePath('/treasury');
@@ -236,13 +237,13 @@ export async function receiveFromOwner(formData: FormData, allocations: any[], a
   const { data: admins } = await supabase.from('employees').select('id').eq('is_super_admin', true);
   if (admins && admins.length > 0) {
     const adminIds = admins.map(a => a.id);
-    await sendPushNotification(
+    after(() => sendPushNotification(
       adminIds,
       'تم استلام دفعة من مالك',
       `تم استلام ${amount} من مالك`,
       `/settings/owners/${owner_id}/statement`,
       'payment_received'
-    );
+    ));
   }
 
   revalidatePath('/treasury');

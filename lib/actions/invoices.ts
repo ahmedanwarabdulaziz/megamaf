@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { createClient } from '@/lib/supabase/server';
 import { createAdminClient } from '@/lib/supabase/admin';
 import { revalidatePath } from 'next/cache';
+import { after } from 'next/server';
 import { logAudit } from '@/lib/audit';
 import { sendPushNotification } from '@/lib/notifications';
 
@@ -113,13 +114,13 @@ export async function createInvoice(formData: FormData, items: any[], attachment
     const { data: approvers } = await supabase.from('employees').select('id').or('is_super_admin.eq.true,can_approve.eq.true');
     if (approvers && approvers.length > 0) {
       const approverIds = approvers.map(a => a.id);
-      await sendPushNotification(
+      after(() => sendPushNotification(
         approverIds,
         'فاتورة جديدة بانتظار الاعتماد',
         `تم تقديم فاتورة جديدة للمقاول ${parsed.data.vendor_id}`,
         '/invoices',
         'invoice_submitted'
-      );
+      ));
     }
 
     revalidatePath('/invoices');
@@ -140,13 +141,13 @@ export async function approveInvoice(invoiceId: string) {
     if (error) return { error: error.message };
     
     if (invoiceRecord) {
-       await sendPushNotification(
+       after(() => sendPushNotification(
          [invoiceRecord.employee_id],
          'تم اعتماد الفاتورة',
          `تم اعتماد الفاتورة التي قدمتها`,
          `/invoices`,
          'invoice_approved'
-       );
+       ));
     }
 
     revalidatePath('/invoices');
@@ -169,13 +170,13 @@ export async function rejectInvoice(invoiceId: string, reason?: string) {
     if (error) return { error: error.message };
 
     if (invoiceRecord) {
-       await sendPushNotification(
+       after(() => sendPushNotification(
          [invoiceRecord.employee_id],
          'تم رفض الفاتورة',
          `تم رفض الفاتورة التي قدمتها — السبب: ${trimmedReason}`,
          `/invoices`,
          'invoice_rejected'
-       );
+       ));
     }
 
     revalidatePath('/invoices');
