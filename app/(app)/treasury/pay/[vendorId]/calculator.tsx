@@ -3,7 +3,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
-import { Loader2, Paperclip, FileText, Image, X } from 'lucide-react';
+import { Modal } from '@/components/ui/modal';
+import { Loader2, Paperclip, FileText, Image, X, Receipt, ClipboardList } from 'lucide-react';
 import { payVendor, payVendorFromExpense, assignVendorPayment } from '@/lib/actions/payments';
 import { getEmployeeAvailableExpenses } from '@/lib/actions/expenses';
 import { uploadTreasuryFile } from '@/lib/upload-treasury';
@@ -61,6 +62,21 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
     setFiles(prev => [...prev, ...Array.from(flist)]);
   };
 
+  // ── Quick-view popups: vendor statement + latest claim details ─────────────
+  // Both reuse the existing full pages inside a same-origin iframe instead of
+  // re-implementing their queries here — always in sync with those pages, and
+  // the Modal below just overlays them without navigating away from this
+  // payment screen (closing it leaves you exactly where you were).
+  // "Latest claim" is unambiguous once a project is selected (or there's only
+  // one project to begin with); with several projects and none picked yet,
+  // there's no single "latest claim" to show, so the button stays disabled.
+  const targetClaimId = useMemo(() => {
+    if (!claimSummaries || claimSummaries.length === 0) return null;
+    if (projectId) return claimSummaries.find(s => s.project_id === projectId)?.claim_id || null;
+    if (claimSummaries.length === 1) return claimSummaries[0].claim_id;
+    return null;
+  }, [claimSummaries, projectId]);
+
   // Funding source: pay from a bank account, from an employee's approved expense,
   // or settle from an existing unallocated payment already sitting with this vendor.
   const [fundingSource, setFundingSource] = useState<'bank' | 'expense' | 'credit'>('bank');
@@ -72,6 +88,142 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
     setAmount(Number(entry.remaining_credit));
     if (!projectId && entry.project_id) setProjectId(entry.project_id);
   };
+
+  // ── Quick "settle now" from the credit banner ──────────────────────────────
+  // Only entries already tagged with a project can be auto-settled — that tag
+  // is set once (on first assignment) and never changes, so it's an unambiguous
+  // target. An entry with no project yet (recorded as a general/untagged
+  // payment) genuinely needs a human to pick which project it belongs to —
+  // that stays in the manual "تسوية من رصيد دائن سابق" flow below.
+  type AutoSettleRow = {
+    target_type: string;
+    target_id: string;
+    description: string;
+    project_name: string;
+    amount_due: number;
+    amount_paid: number;
+    remaining_due: number;
+    allocate_now: number;
+  };
+  type AutoSettlePlan = { entry: CreditEntry; rows: AutoSettleRow[]; leftover: number };
+  const [autoSettlePreview, setAutoSettlePreview] = useState<AutoSettlePlan[] | null>(null);
+  const [autoSettling, setAutoSettling] = useState(false);
+
+  const eligibleCreditEntries = useMemo(() => creditEntries.filter(e => !!e.project_id), [creditEntries]);
+  const unassignableCreditTotal = useMemo(
+    () => creditEntries.filter(e => !e.project_id).reduce((sum, e) => sum + Number(e.remaining_credit || 0), 0),
+    [creditEntries]
+  );
+
+  const buildAutoSettlePreview = () => {
+    const plans: AutoSettlePlan[] = eligibleCreditEntries.map(entry => {
+      // Same rules as the manual credit-funding auto-allocate below: only
+      // documents in the entry's own tagged project, excluding prior_claim
+      // (not tracked in payment_allocations — see assign_vendor_payment).
+      // Filled NEWEST-first (not the oldest-first order the regular payment
+      // auto-fill uses): claims are cumulative — the latest approved claim for
+      // a project already carries every prior claim's totals (see the summary
+      // card above), so it's the one the vendor/admin actually track the
+      // vendor's balance against day to day. Crediting it first keeps the
+      // settlement aligned with the number people are actually looking at,
+      // instead of quietly closing out an old claim (or claim #0's legacy
+      // opening balance) nobody is watching.
+      const projDocs = openDocs
+        .filter(d => d.project_id === entry.project_id && d.document_type !== 'prior_claim')
+        .slice()
+        .sort((a, b) => new Date(b.document_date).getTime() - new Date(a.document_date).getTime());
+
+      // Same cumulative-cap logic as the main auto-allocate effect — a claim's
+      // own bucket can overstate what's truly still owed on the project once an
+      // older claim absorbed extra payment, so total allocation across a
+      // project's claim rows is capped at the SAME cumulative remaining shown
+      // on the summary card.
+      const capRemaining = new Map<string, number>();
+      for (const s of claimSummaries || []) {
+        capRemaining.set(s.project_id, Math.max(0, s.netCumulative + s.tax - s.totalPaid));
+      }
+
+      // Only list documents that actually receive money from this credit.
+      // In the normal case that's just the latest claim — since claims are
+      // cumulative, it already carries every prior claim's totals, so there's
+      // no need to show claim #0 or other older claims the credit never
+      // touches. They only reappear here automatically if this credit is
+      // large enough that the latest claim's own bucket can't absorb all of
+      // it and the fill genuinely spills into older claims — exactly the case
+      // where seeing them matters.
+      let remaining = Number(entry.remaining_credit);
+      const rows: AutoSettleRow[] = [];
+      for (const doc of projDocs) {
+        if (remaining <= 0) break;
+        const remainingDue = doc.amount_due - doc.amount_paid;
+        if (remainingDue <= 0) continue;
+
+        let allocAmount: number;
+        if (doc.document_type === 'claim') {
+          const capLeft = capRemaining.get(doc.project_id) ?? remainingDue;
+          allocAmount = Math.min(remaining, remainingDue, capLeft);
+          capRemaining.set(doc.project_id, capLeft - allocAmount);
+        } else {
+          allocAmount = Math.min(remaining, remainingDue);
+        }
+        if (allocAmount > 0) {
+          // When this row IS the latest claim for its project (matched to a
+          // claimSummaries entry — see how the main allocation table below
+          // does the same match), display the CUMULATIVE due/paid/remaining
+          // from the summary card instead of this claim's own narrow bucket:
+          // the latest claim already carries every prior claim's totals, and
+          // that cumulative figure is what's actually being tracked as "how
+          // much this vendor is owed" — showing the bucket-only numbers here
+          // would look inconsistent with the summary card just above. The
+          // amount actually allocated/validated stays scoped to this claim's
+          // own bucket regardless (allocAmount, capped by remainingDue) —
+          // only the displayed context changes.
+          const summary = doc.document_type === 'claim'
+            ? claimSummaries?.find(s => s.project_id === doc.project_id && s.claim_id === doc.document_id)
+            : undefined;
+
+          rows.push({
+            target_type: doc.document_type,
+            target_id: doc.document_id,
+            description: doc.description,
+            project_name: projects.find(p => p.id === doc.project_id)?.name || doc.project_name || '',
+            amount_due: summary ? (summary.netCumulative + summary.tax) : doc.amount_due,
+            amount_paid: summary ? summary.totalPaid : doc.amount_paid,
+            remaining_due: summary ? summary.remaining : remainingDue,
+            allocate_now: allocAmount,
+          });
+          remaining -= allocAmount;
+        }
+      }
+      return { entry, rows, leftover: remaining };
+    }).filter(plan => plan.rows.length > 0);
+
+    setAutoSettlePreview(plans);
+  };
+
+  const confirmAutoSettle = async () => {
+    if (!autoSettlePreview || autoSettlePreview.length === 0) return;
+    setAutoSettling(true);
+    try {
+      for (const plan of autoSettlePreview) {
+        const apiAllocations = plan.rows
+          .filter(r => r.allocate_now > 0)
+          .map(r => ({ target_type: r.target_type, target_id: r.target_id, amount: r.allocate_now }));
+        if (apiAllocations.length === 0) continue;
+        const result = await assignVendorPayment(plan.entry.ledger_entry_id, plan.entry.project_id as string, apiAllocations);
+        if (result && 'error' in result && result.error) {
+          alert(result.error);
+          setAutoSettling(false);
+          return;
+        }
+      }
+      router.push('/treasury');
+    } catch (err: any) {
+      alert(err.message || 'حدث خطأ أثناء التسوية التلقائية');
+      setAutoSettling(false);
+    }
+  };
+
   const [employeeId, setEmployeeId] = useState('');
   const [employeeExpenses, setEmployeeExpenses] = useState<AvailableExpense[]>([]);
   const [loadingExpenses, setLoadingExpenses] = useState(false);
@@ -367,7 +519,25 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
   }
 
   return (
+    <>
     <form onSubmit={handleSubmit} className="space-y-6">
+
+      {/* ── Quick-view: vendor statement + latest claim, without leaving this page ── */}
+      <div className="flex items-center gap-2 justify-end">
+        <Button type="button" variant="outline" size="sm" onClick={() => router.push('?modal=vendor-statement')}>
+          <Receipt className="w-4 h-4 ml-2" /> كشف حساب المقاول
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={!targetClaimId}
+          title={!targetClaimId ? 'اختر المشروع أعلاه أولاً لتحديد آخر مستخلص له' : undefined}
+          onClick={() => router.push('?modal=last-claim')}
+        >
+          <ClipboardList className="w-4 h-4 ml-2" /> عرض آخر مستخلص
+        </Button>
+      </div>
 
       {/* ── Claim Totals Summary Card (mirrors /claims page) ── */}
       {claimSummaries && claimSummaries.length > 0 && (
@@ -445,14 +615,92 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
       )}
       {/* ── Existing unallocated credit banner ── */}
       {creditEntries.length > 0 && (
-        <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-lg p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <p className="font-bold text-green-800 dark:text-green-400">لهذا المقاول رصيد دائن من دفعات سابقة لم تُخصص لأي مستند</p>
-            <p className="text-sm text-green-700 dark:text-green-500 mt-1">يمكنك تسوية أي فاتورة أو مستخلص مفتوح من هذا الرصيد بدلاً من تسجيل دفعة نقدية جديدة — اختر &quot;تسوية من رصيد دائن سابق&quot; أدناه.</p>
+        <div className="bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-900 rounded-lg p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <p className="font-bold text-green-800 dark:text-green-400">لهذا المقاول رصيد دائن من دفعات سابقة لم تُخصص لأي مستند</p>
+              <p className="text-sm text-green-700 dark:text-green-500 mt-1">يمكنك تسوية أي فاتورة أو مستخلص مفتوح من هذا الرصيد بدلاً من تسجيل دفعة نقدية جديدة — اختر &quot;تسوية من رصيد دائن سابق&quot; أدناه، أو استخدم التسوية التلقائية.</p>
+              <p className="text-xs text-green-700/80 dark:text-green-500/80 mt-1.5">ملاحظة: هذا المبلغ مدفوع بالفعل ومحتسب ضمن &quot;المتبقي المستحق&quot; أعلاه — تخصيصه هنا لا يقلل المتبقي مرة أخرى، بل يوثّق فقط أي مستند تحديداً يخص هذا المبلغ.</p>
+              {unassignableCreditTotal > 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-500 mt-1.5">
+                  {formatMoney(unassignableCreditTotal)} من هذا الرصيد غير مرتبط بمشروع بعد — لا يمكن تسويته تلقائياً، اختر مشروعه يدوياً أدناه أولاً.
+                </p>
+              )}
+            </div>
+            <div className="text-left shrink-0">
+              <div className="text-xs text-green-700 dark:text-green-500">الرصيد المتاح</div>
+              <div className="text-2xl font-bold text-green-800 dark:text-green-400">{formatMoney(totalCredit)}</div>
+            </div>
           </div>
-          <div className="text-left shrink-0">
-            <div className="text-xs text-green-700 dark:text-green-500">الرصيد المتاح</div>
-            <div className="text-2xl font-bold text-green-800 dark:text-green-400">{formatMoney(totalCredit)}</div>
+          {eligibleCreditEntries.length > 0 && (
+            <div className="flex justify-end">
+              <Button type="button" variant="outline" size="sm" onClick={buildAutoSettlePreview}>
+                تسوية تلقائية الآن
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Auto-settle preview: shows exactly what will be applied before committing ── */}
+      {autoSettlePreview && (
+        <div className="bg-card border rounded-lg shadow-sm p-4 space-y-4">
+          {autoSettlePreview.length === 0 ? (
+            <p className="text-sm text-muted-foreground">لا توجد مستندات مفتوحة يمكن تسوية هذا الرصيد معها تلقائياً. استخدم &quot;تسوية من رصيد دائن سابق&quot; أدناه لاختيار مستند يدوياً.</p>
+          ) : (
+            <>
+              <h3 className="font-bold text-sm">مراجعة التسوية التلقائية قبل التنفيذ</h3>
+              <p className="text-xs text-muted-foreground">
+                يبدأ التخصيص بآخر مستخلص معتمد (يحتوي على إجمالي المستخلصات السابقة تراكمياً) — مع المستحق والمدفوع والمتبقي لكل مستند سيُخصص له مبلغ، لتتأكد أن التخصيص صحيح قبل التنفيذ.
+              </p>
+              {autoSettlePreview.map(plan => (
+                <div key={plan.entry.ledger_entry_id} className="border rounded overflow-hidden">
+                  <div className="p-2 bg-muted/30 text-xs text-muted-foreground flex justify-between">
+                    <span>دفعة {plan.entry.entry_date}{plan.entry.memo ? ` — ${plan.entry.memo}` : ''}</span>
+                    <span>المتاح: {formatMoney(Number(plan.entry.remaining_credit))}</span>
+                  </div>
+                  <table className="w-full text-sm text-right">
+                    <thead className="bg-muted/20 text-xs text-muted-foreground">
+                      <tr>
+                        <th className="p-2 font-medium">المستند</th>
+                        <th className="p-2 font-medium">المستحق</th>
+                        <th className="p-2 font-medium">المدفوع</th>
+                        <th className="p-2 font-medium">المتبقي</th>
+                        <th className="p-2 font-medium">سيُخصص الآن</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-border">
+                      {plan.rows.map(row => (
+                        <tr key={row.target_id} className="bg-primary/5">
+                          <td className="p-2">{row.description} <span className="text-muted-foreground">({row.project_name})</span></td>
+                          <td className="p-2 text-muted-foreground">{formatMoney(row.amount_due)}</td>
+                          <td className="p-2 text-muted-foreground">{formatMoney(row.amount_paid)}</td>
+                          <td className="p-2 font-medium">{formatMoney(row.remaining_due)}</td>
+                          <td className="p-2 font-bold text-primary">{formatMoney(row.allocate_now)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {plan.leftover > 0.01 && (
+                    <div className="p-2 text-xs text-amber-700 dark:text-amber-500 border-t">
+                      يبقى {formatMoney(plan.leftover)} من هذه الدفعة بدون تخصيص — لا توجد مستندات مفتوحة كافية لاستيعابه.
+                    </div>
+                  )}
+                </div>
+              ))}
+              <p className="text-xs text-muted-foreground">هذا التخصيص يوثّق فقط المستندات المرتبطة بهذا الرصيد — لن يتغير &quot;المتبقي المستحق&quot; الإجمالي لأن هذا المبلغ محتسب فيه بالفعل.</p>
+            </>
+          )}
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => setAutoSettlePreview(null)} disabled={autoSettling}>
+              إلغاء
+            </Button>
+            {autoSettlePreview.length > 0 && (
+              <Button type="button" size="sm" onClick={confirmAutoSettle} disabled={autoSettling}>
+                {autoSettling ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+                تأكيد التسوية
+              </Button>
+            )}
           </div>
         </div>
       )}
@@ -853,5 +1101,26 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
         </Button>
       </div>
     </form>
+
+    {/* ── Quick-view popups — reuse the real pages via iframe so they stay in
+        sync with those pages with no duplicated queries; closing either one
+        leaves you exactly on this payment screen. ── */}
+    <Modal name="vendor-statement" title="كشف حساب المقاول" size="wide">
+      <iframe
+        src={`/vendors/${vendorId}/statement?embed=1`}
+        title="كشف حساب المقاول"
+        className="w-full h-[75vh] border-0 rounded-md bg-background"
+      />
+    </Modal>
+    <Modal name="last-claim" title="تفاصيل آخر مستخلص" size="wide">
+      {targetClaimId && (
+        <iframe
+          src={`/claims/${targetClaimId}?embed=1`}
+          title="تفاصيل آخر مستخلص"
+          className="w-full h-[75vh] border-0 rounded-md bg-background"
+        />
+      )}
+    </Modal>
+    </>
   );
 }

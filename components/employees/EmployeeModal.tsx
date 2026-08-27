@@ -50,7 +50,7 @@ export function EmployeeModal({ projects }: { projects?: any[] }) {
 
         <div className="space-y-2">
           <label className="text-sm font-medium">الرقم السري (PIN)</label>
-          <Input name="pin" type="password" maxLength={6} minLength={6} required />
+          <Input name="pin" type="password" autoComplete="new-password" maxLength={6} minLength={6} required />
           <p className="text-xs text-muted-foreground">يجب أن يكون 6 أرقام</p>
         </div>
 

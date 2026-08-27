@@ -208,18 +208,19 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
 
   // Relabel in-system claim#0 rows — surfaced by v_vendor_account as document_type
   // 'prior_claim' but actually backed by a real `claims` row, not the legacy
-  // `vendor_prior_claims` table — to 'claim' whenever no higher claim supersedes
-  // them. This lets them (a) get amount_due/amount_paid patched from claimSummaries
-  // below, consistent with what's shown elsewhere, and (b) submit as target_type
-  // 'claim' to record_vendor_payment(_from_expense), which those RPCs' 'prior_claim'
-  // branch can't handle (it only looks up the legacy vendor_prior_claims table,
-  // where an in-system claim#0's id doesn't exist). True legacy vendor_prior_claims
-  // rows (present in priorClaims) are left untouched — the existing 'prior_claim'
-  // RPC handling is correct for those.
+  // `vendor_prior_claims` table — to 'claim'. This must apply regardless of
+  // whether a higher claim exists for the project: v_vendor_account labels EVERY
+  // claim_number=0 row 'prior_claim' by design (0052_claim_zero.sql), even when
+  // claims #1+ also exist for the same vendor/project. Gating this on "no higher
+  // claim" (as an earlier version did) left claim#0 mislabeled whenever later
+  // claims existed, so its id got sent to the pay_prior_claim RPC — which only
+  // looks in the legacy vendor_prior_claims table — and failed with
+  // "Prior claim <id> not found" even though the claim and its balance are real.
+  // True legacy vendor_prior_claims rows (present in priorClaims) are left
+  // untouched — the existing 'prior_claim' RPC handling is correct for those.
   allDocs.forEach(d => {
     if (
       d.document_type === 'prior_claim' &&
-      !projectsWithHigherClaim.has(d.project_id) &&
       !priorClaims?.some(pc => pc.id === d.document_id)
     ) {
       d.document_type = 'claim';
@@ -227,11 +228,22 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     }
   });
 
-  // Patch ONLY relabeled claim#0 rows with the cumulative remaining from
-  // claimSummaries — for those, v_vendor_account gave prior_claim-shaped values
-  // (prior_certified_amount / prior_paid_amount) that don't mean anything as a
-  // claim bucket, and since claim#0 is the vendor's only claim in this case, the
-  // project's cumulative remaining IS that single bucket's remaining anyway.
+  // Patch ONLY relabeled claim#0 rows that are their project's SOLE claim, with
+  // the cumulative remaining from claimSummaries — for those, v_vendor_account
+  // gave prior_claim-shaped values (prior_certified_amount / prior_paid_amount)
+  // that don't mean anything as a claim bucket, and since claim#0 is the only
+  // claim in this case, the project's cumulative remaining IS that single
+  // bucket's remaining anyway.
+  //
+  // Relabeled claim#0 rows where a higher claim ALSO exists are deliberately
+  // left untouched here: v_vendor_account already gives claim#0 its own correct
+  // incremental bucket in that case (total_due_this_claim / v_claim_paid, the
+  // same figures record_vendor_payment's RPC validates against — v_claim_paid
+  // additionally folds in opening_paid_amount for claim#0, per
+  // 20260712130000_fix_v_claim_paid_claim_zero.sql), so no patch is needed.
+  // Patching it with the cumulative project-wide "remaining" here would double
+  // count against the other claims' own rows, the same failure mode the comment
+  // below already documents for genuine numbered claims.
   //
   // Genuine numbered claims (#1+) are deliberately left untouched here: their
   // amount_due/amount_paid already came from v_vendor_account + the v_claim_paid
@@ -248,7 +260,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   // is what caused a real submission to fail with "Allocation of 30000 exceeds
   // remaining due 27003.75 for document ...".
   allDocs.forEach(d => {
-    if (d.document_type === 'claim' && d._relabeledFromPriorClaim) {
+    if (d.document_type === 'claim' && d._relabeledFromPriorClaim && !projectsWithHigherClaim.has(d.project_id)) {
       const s = claimSummaries.find(cs => cs.project_id === d.project_id);
       if (s) {
         d.amount_due  = s.remaining;

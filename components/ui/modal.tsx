@@ -10,9 +10,11 @@ interface ModalProps {
   title: string
   description?: string
   children: React.ReactNode
+  /** "default" (sm:max-w-lg, existing behavior) or "wide" (sm:max-w-4xl) for content like an embedded page that needs real width. */
+  size?: "default" | "wide"
 }
 
-export function Modal({ name, title, description, children }: ModalProps) {
+export function Modal({ name, title, description, children, size = "default" }: ModalProps) {
   const searchParams = useSearchParams()
   const router = useRouter()
   const pathname = usePathname()
@@ -48,7 +50,8 @@ export function Modal({ name, title, description, children }: ModalProps) {
 
       {/* Modal Content */}
       <div className={cn(
-        "relative z-[60] w-full bg-card shadow-2xl sm:rounded-xl sm:border-2 sm:border-primary sm:max-w-lg transition-transform flex flex-col",
+        "relative z-[60] w-full bg-card shadow-2xl sm:rounded-xl sm:border-2 sm:border-primary transition-transform flex flex-col",
+        size === "wide" ? "sm:max-w-4xl" : "sm:max-w-lg",
         "animate-in slide-in-from-bottom-full sm:slide-in-from-bottom-0 sm:zoom-in-95",
         "rounded-t-2xl border-t-4 border-primary sm:border-t-2",
         "max-h-[calc(100dvh-5rem)] sm:max-h-[90vh]"

@@ -10,6 +10,7 @@ import { NotificationBell } from "@/components/ui/notification-bell"
 import { MobileNav } from "@/components/layout/mobile-nav"
 import { DesktopNav } from "@/components/layout/desktop-nav"
 import { BackupHealthIndicator } from "@/components/layout/backup-health-indicator"
+import { EmbedChromeGate } from "@/components/layout/embed-chrome-gate"
 
 export default async function AppLayout({
   children,
@@ -36,8 +37,13 @@ export default async function AppLayout({
 
   return (
     <div className="flex h-screen bg-background">
+      {/* EmbedChromeGate calls useSearchParams(), wrap in Suspense */}
+      <React.Suspense fallback={null}>
+        <EmbedChromeGate />
+      </React.Suspense>
+
       {/* Desktop Sidebar — minimal skeleton */}
-      <aside className="hidden md:flex w-64 flex-col border-l border-border bg-card text-card-foreground">
+      <aside className="app-sidebar hidden md:flex w-64 flex-col border-l border-border bg-card text-card-foreground">
         <div className="flex h-14 items-center px-4 border-b border-border font-semibold">
           ميجا ماف
         </div>
@@ -86,7 +92,7 @@ export default async function AppLayout({
       >
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
           {/* Mobile Header + Global Desktop Topbar */}
-          <header className="flex h-14 items-center justify-between border-b border-border bg-card px-4 md:justify-end">
+          <header className="app-header flex h-14 items-center justify-between border-b border-border bg-card px-4 md:justify-end">
             {/* Mobile: hamburger (MobileNav renders the button) */}
             <MobileNav
               employeeName={employee?.full_name || user?.email || ''}

@@ -35,7 +35,7 @@ export function EditEmployeeForm({ employee }: { employee: any }) {
         </div>
         <div>
           <label className="text-sm font-medium">إعادة تعيين الرقم السري</label>
-          <Input name="pin" type="password" maxLength={6} minLength={6} placeholder="اتركه فارغاً لعدم التغيير" />
+          <Input name="pin" type="password" autoComplete="new-password" maxLength={6} minLength={6} placeholder="اتركه فارغاً لعدم التغيير" />
         </div>
       </div>
 
