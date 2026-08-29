@@ -774,14 +774,19 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
 
           <div>
             <label className="block text-sm font-medium mb-1">
-              المشروع المرتبط {fundingSource === 'credit' ? '(مطلوب لتخصيص الرصيد)' : '(للدفعات المقدمة)'}
+              المشروع المرتبط {fundingSource === 'bank' ? '(مطلوب — حتى لو دفعة مقدمة بدون مستند بعد)' : fundingSource === 'credit' ? '(مطلوب لتخصيص الرصيد)' : ''}
             </label>
-            <select required={fundingSource === 'credit'} value={projectId} onChange={e => setProjectId(e.target.value)} className="w-full p-2 rounded border bg-background">
-              <option value="">{fundingSource === 'credit' ? 'اختر المشروع...' : 'عام (غير مرتبط بمشروع محدد)'}</option>
+            <select required={fundingSource !== 'expense'} value={projectId} onChange={e => setProjectId(e.target.value)} className="w-full p-2 rounded border bg-background">
+              <option value="">{fundingSource === 'expense' ? 'عام (غير مرتبط بمشروع محدد)' : 'اختر المشروع...'}</option>
               {projects.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
+            {fundingSource === 'bank' && (
+              <p className="text-xs text-muted-foreground mt-1">
+                هذا يضمن أن أي رصيد يتبقى من هذه الدفعة (دفعة مقدمة) يُخصص تلقائياً لأول مستخلص يُعتمد لهذا المشروع لاحقاً.
+              </p>
+            )}
           </div>
           {fundingSource !== 'credit' && (
             <div>
