@@ -14,11 +14,15 @@ const MAIN_COMPANY_PROJECT_ID = '00000000-0000-0000-0000-000000000001';
 
 const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Negative amounts are allowed — they mean the employee is RETURNING money
+// to their own custody (e.g. spent less than expected), which simply
+// increases their custody balance via the same SUM-based
+// v_employee_custody_balance view. Zero is meaningless either way.
 const createExpenseSchema = z.object({
   project_id: z.string().regex(uuidRegex, 'Invalid UUID'),
   category_id: z.string().regex(uuidRegex, 'Invalid UUID'),
   expense_date: z.string(),
-  amount: z.coerce.number().positive(),
+  amount: z.coerce.number().refine((v) => v !== 0, { message: 'المبلغ لا يمكن أن يساوي صفر' }),
   notes: z.string().optional(),
   attachment_url: z.string().optional(),
   funding_type: z.enum(['bank', 'employee_custody']).optional(),
@@ -29,13 +33,20 @@ const createExpenseSchema = z.object({
 /** Shared by createExpense/updateExpense: validates the optional funding
  *  choice (bank account or another employee's custody) against the
  *  requester's has_expense_funding_access flag. Nothing is disbursed here —
- *  that only happens inside approve_expense() at approval time. */
+ *  that only happens inside approve_expense() at approval time.
+ *  A negative amount ("return money to custody") can't be combined with an
+ *  alternate funding source — approve_expense() turns funding_type into a
+ *  real ledger_entries row with direction='out', which only makes sense for
+ *  a positive amount actually leaving that source. */
 function validateFunding(
-  parsed: { funding_type?: 'bank' | 'employee_custody'; funding_bank_account_id?: string; funding_employee_id?: string },
+  parsed: { amount: number; funding_type?: 'bank' | 'employee_custody'; funding_bank_account_id?: string; funding_employee_id?: string },
   targetEmployeeId: string,
   employeeData: { is_super_admin: boolean; has_expense_funding_access?: boolean }
 ): { error: string } | null {
   if (!parsed.funding_type) return null;
+  if (parsed.amount < 0) {
+    return { error: 'لا يمكن اختيار مصدر تمويل لمبلغ سالب (إرجاع للعهدة)' };
+  }
   if (!employeeData.is_super_admin && !employeeData.has_expense_funding_access) {
     return { error: 'لا تملك صلاحية اختيار مصدر تمويل للمصروف' };
   }
@@ -376,7 +387,7 @@ const updateExpenseSchema = z.object({
   project_id: z.string().regex(uuidRegex, 'Invalid UUID'),
   category_id: z.string().regex(uuidRegex, 'Invalid UUID'),
   expense_date: z.string(),
-  amount: z.coerce.number().positive(),
+  amount: z.coerce.number().refine((v) => v !== 0, { message: 'المبلغ لا يمكن أن يساوي صفر' }),
   notes: z.string().optional(),
   funding_type: z.enum(['bank', 'employee_custody']).optional(),
   funding_bank_account_id: z.string().regex(uuidRegex, 'Invalid UUID').optional(),

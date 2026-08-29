@@ -364,10 +364,12 @@ export function CreateExpenseModal({
                 name="amount"
                 type="number"
                 step="0.01"
-                min="0.01"
                 required
                 className="w-full p-2 rounded-md border bg-background"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                أدخل مبلغاً سالباً (مثال: -5) لإرجاع مبلغ للعهدة.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">التاريخ</label>
@@ -682,12 +684,14 @@ export function EditExpenseModal({
                 name="amount"
                 type="number"
                 step="0.01"
-                min="0.01"
                 required
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full p-2 rounded-md border bg-background"
               />
+              <p className="text-xs text-muted-foreground mt-1">
+                أدخل مبلغاً سالباً (مثال: -5) لإرجاع مبلغ للعهدة.
+              </p>
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">التاريخ</label>
