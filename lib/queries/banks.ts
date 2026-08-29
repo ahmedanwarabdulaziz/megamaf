@@ -26,6 +26,17 @@ export async function getBanks() {
   }));
 }
 
+// Narrow, balance-free list for the expense "funding source" picker — an
+// employee with only has_expense_funding_access (not full 'banks' page
+// access) can choose which account funds their expense without seeing
+// exact treasury balances. See 20260829130000_bank_accounts_for_expense_funding.sql.
+export async function getBankAccountsForFunding() {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc('get_bank_accounts_for_funding');
+  if (error) throw error;
+  return data ?? [];
+}
+
 export async function getAllBanksLedgerSummary({
   startDate,
   endDate,

@@ -13,6 +13,7 @@ export function MyExpensesList({
   projects,
   employees = [],
   bankAccounts = [],
+  fundingBankAccounts = [],
   hasExpenseFundingAccess = false,
   currentEmployeeId,
 }: {
@@ -21,6 +22,7 @@ export function MyExpensesList({
   projects: any[];
   employees?: { id: string; full_name: string }[];
   bankAccounts?: { bank_account_id: string; bank_name: string; account_name: string; current_balance: number }[];
+  fundingBankAccounts?: { bank_account_id: string; account_name: string; bank_id: string; bank_name: string }[];
   hasExpenseFundingAccess?: boolean;
   currentEmployeeId?: string;
 }) {
@@ -85,6 +87,7 @@ export function MyExpensesList({
                         projects={projects}
                         employees={employees}
                         bankAccounts={bankAccounts}
+                        fundingBankAccounts={fundingBankAccounts}
                         hasExpenseFundingAccess={hasExpenseFundingAccess}
                         currentEmployeeId={currentEmployeeId}
                       />

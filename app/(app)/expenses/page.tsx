@@ -1,6 +1,6 @@
 import { getEmployeeExpenses, getOwnerExpenses, getExpenseCategories, getAllExpenses } from '@/lib/queries/expenses';
 import { getProjects } from '@/lib/queries/projects';
-import { getBanks } from '@/lib/queries/banks';
+import { getBanks, getBankAccountsForFunding } from '@/lib/queries/banks';
 import { getProfile } from '@/lib/supabase/get-profile';
 import { Wallet, CheckCircle, AlertCircle, TrendingDown } from 'lucide-react';
 
@@ -44,10 +44,15 @@ export default async function EmployeeExpensesPage({
   const endDate = end_date || defaultEnd;
   const isShowAll = show_all === 'true';
 
-  const [categories, projects, banks] = await Promise.all([
+  const [categories, projects, banks, fundingBankAccounts] = await Promise.all([
     getExpenseCategories(),
     getProjects(),
-    canPickFundingSource ? getBanks() : Promise.resolve([]),
+    // Full balance-inclusive list — only for the super-admin-only "دفع مباشر"
+    // section below, which requires real 'banks' page access either way.
+    isSuperAdmin ? getBanks() : Promise.resolve([]),
+    // Narrow, balance-free list for the "مصدر التمويل" picker — available to
+    // anyone with has_expense_funding_access, not just 'banks' page holders.
+    canPickFundingSource ? getBankAccountsForFunding() : Promise.resolve([]),
   ]);
 
   const activeCategories = categories.filter(c => c.is_active);
@@ -135,6 +140,7 @@ export default async function EmployeeExpensesPage({
               isSuperAdmin={employee.is_super_admin}
               employees={allEmployees}
               bankAccounts={bankAccounts}
+              fundingBankAccounts={fundingBankAccounts}
               hasExpenseFundingAccess={canPickFundingSource}
               currentEmployeeId={employee.id}
             />
@@ -264,6 +270,7 @@ export default async function EmployeeExpensesPage({
             projects={projects || []}
             employees={allEmployees}
             bankAccounts={bankAccounts}
+            fundingBankAccounts={fundingBankAccounts}
             hasExpenseFundingAccess={canPickFundingSource}
             currentEmployeeId={employee.id}
           />

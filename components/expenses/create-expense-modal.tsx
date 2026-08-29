@@ -11,6 +11,9 @@ import { formatMoney } from '@/lib/money';
 
 interface Employee { id: string; full_name: string; }
 interface BankAccount { bank_account_id: string; bank_name: string; account_name: string; current_balance: number; }
+// No balance — an employee with only has_expense_funding_access can choose
+// which account funds their expense without seeing exact treasury balances.
+interface FundingBankAccount { bank_account_id: string; account_name: string; bank_id: string; bank_name: string; }
 
 export function CreateExpenseModal({
   categories,
@@ -18,6 +21,7 @@ export function CreateExpenseModal({
   isSuperAdmin,
   employees = [],
   bankAccounts = [],
+  fundingBankAccounts = [],
   hasExpenseFundingAccess = false,
   currentEmployeeId,
 }: {
@@ -26,6 +30,7 @@ export function CreateExpenseModal({
   isSuperAdmin: boolean;
   employees?: Employee[];
   bankAccounts?: BankAccount[];
+  fundingBankAccounts?: FundingBankAccount[];
   hasExpenseFundingAccess?: boolean;
   currentEmployeeId?: string;
 }) {
@@ -125,8 +130,8 @@ export function CreateExpenseModal({
     ...(employees || []).map((emp: any) => ({ value: emp.id, label: emp.full_name }))
   ];
 
-  const fundingBankGroups: Record<string, BankAccount[]> = {};
-  bankAccounts.forEach(b => {
+  const fundingBankGroups: Record<string, FundingBankAccount[]> = {};
+  fundingBankAccounts.forEach(b => {
     (fundingBankGroups[b.bank_name] ||= []).push(b);
   });
   const fundingBankOptions = Object.entries(fundingBankGroups).flatMap(([bankName, accounts]) => [
@@ -139,8 +144,6 @@ export function CreateExpenseModal({
     ...accounts.map(a => ({
       value: a.bank_account_id,
       label: `— ${a.account_name}`,
-      badge: formatMoney(a.current_balance),
-      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-700',
     })),
   ]);
 
@@ -427,6 +430,7 @@ export function EditExpenseModal({
   projects,
   employees = [],
   bankAccounts = [],
+  fundingBankAccounts = [],
   hasExpenseFundingAccess = false,
   currentEmployeeId,
 }: {
@@ -435,6 +439,7 @@ export function EditExpenseModal({
   projects: any[];
   employees?: Employee[];
   bankAccounts?: BankAccount[];
+  fundingBankAccounts?: FundingBankAccount[];
   hasExpenseFundingAccess?: boolean;
   currentEmployeeId?: string;
 }) {
@@ -523,8 +528,8 @@ export function EditExpenseModal({
     ...projects.filter((p: any) => p.id !== '00000000-0000-0000-0000-000000000001').map((p: any) => ({ value: p.id, label: p.name }))
   ];
 
-  const editFundingBankGroups: Record<string, BankAccount[]> = {};
-  bankAccounts.forEach(b => {
+  const editFundingBankGroups: Record<string, FundingBankAccount[]> = {};
+  fundingBankAccounts.forEach(b => {
     (editFundingBankGroups[b.bank_name] ||= []).push(b);
   });
   const editFundingBankOptions = Object.entries(editFundingBankGroups).flatMap(([bankName, accounts]) => [
@@ -537,8 +542,6 @@ export function EditExpenseModal({
     ...accounts.map(a => ({
       value: a.bank_account_id,
       label: `— ${a.account_name}`,
-      badge: formatMoney(a.current_balance),
-      badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-300 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-700',
     })),
   ]);
 
