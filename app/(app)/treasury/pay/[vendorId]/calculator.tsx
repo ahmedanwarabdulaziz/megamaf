@@ -993,7 +993,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
               <th className="p-3 font-medium">المستند</th>
               <th className="p-3 font-medium">المشروع</th>
               <th className="p-3 font-medium">المتبقي للدفع</th>
-              <th className="p-3 font-medium w-48">المبلغ المخصص</th>
+              <th className="p-3 font-medium w-48">{fundingSource === 'credit' ? 'المبلغ المخصص' : 'سيُخصص تلقائياً'}</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-border">
@@ -1075,17 +1075,26 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
                   </span>
                 </td>
 
-                {/* Input */}
+                {/* Amount: editable only for credit settlement (a one-off, deliberate
+                    choice of which document absorbs the credit). For a regular payment
+                    it's read-only — the auto-fill above already decides this correctly
+                    top-to-bottom, and any leftover doesn't need manual placement either:
+                    it becomes credit that approve_claim() now auto-assigns to whichever
+                    claim for this project is approved next. */}
                 <td className="p-3 align-top pt-4">
-                  <input
-                    type="number"
-                    step="0.01"
-                    min="0"
-                    max={alloc.max}
-                    value={alloc.amount || ''}
-                    onChange={e => handleChange(parseFloat(e.target.value) || 0)}
-                    className="w-full p-2 rounded border bg-background text-primary font-medium text-left"
-                  />
+                  {fundingSource === 'credit' ? (
+                    <input
+                      type="number"
+                      step="0.01"
+                      min="0"
+                      max={alloc.max}
+                      value={alloc.amount || ''}
+                      onChange={e => handleChange(parseFloat(e.target.value) || 0)}
+                      className="w-full p-2 rounded border bg-background text-primary font-medium text-left"
+                    />
+                  ) : (
+                    <span className="font-bold text-primary">{formatMoney(alloc.amount)}</span>
+                  )}
                 </td>
               </tr>
               );
