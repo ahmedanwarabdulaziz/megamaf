@@ -1000,22 +1000,38 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
             {displayRows.map((row) => {
               const indices = row.type === 'group' ? row.indices : [row.index];
               const rows = indices.map(i => allocations[i]);
-              // The row carrying the cumulative breakdown (grossTotal > 0) is the
-              // one matched to claimSummaries in the effect above — use it for the
-              // merged row's description/breakdown; fall back to the most recent
-              // claim in the group (indices are oldest-first) if none matched.
-              const summaryRow = rows.find(r => r.grossTotal > 0) || rows[rows.length - 1];
+              // Look up the project's cumulative summary directly from
+              // claimSummaries, keyed by project — NOT by finding a row with
+              // grossTotal > 0 among `rows`. That row is the latest claim, and
+              // this table only lists documents with remainingDue > 0 (see
+              // page.tsx's openDocs filter) — the moment the latest claim
+              // becomes fully paid (remainingDue = 0), it disappears from
+              // `rows` entirely, and searching `rows` for it silently fell
+              // back to whatever older claim (even claim #0) happened to still
+              // have room, showing THAT claim's own narrow bucket as the
+              // group's "remaining" instead of the true cumulative figure.
+              const groupSummary = claimSummaries?.find(s => s.project_id === rows[0]?.project_id);
               // The group's true remaining is the SAME cumulative formula as the
               // summary card (netCumulative + tax - totalPaid) — not a sum of the
               // rows' own buckets, since a bucket can't go negative and would
               // therefore lose an older claim's overpayment netting against this one.
-              const groupCap = summaryRow.grossTotal > 0
-                ? Math.max(0, summaryRow.netCumulative + summaryRow.tax - summaryRow.totalPaid)
+              const groupCap = groupSummary
+                ? Math.max(0, groupSummary.netCumulative + groupSummary.tax - groupSummary.totalPaid)
                 : rows.reduce((sum, r) => sum + r.max, 0);
               const alloc = row.type === 'single'
                 ? rows[0]
                 : {
-                    ...summaryRow,
+                    ...rows[rows.length - 1],
+                    ...(groupSummary ? {
+                      description:   `مستخلص رقم ${groupSummary.claim_number}`,
+                      grossTotal:    groupSummary.grossTotal,
+                      retained:      groupSummary.retained,
+                      netCumulative: groupSummary.netCumulative,
+                      tax:           groupSummary.tax,
+                      tax_rate:      groupSummary.tax_rate,
+                      totalPaid:     groupSummary.totalPaid,
+                    } : {}),
+                    target_type: 'claim',
                     max:    groupCap,
                     amount: rows.reduce((sum, r) => sum + r.amount, 0),
                   };
