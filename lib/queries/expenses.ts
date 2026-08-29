@@ -144,7 +144,7 @@ export async function getOwnerCustodyDetails(ownerId: string) {
   return data;
 }
 
-export async function getAllExpenses(filters: { startDate?: string, endDate?: string, employeeId?: string, projectId?: string, categoryId?: string, ownerId?: string, status?: string }) {
+export async function getAllExpenses(filters: { startDate?: string, endDate?: string, employeeId?: string, projectId?: string, categoryId?: string, ownerId?: string, status?: string, limit?: number }) {
   const supabase = await createClient();
   let query = supabase
     .from('expenses')
@@ -169,11 +169,12 @@ export async function getAllExpenses(filters: { startDate?: string, endDate?: st
   if (filters.status) query = query.eq('status', filters.status);
 
   // Hard cap: when date filters are set the conditional limit below is skipped;
-  // add an absolute safety cap to prevent enormous payloads.
-  query = query.limit(500);
+  // add an absolute safety cap to prevent enormous payloads. Callers needing
+  // more than the UI page ever shows (e.g. the Excel export) can override it.
+  query = query.limit(filters.limit ?? 500);
 
   // Tighter default limit when no date filters are present
-  if (!filters.startDate && !filters.endDate) {
+  if (!filters.startDate && !filters.endDate && !filters.limit) {
     query = query.limit(200);
   }
 

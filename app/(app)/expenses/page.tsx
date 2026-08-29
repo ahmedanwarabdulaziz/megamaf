@@ -2,7 +2,7 @@ import { getEmployeeExpenses, getOwnerExpenses, getExpenseCategories, getAllExpe
 import { getProjects } from '@/lib/queries/projects';
 import { getBanks, getBankAccountsForFunding } from '@/lib/queries/banks';
 import { getProfile } from '@/lib/supabase/get-profile';
-import { Wallet, CheckCircle, AlertCircle, TrendingDown } from 'lucide-react';
+import { Wallet, CheckCircle, AlertCircle, TrendingDown, FileDown } from 'lucide-react';
 
 export const dynamic = 'force-dynamic';
 
@@ -43,6 +43,23 @@ export default async function EmployeeExpensesPage({
   const startDate = start_date || defaultStart;
   const endDate = end_date || defaultEnd;
   const isShowAll = show_all === 'true';
+
+  // Export always mirrors whatever is currently filtered/shown on the "mine"
+  // or "all" tab — same query params the page itself uses to fetch data.
+  function buildExportParams(exportTab: 'mine' | 'all') {
+    const params = new URLSearchParams({ tab: exportTab });
+    if (exportTab === 'all' && employee_id) params.set('employee_id', employee_id);
+    if (project_id) params.set('project_id', project_id);
+    if (category_id) params.set('category_id', category_id);
+    if (status) params.set('status', status);
+    if (isShowAll) {
+      params.set('show_all', 'true');
+    } else {
+      params.set('start_date', startDate);
+      params.set('end_date', endDate);
+    }
+    return params;
+  }
 
   const [categories, projects, banks, fundingBankAccounts] = await Promise.all([
     getExpenseCategories(),
@@ -250,20 +267,32 @@ export default async function EmployeeExpensesPage({
 
       {tab === 'mine' && (
         <div className="space-y-4">
-          <AllExpensesFilters 
-            employees={allEmployees}
-            projects={projects || []}
-            categories={categories || []}
-            selectedEmployeeId=""
-            selectedProjectId={project_id || ''}
-            selectedCategoryId={category_id || ''}
-            selectedStatus={status || ''}
-            startDate={startDate}
-            endDate={endDate}
-            showAll={isShowAll}
-            activeTab="mine"
-            hideEmployeeFilter={true}
-          />
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex-1 w-full">
+              <AllExpensesFilters
+                employees={allEmployees}
+                projects={projects || []}
+                categories={categories || []}
+                selectedEmployeeId=""
+                selectedProjectId={project_id || ''}
+                selectedCategoryId={category_id || ''}
+                selectedStatus={status || ''}
+                startDate={startDate}
+                endDate={endDate}
+                showAll={isShowAll}
+                activeTab="mine"
+                hideEmployeeFilter={true}
+              />
+            </div>
+            {myExpenses.length > 0 && (
+              <a
+                href={`/api/expenses/export?${buildExportParams('mine').toString()}`}
+                className="text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              >
+                <FileDown className="w-4 h-4" /> تصدير إلى Excel
+              </a>
+            )}
+          </div>
           <MyExpensesList
             expenses={myExpenses}
             categories={activeCategories}
@@ -318,19 +347,31 @@ export default async function EmployeeExpensesPage({
 
       {tab === 'all' && isSuperAdmin && (
         <div className="space-y-4">
-          <AllExpensesFilters 
-            employees={allEmployees}
-            projects={projects || []}
-            categories={categories || []}
-            selectedEmployeeId={employee_id || ''}
-            selectedProjectId={project_id || ''}
-            selectedCategoryId={category_id || ''}
-            selectedStatus={status || ''}
-            startDate={startDate}
-            endDate={endDate}
-            showAll={isShowAll}
-            activeTab="all"
-          />
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex-1 w-full">
+              <AllExpensesFilters
+                employees={allEmployees}
+                projects={projects || []}
+                categories={categories || []}
+                selectedEmployeeId={employee_id || ''}
+                selectedProjectId={project_id || ''}
+                selectedCategoryId={category_id || ''}
+                selectedStatus={status || ''}
+                startDate={startDate}
+                endDate={endDate}
+                showAll={isShowAll}
+                activeTab="all"
+              />
+            </div>
+            {(allExpensesData || []).length > 0 && (
+              <a
+                href={`/api/expenses/export?${buildExportParams('all').toString()}`}
+                className="text-sm font-medium bg-primary text-primary-foreground hover:bg-primary/90 px-4 py-2 rounded-md transition-colors flex items-center gap-1.5 whitespace-nowrap shrink-0"
+              >
+                <FileDown className="w-4 h-4" /> تصدير إلى Excel
+              </a>
+            )}
+          </div>
 
           <AllExpensesTable
             expenses={allExpensesData || []}
