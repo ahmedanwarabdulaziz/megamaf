@@ -23,6 +23,8 @@ export type AttachmentProfile = {
   id: string
   is_active?: boolean | null
   is_super_admin?: boolean | null
+  has_custody_access?: boolean | null
+  has_expense_funding_access?: boolean | null
   employee_page_access?: Array<{
     page_slug?: string | null
     access_level?: string | null
@@ -95,7 +97,23 @@ export function canUploadAttachment(
   bucket: AttachmentBucket,
 ) {
   const rule = attachmentRule(purpose, bucket)
-  return !!rule && hasPageAccess(profile, [rule.writePage], true)
+  if (!rule) return false
+  if (!profile || profile.is_active === false) return false
+
+  // Expense receipts: createExpense/updateExpense let ANY employee with
+  // has_custody_access or has_expense_funding_access create/edit their OWN
+  // expense — the /expenses page itself has no formal page-access gate at
+  // all (see app/(app)/expenses/page.tsx). That's a separate, broader
+  // self-service permission from the 'expenses' edit page grant this rule
+  // otherwise requires (reserved for staff who manage OTHER employees'
+  // expenses). Without this, an employee who can freely create and edit
+  // their own expenses got rejected the moment they tried to attach a
+  // receipt to one, whenever they lacked that separate formal grant.
+  if (purpose === 'expense' && (profile.has_custody_access || profile.has_expense_funding_access)) {
+    return true
+  }
+
+  return hasPageAccess(profile, [rule.writePage], true)
 }
 
 export function canReadAttachment(

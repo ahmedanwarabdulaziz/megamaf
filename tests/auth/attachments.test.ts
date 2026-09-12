@@ -74,6 +74,23 @@ describe('attachment authorization policy', () => {
     expect(canUploadAttachment({ ...profile('banks', 'view'), is_super_admin: true }, 'claim', 'general')).toBe(true)
   })
 
+  it('lets an employee attach a receipt to their own expense via custody/funding access alone', () => {
+    // /expenses has no formal page-access gate (see app/(app)/expenses/page.tsx) —
+    // createExpense/updateExpense authorize self-service via has_custody_access
+    // or has_expense_funding_access, not the 'expenses' edit page grant. An
+    // employee with neither an 'expenses' page grant nor those flags must still
+    // be rejected, and the exception must not leak into other purposes.
+    const custodyOnly = { id: 'e1', is_active: true, is_super_admin: false, has_custody_access: true, employee_page_access: [] }
+    const fundingOnly = { id: 'e2', is_active: true, is_super_admin: false, has_expense_funding_access: true, employee_page_access: [] }
+    const neither = { id: 'e3', is_active: true, is_super_admin: false, employee_page_access: [] }
+
+    expect(canUploadAttachment(custodyOnly, 'expense', 'general')).toBe(true)
+    expect(canUploadAttachment(fundingOnly, 'expense', 'general')).toBe(true)
+    expect(canUploadAttachment(neither, 'expense', 'general')).toBe(false)
+    expect(canUploadAttachment({ ...custodyOnly, is_active: false }, 'expense', 'general')).toBe(false)
+    expect(canUploadAttachment(custodyOnly, 'claim', 'general')).toBe(false)
+  })
+
   it('maps downloads to both the correct page grant and bucket', () => {
     const invoice = { r2_key: 'invoice.pdf', entity_type: 'invoice', entity_id: 'invoice-1' }
     const payment = { r2_key: 'payment.pdf', entity_type: 'vendor_payment', entity_id: 'entry-1' }
