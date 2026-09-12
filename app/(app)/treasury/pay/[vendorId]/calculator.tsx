@@ -507,7 +507,16 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
       }
 
       if ('error' in result && result.error) {
-        alert(result.error);
+        // The allocation table is built from the server props (openDocs/claimSummaries)
+        // fetched when this page first rendered. If any of those documents' remaining
+        // balances shifted since then — another payment or credit settlement landing on
+        // the same claim/invoice while this form was open — the RPC's fresh DB check can
+        // reject an allocation this stale snapshot still thinks is valid. Without a
+        // refresh here, the page keeps showing the same stale numbers and every retry
+        // fails with the identical error. router.refresh() re-fetches the server props so
+        // the auto-fill effect recomputes against current balances before the next try.
+        alert(result.error + '\n\nسيتم تحديث البيانات الآن — يرجى مراجعة المبالغ والمحاولة مرة أخرى.');
+        router.refresh();
         setLoading(false);
       } else {
         router.push('/treasury');

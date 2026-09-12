@@ -25,9 +25,34 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
 
   // Fetch all open vendor docs
   const { data: docs } = await supabase.from('v_vendor_account').select('*').eq('party_id', vendorId).order('document_date', { ascending: true });
-  
+
+  // Fetch prior claims directly since they are no longer in v_vendor_account.
+  // Needed BELOW (not just later) to tell a genuine in-system claim #0 apart
+  // from a legacy vendor_prior_claims row before the amount_paid patch runs.
+  const { data: priorClaims } = await supabase.from('vendor_prior_claims').select('*').eq('vendor_id', vendorId);
+
   if (docs && docs.length > 0) {
-    const claimIds = docs.filter(d => d.document_type === 'claim').map(d => d.document_id);
+    // v_vendor_account labels EVERY claim_number=0 row 'prior_claim' by design
+    // (0052_claim_zero.sql), even when it's backed by a real `claims` row —
+    // for those, its own amount_paid is just c.opening_paid_amount, which
+    // ignores anything paid against the claim afterward via payment_allocations
+    // (a manual payment, credit settlement, or the auto-credit-assignment that
+    // now runs on every claim approval). Those rows get relabeled 'claim'
+    // further below, but that happens AFTER this patch — so without also
+    // matching them here by id, they'd keep the view's incomplete paid
+    // figure and this table would overstate their remaining balance, letting
+    // the UI build an allocation record_vendor_payment then rejects as
+    // exceeding the document's true remaining due. A legacy vendor_prior_claims
+    // row (present in priorClaims) is excluded here — v_claim_paid has no
+    // row for it since it isn't a `claims` id.
+    const inSystemClaimZeroIds = docs
+      .filter(d => d.document_type === 'prior_claim' && !priorClaims?.some(pc => pc.id === d.document_id))
+      .map(d => d.document_id);
+
+    const claimIds = [
+      ...docs.filter(d => d.document_type === 'claim').map(d => d.document_id),
+      ...inSystemClaimZeroIds,
+    ];
     const invoiceIds = docs.filter(d => d.document_type === 'invoice').map(d => d.document_id);
     const retentionIds = docs.filter(d => d.document_type === 'retention_release').map(d => d.document_id);
 
@@ -41,8 +66,9 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
       retentionIds.length > 0 ? supabase.from('v_retention_paid').select('*').in('retention_id', retentionIds) : { data: null },
     ]);
 
+    const inSystemClaimZeroIdSet = new Set(inSystemClaimZeroIds);
     docs.forEach(d => {
-      if (d.document_type === 'claim') {
+      if (d.document_type === 'claim' || inSystemClaimZeroIdSet.has(d.document_id)) {
         d.amount_paid = claimPaid?.find(p => p.claim_id === d.document_id)?.paid_amount || 0;
       } else if (d.document_type === 'invoice') {
         d.amount_paid = invoicePaid?.find(p => p.invoice_id === d.document_id)?.paid_amount || 0;
@@ -52,8 +78,6 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     });
   }
 
-  // Fetch prior claims directly since they are no longer in v_vendor_account
-  const { data: priorClaims } = await supabase.from('vendor_prior_claims').select('*').eq('vendor_id', vendorId);
   const priorDocs = (priorClaims || []).map(pc => ({
     party_id: pc.vendor_id,
     project_id: pc.project_id,
