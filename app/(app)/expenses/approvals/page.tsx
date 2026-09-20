@@ -3,6 +3,8 @@ import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
 import { AllExpensesFilters } from '@/components/expenses/all-expenses-filters';
 import { ExpenseApprovalsList } from '@/components/expenses/expense-approvals-list';
+import { VendorPaymentApprovalsList } from '@/components/expenses/vendor-payment-approvals-list';
+import { getVendorPaymentRequests } from '@/lib/queries/vendor-payment-requests';
 import { createClient } from '@/lib/supabase/server';
 
 export const metadata = {
@@ -42,25 +44,39 @@ export default async function ExpenseApprovalsPage({
   const supabase = await createClient();
   const { data: allEmployeesData } = await supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name');
 
-  // Load data based on tab
-  let expenses: any[] = [];
-  
-  expenses = await getAllExpenses({
-    employeeId: employee_id,
-    projectId: project_id,
-    categoryId: category_id,
-    startDate: isShowAll ? undefined : startDate,
-    endDate: isShowAll ? undefined : endDate,
-    status: tab === 'approved' ? 'approved' : 'pending'
-  });
+  // Load data based on tab. Vendor payment requests (payments to contractors
+  // funded from a bank / another employee's custody) are approved in the same
+  // place as expenses but are a different kind of record, so they're fetched
+  // separately and rendered in their own, visually distinct section. They have
+  // no expense category, so a category filter hides them.
+  const [expenses, vendorPaymentRequests] = await Promise.all([
+    getAllExpenses({
+      employeeId: employee_id,
+      projectId: project_id,
+      categoryId: category_id,
+      startDate: isShowAll ? undefined : startDate,
+      endDate: isShowAll ? undefined : endDate,
+      status: tab === 'approved' ? 'approved' : 'pending'
+    }),
+    category_id
+      ? Promise.resolve([] as any[])
+      : getVendorPaymentRequests({
+          statuses: [tab === 'approved' ? 'approved' : 'pending'],
+          requestedBy: employee_id,
+          projectId: project_id,
+          startDate: isShowAll ? undefined : startDate,
+          endDate: isShowAll ? undefined : endDate,
+        }),
+  ]);
+  const pendingCount = expenses.length + vendorPaymentRequests.length;
 
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">اعتمادات المصروفات</h1>
-        {tab === 'pending' && expenses.length > 0 && (
+        {tab === 'pending' && pendingCount > 0 && (
           <span className="text-sm bg-yellow-500/10 text-yellow-600 px-3 py-1 rounded-full font-medium">
-            {expenses.length} بانتظار الاعتماد
+            {pendingCount} بانتظار الاعتماد
           </span>
         )}
       </div>
@@ -102,14 +118,26 @@ export default async function ExpenseApprovalsPage({
         activeTab={tab}
       />
 
-      <div>
-        <ExpenseApprovalsList
-          key={`${tab}-${employee_id || ''}-${project_id || ''}-${category_id || ''}-${startDate}-${endDate}-${isShowAll}`}
-          expenses={expenses}
+      <div className="space-y-6">
+        <VendorPaymentApprovalsList
+          key={`vpr-${tab}-${employee_id || ''}-${project_id || ''}-${category_id || ''}-${startDate}-${endDate}-${isShowAll}`}
+          requests={vendorPaymentRequests}
           tab={tab}
-          categories={categories}
-          projects={projects || []}
+          currentEmployeeId={employee.id}
+          isSuperAdmin={!!employee.is_super_admin}
         />
+        {/* The list's own empty state ("no expenses") would be misleading while
+            payment vouchers are showing above it, so only render it when there's
+            something to list or nothing else on the page. */}
+        {(expenses.length > 0 || vendorPaymentRequests.length === 0) && (
+          <ExpenseApprovalsList
+            key={`${tab}-${employee_id || ''}-${project_id || ''}-${category_id || ''}-${startDate}-${endDate}-${isShowAll}`}
+            expenses={expenses}
+            tab={tab}
+            categories={categories}
+            projects={projects || []}
+          />
+        )}
       </div>
     </div>
   );

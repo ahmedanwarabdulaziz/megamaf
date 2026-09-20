@@ -11,12 +11,13 @@ export type AttachmentPurpose =
   | 'owner_custody_disbursement'
   | 'ledger_entry'
   | 'vendor_payment'
+  | 'vendor_payment_request'
 
 type AttachmentRule = {
   bucket: AttachmentBucket
   writePage: string
   readPages: string[]
-  parentTable: 'expenses' | 'invoices' | 'claims' | 'ledger_entries'
+  parentTable: 'expenses' | 'invoices' | 'claims' | 'ledger_entries' | 'vendor_payment_requests'
 }
 
 export type AttachmentProfile = {
@@ -25,6 +26,7 @@ export type AttachmentProfile = {
   is_super_admin?: boolean | null
   has_custody_access?: boolean | null
   has_expense_funding_access?: boolean | null
+  can_approve?: boolean | null
   employee_page_access?: Array<{
     page_slug?: string | null
     access_level?: string | null
@@ -83,6 +85,15 @@ const ATTACHMENT_RULES: Record<AttachmentPurpose, AttachmentRule> = {
     readPages: ['treasury', 'vendors'],
     parentTable: 'ledger_entries',
   },
+  // Receipts attached to a pending vendor payment request. They are copied to
+  // a 'vendor_payment' row on the resulting ledger entry at approval time.
+  // Approvers read them from /expenses/approvals (see canReadAttachment).
+  vendor_payment_request: {
+    bucket: 'treasury',
+    writePage: 'treasury',
+    readPages: ['treasury', 'vendors'],
+    parentTable: 'vendor_payment_requests',
+  },
 }
 
 export function attachmentRule(entityType: unknown, bucket: AttachmentBucket) {
@@ -113,6 +124,15 @@ export function canUploadAttachment(
     return true
   }
 
+  // Vendor payment receipts: an employee with has_expense_funding_access can
+  // submit a payment REQUEST (approved later by an approver) with a view-level
+  // treasury grant, so they must be able to attach the transfer receipt too.
+  // The uploaded file stays unreadable until an attachments row links it to a
+  // record the reader is allowed to see (canReadAttachment).
+  if (purpose === 'vendor_payment' && profile.has_expense_funding_access && hasPageAccess(profile, ['treasury'], false)) {
+    return true
+  }
+
   return hasPageAccess(profile, [rule.writePage], true)
 }
 
@@ -122,7 +142,15 @@ export function canReadAttachment(
   bucket: AttachmentBucket,
 ) {
   const rule = attachmentRule(record.entity_type, bucket)
-  return !!rule && hasPageAccess(profile, rule.readPages, false)
+  if (!rule) return false
+
+  // Approvers review pending vendor payment requests on /expenses/approvals,
+  // which is gated on can_approve rather than a page slug.
+  if (record.entity_type === 'vendor_payment_request' && profile && profile.is_active !== false && profile.can_approve) {
+    return true
+  }
+
+  return hasPageAccess(profile, rule.readPages, false)
 }
 
 export function hasPageAccess(

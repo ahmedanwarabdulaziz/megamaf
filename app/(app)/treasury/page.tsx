@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import Link from 'next/link';
 import { formatMoney } from '@/lib/money';
-import { Wallet, ClipboardList } from 'lucide-react';
+import { Wallet, ClipboardList, Hourglass, XCircle } from 'lucide-react';
 import { AdvancePayButton } from './advance-pay-button';
 import { AdvanceReceiveButton } from './advance-receive-button';
 import { AssignPaymentButton } from '../settings/owners/[id]/statement/assign-payment-button';
@@ -14,6 +14,7 @@ import { getBanks } from '@/lib/queries/banks';
 import { DisburseCustodyModal } from '@/components/treasury/disburse-custody-modal';
 import { DisburseOwnerCustodyModal } from '@/components/treasury/disburse-owner-custody-modal';
 import { VendorPayablesTable } from '@/components/treasury/vendor-payables-table';
+import { getVendorPaymentRequests } from '@/lib/queries/vendor-payment-requests';
 
 export const dynamic = 'force-dynamic';
 export const metadata = { title: 'الخزينة والمدفوعات والعهد' };
@@ -35,7 +36,7 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
   const isShowAll = show_all === 'true';
 
   let vendorHistoryQuery = supabase.from('ledger_entries')
-      .select('id, entry_date, amount, memo, project_id, counterparty_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
+      .select('id, entry_date, amount, memo, project_id, counterparty_id, employee_id, bank_accounts(account_name, banks(name)), projects(name), payment_allocations(target_type, target_id, allocated_amount)')
       .eq('category', 'vendor_payment')
       .order('entry_date', { ascending: false })
       .order('created_at', { ascending: false });
@@ -72,7 +73,9 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     { data: latestClaimTotals },
     empCustodyBalances,
     ownerCustodyBalances,
-    banks
+    banks,
+    pendingPaymentRequests,
+    rejectedPaymentRequests,
   ] = await Promise.all([
     supabase.from('v_vendor_balances').select('vendor_id, vendor_name, gross_total, total_due, total_paid, balance, total_retention_held').order('vendor_name', { ascending: true }),
     supabase.from('v_owner_balances').select('owner_id, owner_name, total_due, total_paid, balance').order('balance', { ascending: false }),
@@ -85,8 +88,16 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
     supabase.from('v_claim_totals').select('claim_id, total_due_this_claim, claim_cumulative_retained'),
     tab === 'emp_custodies' ? getAllCustodyBalances() : Promise.resolve([]),
     tab === 'owner_custodies' ? getAllOwnerCustodyBalances() : Promise.resolve([]),
-    tab === 'emp_custodies' || tab === 'owner_custodies' ? getBanks() : Promise.resolve([])
+    tab === 'emp_custodies' || tab === 'owner_custodies' ? getBanks() : Promise.resolve([]),
+    // Vendor payments submitted for approval (bank / another employee's custody
+    // funded) — RLS limits non-approvers to their own. Rejected ones are only
+    // kept visible for two weeks so the requester sees why and can resubmit.
+    tab === 'payables' && subtab !== 'invoices' ? getVendorPaymentRequests({ statuses: ['pending'], limit: 50 }) : Promise.resolve([] as any[]),
+    tab === 'payables' && subtab !== 'invoices'
+      ? getVendorPaymentRequests({ statuses: ['rejected'], startDate: new Date(now.getTime() - 14 * 86400000).toISOString().slice(0, 10), limit: 20 })
+      : Promise.resolve([] as any[]),
   ]);
+  const paymentRequestRows = [...pendingPaymentRequests, ...rejectedPaymentRequests];
   // vendorPaidMap and ownerPaidMap logic has been removed since v_vendor_balances and v_owner_balances provide accurate total_paid values directly.
 
   // Build retention map: owner_id → cumulative_retained (from latest approved owner claim)
@@ -203,6 +214,56 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
         <div className="space-y-4">
           <VendorPayablesTable vendors={adjustedVendors} />
 
+          {paymentRequestRows.length > 0 && (
+            <div className="rounded-xl border-2 border-emerald-500/40 bg-emerald-500/[0.03] overflow-hidden">
+              <div className="flex items-center gap-2 bg-emerald-600 text-white px-4 py-2.5 font-bold text-sm">
+                <Hourglass className="w-4 h-4" />
+                طلبات دفع مقاولين (بنك / عهدة موظف آخر) — لا تُسجَّل في حساب المقاول إلا بعد الاعتماد
+              </div>
+              <table className="w-full text-sm text-right">
+                <thead className="bg-emerald-500/10 border-b border-emerald-500/20">
+                  <tr>
+                    <th className="p-3 font-medium">التاريخ</th>
+                    <th className="p-3 font-medium">المقاول</th>
+                    <th className="p-3 font-medium">المشروع</th>
+                    <th className="p-3 font-medium">مصدر السداد</th>
+                    <th className="p-3 font-medium">المبلغ</th>
+                    <th className="p-3 font-medium">الحالة</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-border">
+                  {paymentRequestRows.map((r: any) => (
+                    <tr key={r.id}>
+                      <td className="p-3 whitespace-nowrap">{new Date(r.created_at).toISOString().slice(0, 10)}</td>
+                      <td className="p-3 font-semibold">{r.vendor?.name || 'غير معروف'}</td>
+                      <td className="p-3 text-muted-foreground">{r.project?.name || '-'}</td>
+                      <td className="p-3 text-muted-foreground">
+                        {r.funding_type === 'bank'
+                          ? `${r.funding_bank?.banks?.name || ''} - ${r.funding_bank?.account_name || ''}`
+                          : `عهدة ${r.funding_employee?.full_name || ''}`}
+                      </td>
+                      <td className="p-3 font-bold">{formatMoney(r.amount)}</td>
+                      <td className="p-3">
+                        {r.status === 'pending' ? (
+                          <span className="inline-flex items-center gap-1 text-xs font-medium bg-amber-500/15 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">
+                            <Hourglass className="w-3 h-3" /> بانتظار الاعتماد
+                          </span>
+                        ) : (
+                          <div className="space-y-1">
+                            <span className="inline-flex items-center gap-1 text-xs font-medium bg-red-500/15 text-red-700 dark:text-red-400 px-2 py-0.5 rounded-full">
+                              <XCircle className="w-3 h-3" /> مرفوض
+                            </span>
+                            {r.rejection_reason && <p className="text-xs text-muted-foreground">{r.rejection_reason}</p>}
+                          </div>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div className="mt-8">
             <h2 className="text-lg font-bold mb-4">أحدث المدفوعات للمقاولين</h2>
             
@@ -234,7 +295,11 @@ export default async function TreasuryPage({ searchParams }: { searchParams: Pro
                       <td className="p-4">{entry.entry_date}</td>
                       <td className="p-4 font-semibold">{contractorMap.get(entry.counterparty_id) || 'غير معروف'}</td>
                       <td className="p-4 text-muted-foreground">{(entry.projects as any)?.name || '-'}</td>
-                      <td className="p-4 text-muted-foreground">{(entry.bank_accounts as any)?.banks?.name || ''} - {(entry.bank_accounts as any)?.account_name || ''}</td>
+                      <td className="p-4 text-muted-foreground">
+                        {entry.bank_accounts
+                          ? `${(entry.bank_accounts as any)?.banks?.name || ''} - ${(entry.bank_accounts as any)?.account_name || ''}`
+                          : entry.employee_id ? 'من عهدة موظف' : '-'}
+                      </td>
                       <td className="p-4 font-bold text-destructive">{formatMoney(entry.amount)}</td>
                       <td className="p-4">
                         <div className="flex flex-col gap-1">

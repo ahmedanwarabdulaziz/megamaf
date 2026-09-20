@@ -4,7 +4,25 @@ import { useState, useTransition } from 'react';
 import { Button } from '@/components/ui/button';
 import { approveExpense, rejectExpense } from '@/lib/actions/expenses';
 
-export function ApproveRejectButtons({ expenseId, onSuccess }: { expenseId: string; onSuccess?: () => void }) {
+type ActionResult = { error?: string; success?: boolean } | undefined | void;
+
+/** Defaults to approving/rejecting an expense. Other approval kinds (e.g. a
+ *  vendor payment request) pass their own actions and dialog wording. */
+export function ApproveRejectButtons({
+  expenseId,
+  onSuccess,
+  approveAction = approveExpense,
+  rejectAction = rejectExpense,
+  rejectTitle = 'سبب رفض المصروف',
+  rejectHint = 'سيتم إظهار هذا السبب للموظف حتى يتمكن من تصحيح المصروف وإعادة تقديمه.',
+}: {
+  expenseId: string;
+  onSuccess?: () => void;
+  approveAction?: (id: string) => Promise<ActionResult>;
+  rejectAction?: (id: string, reason?: string) => Promise<ActionResult>;
+  rejectTitle?: string;
+  rejectHint?: string;
+}) {
   const [isPending, startTransition] = useTransition();
   const [showRejectModal, setShowRejectModal] = useState(false);
   const [reason, setReason] = useState('');
@@ -12,7 +30,7 @@ export function ApproveRejectButtons({ expenseId, onSuccess }: { expenseId: stri
 
   function onApprove() {
     startTransition(async () => {
-      const result = await approveExpense(expenseId);
+      const result = await approveAction(expenseId);
       if (result?.error) {
         alert(result.error);
       } else {
@@ -27,7 +45,7 @@ export function ApproveRejectButtons({ expenseId, onSuccess }: { expenseId: stri
       return;
     }
     startTransition(async () => {
-      const result = await rejectExpense(expenseId, reason);
+      const result = await rejectAction(expenseId, reason);
       if (result?.error) {
         setError(result.error);
       } else {
@@ -65,9 +83,9 @@ export function ApproveRejectButtons({ expenseId, onSuccess }: { expenseId: stri
             onClick={() => !isPending && setShowRejectModal(false)}
           />
           <div className="relative z-[60] w-full max-w-md bg-card shadow-2xl rounded-t-2xl sm:rounded-xl border-t-4 sm:border-2 border-destructive p-4 sm:p-6 flex flex-col gap-3">
-            <h3 className="text-lg font-semibold">سبب رفض المصروف</h3>
+            <h3 className="text-lg font-semibold">{rejectTitle}</h3>
             <p className="text-sm text-muted-foreground">
-              سيتم إظهار هذا السبب للموظف حتى يتمكن من تصحيح المصروف وإعادة تقديمه.
+              {rejectHint}
             </p>
             <textarea
               autoFocus

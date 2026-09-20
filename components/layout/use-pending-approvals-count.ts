@@ -11,12 +11,14 @@ export function usePendingApprovalsCount(enabled: boolean) {
     if (!enabled) return;
     const supabase = createClient();
 
+    // Pending expenses + pending vendor payment requests both wait for an
+    // approver on /expenses/approvals, so both count toward the badge.
     async function fetchCount() {
-      const { count: pendingCount } = await supabase
-        .from('expenses')
-        .select('id', { count: 'exact', head: true })
-        .eq('status', 'pending');
-      setCount(pendingCount || 0);
+      const [{ count: pendingExpenses }, { count: pendingPayments }] = await Promise.all([
+        supabase.from('expenses').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('vendor_payment_requests').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+      ]);
+      setCount((pendingExpenses || 0) + (pendingPayments || 0));
     }
 
     fetchCount();
@@ -28,6 +30,7 @@ export function usePendingApprovalsCount(enabled: boolean) {
     const channel = supabase
       .channel(`expenses-pending-approvals-count-${instanceId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'expenses' }, fetchCount)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vendor_payment_requests' }, fetchCount)
       .subscribe();
 
     return () => {

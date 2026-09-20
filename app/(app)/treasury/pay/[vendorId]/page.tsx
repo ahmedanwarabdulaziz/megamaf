@@ -2,12 +2,19 @@ import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import { VendorPaymentCalculator } from './calculator';
 import { computeClaimFinancials } from '@/lib/claim-financials';
-import { requirePageAccess } from '@/lib/require-page-access';
-import { getBanks } from '@/lib/queries/banks';
+import { requirePageAccess, canEditPage } from '@/lib/require-page-access';
+import { getBanks, getBankAccountsForFunding } from '@/lib/queries/banks';
 
 export default async function PayVendorPage({ params }: { params: Promise<{ vendorId: string }> }) {
-  await requirePageAccess('treasury');
+  const { profile } = await requirePageAccess('treasury');
   const { vendorId } = await params;
+
+  // Employees granted has_expense_funding_access (and who aren't super admins)
+  // can register a vendor payment funded from a bank / another employee's
+  // custody; it waits for approval in /expenses/approvals before it lands on
+  // the vendor's account. Super admins and treasury editors keep paying directly.
+  const canRequestFunded = !profile.is_super_admin && !!profile.has_expense_funding_access;
+  const canPayDirect = !!profile.is_super_admin || canEditPage(profile, 'treasury');
   const supabase = await createClient();
 
   const { data: vendor } = await supabase.from('vendors').select('*, vendor_project_access(project_id)').eq('id', vendorId).single();
@@ -17,10 +24,15 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
     banks,
     { data: employees },
     { data: creditEntries },
+    fundingBankAccounts,
   ] = await Promise.all([
-    getBanks(),
+    // Employees with has_expense_funding_access must not see bank balances, so
+    // don't even fetch them — they get the balance-free funding list below.
+    canRequestFunded ? Promise.resolve([]) : getBanks(),
     supabase.from('employees').select('id, full_name').eq('is_active', true).order('full_name'),
     supabase.from('v_vendor_unallocated_credit').select('*').eq('vendor_id', vendorId).order('entry_date'),
+    // Narrow, balance-free list — see 20260829130000_bank_accounts_for_expense_funding.sql
+    canRequestFunded ? getBankAccountsForFunding() : Promise.resolve([]),
   ]);
 
   // Fetch all open vendor docs
@@ -313,7 +325,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
         <p className="text-muted-foreground mt-1">المقاول: {vendor.name}</p>
       </div>
 
-      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} banks={banks || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} creditEntries={creditEntries || []} />
+      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} banks={banks || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} creditEntries={creditEntries || []} canRequestFunded={canRequestFunded} canPayDirect={canPayDirect} fundingBankAccounts={fundingBankAccounts} currentEmployeeId={profile.id} />
     </div>
   );
 }

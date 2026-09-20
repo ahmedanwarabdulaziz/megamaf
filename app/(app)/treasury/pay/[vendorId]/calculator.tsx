@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
 import { Modal } from '@/components/ui/modal';
 import { Loader2, Paperclip, FileText, Image, X, Receipt, ClipboardList } from 'lucide-react';
-import { payVendor, payVendorFromExpense, assignVendorPayment } from '@/lib/actions/payments';
+import { payVendor, payVendorFromExpense, assignVendorPayment, requestVendorPayment } from '@/lib/actions/payments';
 import { getEmployeeAvailableExpenses } from '@/lib/actions/expenses';
 import { uploadTreasuryFile } from '@/lib/upload-treasury';
 import { formatMoney } from '@/lib/money';
@@ -48,7 +48,38 @@ type CreditEntry = {
   memo: string | null;
 };
 
-export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, projects, claimSummaries, creditEntries = [] }: { vendorId: string, openDocs: any[], banks: any[], employees: {id: string, full_name: string}[], projects: {id: string, name: string}[], claimSummaries?: ClaimSummary[], creditEntries?: CreditEntry[] }) {
+// No balance - an employee with only has_expense_funding_access picks which
+// account funds a payment request without seeing exact treasury balances.
+type FundingBankAccount = { bank_account_id: string; account_name: string; bank_id: string; bank_name: string };
+
+export function VendorPaymentCalculator({
+  vendorId,
+  openDocs,
+  banks,
+  employees,
+  projects,
+  claimSummaries,
+  creditEntries = [],
+  canRequestFunded = false,
+  canPayDirect = true,
+  fundingBankAccounts = [],
+  currentEmployeeId,
+}: {
+  vendorId: string,
+  openDocs: any[],
+  banks: any[],
+  employees: {id: string, full_name: string}[],
+  projects: {id: string, name: string}[],
+  claimSummaries?: ClaimSummary[],
+  creditEntries?: CreditEntry[],
+  /** Employee with has_expense_funding_access (not a super admin): may submit a
+   *  payment funded from a bank / another employee's custody that waits for approval. */
+  canRequestFunded?: boolean,
+  /** Super admin or treasury editor: may record a payment immediately (existing flow). */
+  canPayDirect?: boolean,
+  fundingBankAccounts?: FundingBankAccount[],
+  currentEmployeeId?: string,
+}) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [amount, setAmount] = useState<number>(0);
@@ -79,7 +110,14 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
 
   // Funding source: pay from a bank account, from an employee's approved expense,
   // or settle from an existing unallocated payment already sitting with this vendor.
-  const [fundingSource, setFundingSource] = useState<'bank' | 'expense' | 'credit'>('bank');
+  // 'request' = funded from a bank / another employee's custody, but saved as a
+  // pending request that only lands on the vendor's account once an approver
+  // approves it (see requestVendorPayment).
+  const requestOnly = canRequestFunded && !canPayDirect;
+  const [fundingSource, setFundingSource] = useState<'bank' | 'expense' | 'credit' | 'request'>(requestOnly ? 'request' : 'bank');
+  const [requestFundingType, setRequestFundingType] = useState<'bank' | 'employee_custody'>('bank');
+  const [requestBankId, setRequestBankId] = useState('');
+  const [requestEmployeeId, setRequestEmployeeId] = useState('');
   const [creditEntryId, setCreditEntryId] = useState('');
   const totalCredit = useMemo(() => creditEntries.reduce((sum, c) => sum + Number(c.remaining_credit || 0), 0), [creditEntries]);
 
@@ -487,6 +525,24 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
           return;
         }
         result = await assignVendorPayment(creditEntryId, effectiveProjectId, apiAllocations);
+      } else if (fundingSource === 'request') {
+        if (!effectiveProjectId) {
+          alert('يجب اختيار المشروع المرتبط بالدفعة.');
+          setLoading(false);
+          return;
+        }
+        const formData = new FormData();
+        formData.append('vendor_id', vendorId);
+        formData.append('amount', amount.toString());
+        formData.append('memo', memo);
+        formData.append('project_id', effectiveProjectId);
+        formData.append('funding_type', requestFundingType);
+        if (requestFundingType === 'bank') formData.append('funding_bank_account_id', requestBankId);
+        else formData.append('funding_employee_id', requestEmployeeId);
+        result = await requestVendorPayment(formData, apiAllocations, uploadedPaths);
+        if (!('error' in result && result.error)) {
+          alert('تم إرسال طلب الدفع للاعتماد. لن يُسجَّل في حساب المقاول ولن يُخصم من المصدر إلا بعد اعتماد المسؤول.');
+        }
       } else if (fundingSource === 'expense') {
         const formData = new FormData();
         formData.append('vendor_id', vendorId);
@@ -519,7 +575,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
         router.refresh();
         setLoading(false);
       } else {
-        router.push('/treasury');
+        router.push(fundingSource === 'request' ? '/treasury?tab=payables' : '/treasury');
       }
     } catch (err: any) {
       alert(err.message || 'حدث خطأ أثناء رفع المرفقات');
@@ -718,13 +774,24 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
         <div>
           <label className="block text-sm font-medium mb-1">مصدر السداد</label>
           <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => { setFundingSource('bank'); setAmount(0); }}
-              className={`flex-1 p-2 rounded border text-sm font-medium ${fundingSource === 'bank' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'}`}
-            >
-              من الخزينة / حساب بنكي
-            </button>
+            {!requestOnly && (
+              <button
+                type="button"
+                onClick={() => { setFundingSource('bank'); setAmount(0); }}
+                className={`flex-1 p-2 rounded border text-sm font-medium ${fundingSource === 'bank' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'}`}
+              >
+                من الخزينة / حساب بنكي
+              </button>
+            )}
+            {canRequestFunded && (
+              <button
+                type="button"
+                onClick={() => { setFundingSource('request'); setAmount(0); setBankId(''); }}
+                className={`flex-1 p-2 rounded border text-sm font-medium ${fundingSource === 'request' ? 'bg-emerald-600 text-white border-emerald-600' : 'bg-background'}`}
+              >
+                بنك / عهدة موظف آخر (بعد الاعتماد)
+              </button>
+            )}
             <button
               type="button"
               onClick={() => { setFundingSource('expense'); setAmount(0); setBankId(''); }}
@@ -732,7 +799,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
             >
               من عهدة موظف (مصروف معتمد)
             </button>
-            {creditEntries.length > 0 && (
+            {creditEntries.length > 0 && !requestOnly && (
               <button
                 type="button"
                 onClick={() => { setFundingSource('credit'); setAmount(0); setBankId(''); setCreditEntryId(''); }}
@@ -745,12 +812,77 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {fundingSource === 'request' && (
+            <div className="md:col-span-2 rounded-lg border-2 border-emerald-500/40 bg-emerald-500/[0.04] p-4 space-y-3">
+              <p className="text-sm text-emerald-800 dark:text-emerald-300">
+                هذه الدفعة تُحفظ كطلب بانتظار الاعتماد. لن تُسجَّل في حساب المقاول ولن يُخصم المبلغ من المصدر المختار إلا بعد اعتماد المسؤول في صفحة اعتمادات المصروفات.
+              </p>
+              <div>
+                <label className="block text-sm font-medium mb-1">مصدر التمويل</label>
+                <select
+                  value={requestFundingType}
+                  onChange={e => { setRequestFundingType(e.target.value as 'bank' | 'employee_custody'); setRequestBankId(''); setRequestEmployeeId(''); }}
+                  className="w-full p-2 rounded border bg-background"
+                >
+                  <option value="bank">حساب بنكي</option>
+                  <option value="employee_custody">عهدة موظف آخر</option>
+                </select>
+              </div>
+              {requestFundingType === 'bank' ? (
+                <div>
+                  <label className="block text-sm font-medium mb-1">الحساب البنكي</label>
+                  <select required value={requestBankId} onChange={e => setRequestBankId(e.target.value)} className="w-full p-2 rounded border bg-background">
+                    <option value="">اختر الحساب...</option>
+                    {Object.entries(
+                      fundingBankAccounts.reduce((groups: Record<string, FundingBankAccount[]>, acc) => {
+                        (groups[acc.bank_name] ||= []).push(acc);
+                        return groups;
+                      }, {})
+                    ).map(([bankName, accounts]) => (
+                      <optgroup key={bankName} label={bankName}>
+                        {accounts.map(acc => (
+                          <option key={acc.bank_account_id} value={acc.bank_account_id}>{acc.account_name}</option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-sm font-medium mb-1">الموظف الممول (من عهدته)</label>
+                  <select required value={requestEmployeeId} onChange={e => setRequestEmployeeId(e.target.value)} className="w-full p-2 rounded border bg-background">
+                    <option value="">اختر الموظف...</option>
+                    {employees.filter(emp => emp.id !== currentEmployeeId).map(emp => (
+                      <option key={emp.id} value={emp.id}>{emp.full_name}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+            </div>
+          )}
+
           {fundingSource === 'bank' && (
             <div>
               <label className="block text-sm font-medium mb-1">الخزينة / الحساب البنكي المسدد منه</label>
               <select required value={bankId} onChange={e => setBankId(e.target.value)} className="w-full p-2 rounded border bg-background">
                 <option value="">اختر الحساب...</option>
-                {banks.map(bank => (
+                {canRequestFunded ? (
+                  // Employees with has_expense_funding_access never see bank
+                  // balances (same rule as the custody / expense funding
+                  // picker) — balance-free list, account names only.
+                  Object.entries(
+                    fundingBankAccounts.reduce((groups: Record<string, FundingBankAccount[]>, acc) => {
+                      (groups[acc.bank_name] ||= []).push(acc);
+                      return groups;
+                    }, {})
+                  ).map(([bankName, accounts]) => (
+                    <optgroup key={bankName} label={bankName}>
+                      {accounts.map(acc => (
+                        <option key={acc.bank_account_id} value={acc.bank_account_id}>{acc.account_name}</option>
+                      ))}
+                    </optgroup>
+                  ))
+                ) : banks.map(bank => (
                   <optgroup key={bank.id} label={bank.name}>
                     {bank.accounts?.map((acc: any) => (
                       <option key={acc.bank_account_id} value={acc.bank_account_id}>
@@ -774,7 +906,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
             </div>
           )}
 
-          {fundingSource === 'bank' && (
+          {(fundingSource === 'bank' || fundingSource === 'request') && (
             <div>
               <label className="block text-sm font-medium mb-1">المبلغ المسدد</label>
               <input required type="number" step="0.01" min="0" value={amount || ''} onChange={e => setAmount(parseFloat(e.target.value) || 0)} className="w-full p-2 rounded border bg-background font-bold text-lg text-primary" placeholder="0.00" />
@@ -783,7 +915,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
 
           <div>
             <label className="block text-sm font-medium mb-1">
-              المشروع المرتبط {fundingSource === 'bank' ? '(مطلوب — حتى لو دفعة مقدمة بدون مستند بعد)' : fundingSource === 'credit' ? '(مطلوب لتخصيص الرصيد)' : ''}
+              المشروع المرتبط {fundingSource === 'bank' || fundingSource === 'request' ? '(مطلوب — حتى لو دفعة مقدمة بدون مستند بعد)' : fundingSource === 'credit' ? '(مطلوب لتخصيص الرصيد)' : ''}
             </label>
             <select required={fundingSource !== 'expense'} value={projectId} onChange={e => setProjectId(e.target.value)} className="w-full p-2 rounded border bg-background">
               <option value="">{fundingSource === 'expense' ? 'عام (غير مرتبط بمشروع محدد)' : 'اختر المشروع...'}</option>
@@ -791,7 +923,7 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
             </select>
-            {fundingSource === 'bank' && (
+            {(fundingSource === 'bank' || fundingSource === 'request') && (
               <p className="text-xs text-muted-foreground mt-1">
                 هذا يضمن أن أي رصيد يتبقى من هذه الدفعة (دفعة مقدمة) يُخصص تلقائياً لأول مستخلص يُعتمد لهذا المشروع لاحقاً.
               </p>
@@ -1134,9 +1266,15 @@ export function VendorPaymentCalculator({ vendorId, openDocs, banks, employees, 
       </div>
 
       <div className="flex justify-end">
-        <Button type="submit" disabled={loading || (fundingSource === 'credit' ? (!creditEntryId || totalAllocated <= 0) : amount <= 0 || (fundingSource === 'bank' ? !bankId : !expenseId))}>
+        <Button type="submit" disabled={loading || (fundingSource === 'credit'
+          ? (!creditEntryId || totalAllocated <= 0)
+          : amount <= 0 || (fundingSource === 'bank'
+            ? !bankId
+            : fundingSource === 'request'
+              ? !(requestFundingType === 'bank' ? requestBankId : requestEmployeeId)
+              : !expenseId))}>
           {loading ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-          {fundingSource === 'credit' ? 'تسوية من الرصيد' : 'تسجيل الدفعة'}
+          {fundingSource === 'credit' ? 'تسوية من الرصيد' : fundingSource === 'request' ? 'إرسال للاعتماد' : 'تسجيل الدفعة'}
         </Button>
       </div>
     </form>

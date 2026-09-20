@@ -188,6 +188,148 @@ export async function payVendorFromExpense(formData: FormData, allocations: any[
   return { data, success: true };
 }
 
+const VENDOR_PAYMENT_REQUEST_FUNDING_TYPES = ['bank', 'employee_custody'] as const;
+
+/** Submit a vendor payment funded from a bank account or another employee's
+ *  custody (has_expense_funding_access). Nothing reaches the vendor's account
+ *  here — it is saved as a pending request and only executes when an approver
+ *  approves it in /expenses/approvals (approve_vendor_payment_request). */
+export async function requestVendorPayment(formData: FormData, allocations: any[], attachments: string[] = []) {
+  const supabase = await createClient();
+
+  const vendor_id = formData.get('vendor_id') as string;
+  const amount = parseFloat(formData.get('amount') as string);
+  const memo = formData.get('memo') as string;
+  const project_id = formData.get('project_id') as string || null;
+  const funding_type = formData.get('funding_type') as string;
+  const funding_bank_account_id = formData.get('funding_bank_account_id') as string || null;
+  const funding_employee_id = formData.get('funding_employee_id') as string || null;
+
+  if (!vendor_id) return { error: 'يجب اختيار المقاول' };
+  if (!Number.isFinite(amount) || amount <= 0) return { error: 'المبلغ يجب أن يكون أكبر من صفر' };
+  if (!(VENDOR_PAYMENT_REQUEST_FUNDING_TYPES as readonly string[]).includes(funding_type)) {
+    return { error: 'يجب اختيار مصدر التمويل' };
+  }
+  if (funding_type === 'bank' && !funding_bank_account_id) return { error: 'يجب اختيار الحساب البنكي' };
+  if (funding_type === 'employee_custody' && !funding_employee_id) return { error: 'يجب اختيار الموظف الممول' };
+
+  if (project_id) {
+    const accessError = await assertVendorProjectAccess(supabase, vendor_id, project_id);
+    if (accessError) return accessError;
+  }
+
+  const { data: requestId, error } = await supabase.rpc('request_vendor_payment', {
+    p_vendor_id: vendor_id,
+    p_amount: amount,
+    p_memo: memo || '',
+    p_allocations: allocations,
+    p_project_id: project_id,
+    p_funding_type: funding_type,
+    p_funding_bank_account_id: funding_type === 'bank' ? funding_bank_account_id : null,
+    p_funding_employee_id: funding_type === 'employee_custody' ? funding_employee_id : null,
+  });
+
+  if (error) return { error: error.message };
+
+  if (attachments && attachments.length > 0) {
+    const { data: userData } = await supabase.auth.getUser();
+    const { data: emp } = await supabase.from('employees').select('id').eq('auth_user_id', userData.user?.id).single();
+    const attachmentRows = attachments.map((key) => ({
+      entity_type: 'vendor_payment_request',
+      entity_id: requestId,
+      r2_key: key,
+      file_name: key,
+      uploaded_by: emp?.id,
+    }));
+    const { error: attachError } = await supabase.from('attachments').insert(attachmentRows);
+    if (attachError) console.error('Vendor payment request attachment insert failed:', attachError);
+  }
+
+  const { data: approvers } = await supabase.from('employees').select('id').or('is_super_admin.eq.true,can_approve.eq.true');
+  if (approvers && approvers.length > 0) {
+    const approverIds = approvers.map(a => a.id);
+    after(() => sendPushNotification(
+      approverIds,
+      'دفعة مقاول بانتظار الاعتماد',
+      `تم تقديم طلب دفع بمبلغ ${amount} لمقاول`,
+      '/expenses/approvals',
+      'payment_request_submitted'
+    ));
+  }
+
+  revalidatePath('/treasury');
+  revalidatePath('/expenses/approvals');
+  return { success: true, id: requestId as string };
+}
+
+export async function approveVendorPaymentRequest(requestId: string) {
+  try {
+    const supabase = await createClient();
+
+    // Read before approving so we know who to notify and which statement to refresh.
+    const { data: request } = await supabase
+      .from('vendor_payment_requests')
+      .select('requested_by, vendor_id, amount')
+      .eq('id', requestId)
+      .single();
+
+    const { error } = await supabase.rpc('approve_vendor_payment_request', { p_request_id: requestId });
+    if (error) return { error: error.message };
+
+    if (request) {
+      after(() => sendPushNotification(
+        [request.requested_by],
+        'تم اعتماد طلب الدفع',
+        `تم اعتماد دفعة المقاول بمبلغ ${request.amount} وتسجيلها في حسابه`,
+        '/treasury?tab=payables',
+        'payment_request_approved'
+      ));
+      revalidatePath(`/vendors/${request.vendor_id}/statement`);
+    }
+
+    revalidatePath('/expenses/approvals');
+    revalidatePath('/treasury');
+    revalidatePath('/expenses/statement');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ' };
+  }
+}
+
+export async function rejectVendorPaymentRequest(requestId: string, reason?: string) {
+  try {
+    const supabase = await createClient();
+
+    const trimmedReason = reason?.trim();
+    if (!trimmedReason) return { error: 'يرجى كتابة سبب الرفض' };
+
+    const { data: request } = await supabase
+      .from('vendor_payment_requests')
+      .select('requested_by, amount')
+      .eq('id', requestId)
+      .single();
+
+    const { error } = await supabase.rpc('reject_vendor_payment_request', { p_request_id: requestId, p_reason: trimmedReason });
+    if (error) return { error: error.message };
+
+    if (request) {
+      after(() => sendPushNotification(
+        [request.requested_by],
+        'تم رفض طلب الدفع',
+        `تم رفض طلب دفع المقاول بمبلغ ${request.amount}: ${trimmedReason}`,
+        '/treasury?tab=payables',
+        'payment_request_rejected'
+      ));
+    }
+
+    revalidatePath('/expenses/approvals');
+    revalidatePath('/treasury');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ' };
+  }
+}
+
 export async function receiveFromOwner(formData: FormData, allocations: any[], attachments: string[] = []) {
   const supabase = await createClient();
   
