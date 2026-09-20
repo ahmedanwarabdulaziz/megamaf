@@ -21,13 +21,12 @@
 --   (any status). The vendor's project-scoping rows (vendor_project_access)
 --   are not transactions and are removed with it (existing ON DELETE CASCADE).
 --
--- Authorization matches who can edit a vendor today: super admin or an
--- approver (can_approve).
+-- Authorization: SUPER ADMIN ONLY. Deleting is permanent, so it is stricter than
+-- editing a vendor (which approvers can also do).
 
 CREATE OR REPLACE FUNCTION public.delete_vendor(p_vendor_id uuid) RETURNS void AS $$
 DECLARE
     v_employee_id uuid;
-    v_can_approve boolean;
     v_vendor      record;
     v_claims      integer;
     v_invoices    integer;
@@ -39,9 +38,8 @@ DECLARE
 BEGIN
     v_employee_id := public.current_employee_id();
 
-    SELECT can_approve INTO v_can_approve FROM public.employees WHERE id = v_employee_id;
-    IF NOT public.is_super_admin() AND NOT COALESCE(v_can_approve, false) THEN
-        RAISE EXCEPTION 'Not authorized to delete vendors';
+    IF NOT public.is_super_admin() THEN
+        RAISE EXCEPTION 'Only a super admin can delete vendors';
     END IF;
 
     SELECT * INTO v_vendor FROM public.vendors WHERE id = p_vendor_id FOR UPDATE;

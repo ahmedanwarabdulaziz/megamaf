@@ -379,7 +379,7 @@ export default async function VendorsPage({
                       {(profile.is_super_admin || profile.can_approve) && (
                         <VendorModal vendor={vendor} projects={projects} />
                       )}
-                      {(profile.is_super_admin || profile.can_approve) && (
+                      {profile.is_super_admin && (
                         <DeleteVendorButton vendorId={vendor.id} vendorName={vendor.name} />
                       )}
                     </div>
