@@ -3,6 +3,7 @@ import { getProjects } from '@/lib/queries/projects';
 import { getProfile } from '@/lib/supabase/get-profile';
 import { createClient } from '@/lib/supabase/server';
 import { VendorModal } from '@/components/vendors/vendor-modal';
+import { DeleteVendorButton } from '@/components/vendors/delete-vendor-button';
 import { VendorsFilters } from '@/components/vendors/vendors-filters';
 import { formatMoney } from '@/lib/money';
 import Link from 'next/link';
@@ -377,6 +378,9 @@ export default async function VendorsPage({
                       </Link>
                       {(profile.is_super_admin || profile.can_approve) && (
                         <VendorModal vendor={vendor} projects={projects} />
+                      )}
+                      {(profile.is_super_admin || profile.can_approve) && (
+                        <DeleteVendorButton vendorId={vendor.id} vendorName={vendor.name} />
                       )}
                     </div>
                   </td>

@@ -85,3 +85,21 @@ export async function saveVendor(formData: FormData, projectIds: string[]) {
     return { error: e.message || 'An error occurred' };
   }
 }
+
+/** Delete a vendor / contractor that was added by mistake. Only allowed when it
+ *  has no transactions at all — the check and the delete run together inside
+ *  the delete_vendor database function (see 20260920120000_delete_vendor.sql),
+ *  which sees every row regardless of the caller's project access. */
+export async function deleteVendor(vendorId: string) {
+  try {
+    const supabase = await createClient();
+    const { error } = await supabase.rpc('delete_vendor', { p_vendor_id: vendorId });
+    if (error) return { error: error.message };
+
+    revalidatePath('/vendors');
+    revalidatePath('/treasury');
+    return { success: true };
+  } catch (e: any) {
+    return { error: e.message || 'حدث خطأ' };
+  }
+}
