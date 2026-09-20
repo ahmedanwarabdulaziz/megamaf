@@ -3,18 +3,23 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 // Everything external is mocked — no Supabase, no notifications, no network.
 const mocks = vi.hoisted(() => ({
   createClient: vi.fn(),
+  getProfile: vi.fn(),
   revalidatePath: vi.fn(),
   sendPushNotification: vi.fn(),
   after: vi.fn((cb: () => unknown) => cb()),
 }))
 
 vi.mock('@/lib/supabase/server', () => ({ createClient: mocks.createClient }))
+vi.mock('@/lib/supabase/get-profile', () => ({ getProfile: mocks.getProfile }))
 vi.mock('next/cache', () => ({ revalidatePath: mocks.revalidatePath }))
 vi.mock('next/server', () => ({ after: mocks.after }))
 vi.mock('@/lib/notifications', () => ({ sendPushNotification: mocks.sendPushNotification }))
 
 import {
   approveVendorPaymentRequest,
+  assignVendorPayment,
+  payVendor,
+  payVendorFromExpense,
   rejectVendorPaymentRequest,
   requestVendorPayment,
 } from '@/lib/actions/payments'
@@ -77,6 +82,7 @@ function bankForm(overrides: Record<string, string> = {}) {
 
 beforeEach(() => {
   vi.clearAllMocks()
+  mocks.getProfile.mockResolvedValue({ user: { id: 'u' }, profile: { id: 'e', is_super_admin: false, has_expense_funding_access: false } })
   mocks.after.mockImplementation((cb: () => unknown) => cb())
 })
 
@@ -195,6 +201,40 @@ describe('approve / reject vendor payment request', () => {
     expect(mocks.sendPushNotification).toHaveBeenCalledWith(
       ['emp-9'], expect.any(String), expect.stringContaining('المبلغ خاطئ'), '/treasury?tab=payables', 'payment_request_rejected',
     )
+  })
+})
+
+describe('direct vendor payments are closed to funding-access employees', () => {
+  const directCalls: Array<[string, () => Promise<unknown>]> = [
+    ['payVendor (bank account)', () => payVendor(bankForm(), [])],
+    ['payVendorFromExpense (employee approved expense)', () => payVendorFromExpense(bankForm(), [])],
+    ['assignVendorPayment (settle from credit)', () => assignVendorPayment('ledger-1', projectId, [])],
+  ]
+
+  it.each(directCalls)('%s is refused before any database call', async (_label, call) => {
+    mocks.getProfile.mockResolvedValue({ user: { id: 'u' }, profile: { id: 'e', is_super_admin: false, has_expense_funding_access: true } })
+    const supabase = fakeSupabase()
+    mocks.createClient.mockResolvedValue(supabase)
+
+    expect(await call()).toHaveProperty('error')
+    expect(supabase.rpc).not.toHaveBeenCalled()
+  })
+
+  it.each(directCalls)('%s is still allowed for a super admin, even with the flag set', async (_label, call) => {
+    mocks.getProfile.mockResolvedValue({ user: { id: 'u' }, profile: { id: 'e', is_super_admin: true, has_expense_funding_access: true } })
+    const supabase = fakeSupabase({ rpcResult: { data: 'ledger-1', error: null } })
+    mocks.createClient.mockResolvedValue(supabase)
+
+    await call()
+    expect(supabase.rpc).toHaveBeenCalled()
+  })
+
+  it.each(directCalls)('%s is unchanged for an ordinary treasury employee without the flag', async (_label, call) => {
+    const supabase = fakeSupabase({ rpcResult: { data: 'ledger-1', error: null } })
+    mocks.createClient.mockResolvedValue(supabase)
+
+    await call()
+    expect(supabase.rpc).toHaveBeenCalled()
   })
 })
 

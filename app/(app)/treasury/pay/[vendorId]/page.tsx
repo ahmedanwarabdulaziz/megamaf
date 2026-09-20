@@ -2,7 +2,7 @@ import { createClient } from '@/lib/supabase/server';
 import { notFound } from 'next/navigation';
 import { VendorPaymentCalculator } from './calculator';
 import { computeClaimFinancials } from '@/lib/claim-financials';
-import { requirePageAccess, canEditPage } from '@/lib/require-page-access';
+import { requirePageAccess } from '@/lib/require-page-access';
 import { getBanks, getBankAccountsForFunding } from '@/lib/queries/banks';
 
 export default async function PayVendorPage({ params }: { params: Promise<{ vendorId: string }> }) {
@@ -12,9 +12,9 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
   // Employees granted has_expense_funding_access (and who aren't super admins)
   // can register a vendor payment funded from a bank / another employee's
   // custody; it waits for approval in /expenses/approvals before it lands on
-  // the vendor's account. Super admins and treasury editors keep paying directly.
+  // the vendor's account. That is their ONLY way to pay: no direct deduction
+  // from a bank / an employee's expense / vendor credit, and no bank balances.
   const canRequestFunded = !profile.is_super_admin && !!profile.has_expense_funding_access;
-  const canPayDirect = !!profile.is_super_admin || canEditPage(profile, 'treasury');
   const supabase = await createClient();
 
   const { data: vendor } = await supabase.from('vendors').select('*, vendor_project_access(project_id)').eq('id', vendorId).single();
@@ -325,7 +325,7 @@ export default async function PayVendorPage({ params }: { params: Promise<{ vend
         <p className="text-muted-foreground mt-1">المقاول: {vendor.name}</p>
       </div>
 
-      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} banks={banks || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} creditEntries={creditEntries || []} canRequestFunded={canRequestFunded} canPayDirect={canPayDirect} fundingBankAccounts={fundingBankAccounts} currentEmployeeId={profile.id} />
+      <VendorPaymentCalculator vendorId={vendorId} openDocs={openDocs} banks={banks || []} employees={employees || []} projects={vendorScopedProjects || []} claimSummaries={claimSummaries} creditEntries={creditEntries || []} canRequestFunded={canRequestFunded} fundingBankAccounts={fundingBankAccounts} currentEmployeeId={profile.id} />
     </div>
   );
 }

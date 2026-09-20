@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { after } from 'next/server';
 import { sendPushNotification } from '@/lib/notifications';
+import { getProfile } from '@/lib/supabase/get-profile';
 
 // Server-side guard mirroring the vendor/project scoping check in lib/actions/claims.ts —
 // a vendor restricted to specific projects must not be tagged with a payment for a
@@ -30,7 +31,23 @@ async function assertVendorProjectAccess(
   return null;
 }
 
+// A non-super-admin employee with has_expense_funding_access may only submit a
+// vendor payment as a request (requestVendorPayment) that waits for approval —
+// never deduct money immediately from a bank account, an employee's approved
+// expense, or existing vendor credit. Enforced in the database too (see
+// 20260920110000_block_direct_vendor_payments_for_funding_access.sql); this
+// check just returns a clear message before any work is done.
+async function directPaymentBlocked() {
+  const { profile } = await getProfile();
+  if (profile && !profile.is_super_admin && profile.has_expense_funding_access) {
+    return { error: 'لا يمكنك تسجيل دفعة مباشرة — استخدم "بنك / عهدة موظف آخر (بعد الاعتماد)" لإرسال الدفعة للاعتماد.' };
+  }
+  return null;
+}
+
 export async function payVendor(formData: FormData, allocations: any[], attachments: string[] = []) {
+  const blocked = await directPaymentBlocked();
+  if (blocked) return blocked;
   const supabase = await createClient();
 
   const bank_account_id = formData.get('bank_account_id') as string;
@@ -110,6 +127,8 @@ export async function payVendor(formData: FormData, allocations: any[], attachme
 }
 
 export async function payVendorFromExpense(formData: FormData, allocations: any[], attachments: string[] = []) {
+  const blocked = await directPaymentBlocked();
+  if (blocked) return blocked;
   const supabase = await createClient();
 
   const employee_id = formData.get('employee_id') as string;
@@ -399,6 +418,8 @@ export async function assignVendorPayment(
   projectId: string,
   allocations: { target_type: string; target_id: string; amount: number }[]
 ) {
+  const blocked = await directPaymentBlocked();
+  if (blocked) return blocked;
   const supabase = await createClient();
 
   const priorClaimAllocations = allocations.filter(a => a.target_type === 'prior_claim');

@@ -61,7 +61,6 @@ export function VendorPaymentCalculator({
   claimSummaries,
   creditEntries = [],
   canRequestFunded = false,
-  canPayDirect = true,
   fundingBankAccounts = [],
   currentEmployeeId,
 }: {
@@ -75,8 +74,6 @@ export function VendorPaymentCalculator({
   /** Employee with has_expense_funding_access (not a super admin): may submit a
    *  payment funded from a bank / another employee's custody that waits for approval. */
   canRequestFunded?: boolean,
-  /** Super admin or treasury editor: may record a payment immediately (existing flow). */
-  canPayDirect?: boolean,
   fundingBankAccounts?: FundingBankAccount[],
   currentEmployeeId?: string,
 }) {
@@ -113,7 +110,10 @@ export function VendorPaymentCalculator({
   // 'request' = funded from a bank / another employee's custody, but saved as a
   // pending request that only lands on the vendor's account once an approver
   // approves it (see requestVendorPayment).
-  const requestOnly = canRequestFunded && !canPayDirect;
+  // Such an employee can ONLY submit for approval: the direct-deduction tabs
+  // (bank account / employee's approved expense / settle from credit) are not
+  // shown at all, and the database rejects them too.
+  const requestOnly = canRequestFunded;
   const [fundingSource, setFundingSource] = useState<'bank' | 'expense' | 'credit' | 'request'>(requestOnly ? 'request' : 'bank');
   const [requestFundingType, setRequestFundingType] = useState<'bank' | 'employee_custody'>('bank');
   const [requestBankId, setRequestBankId] = useState('');
@@ -697,7 +697,7 @@ export function VendorPaymentCalculator({
               <div className="text-2xl font-bold text-green-800 dark:text-green-400">{formatMoney(totalCredit)}</div>
             </div>
           </div>
-          {eligibleCreditEntries.length > 0 && (
+          {eligibleCreditEntries.length > 0 && !requestOnly && (
             <div className="flex justify-end">
               <Button type="button" variant="outline" size="sm" onClick={buildAutoSettlePreview}>
                 تسوية تلقائية الآن
@@ -792,13 +792,15 @@ export function VendorPaymentCalculator({
                 بنك / عهدة موظف آخر (بعد الاعتماد)
               </button>
             )}
-            <button
-              type="button"
-              onClick={() => { setFundingSource('expense'); setAmount(0); setBankId(''); }}
-              className={`flex-1 p-2 rounded border text-sm font-medium ${fundingSource === 'expense' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'}`}
-            >
-              من عهدة موظف (مصروف معتمد)
-            </button>
+            {!requestOnly && (
+              <button
+                type="button"
+                onClick={() => { setFundingSource('expense'); setAmount(0); setBankId(''); }}
+                className={`flex-1 p-2 rounded border text-sm font-medium ${fundingSource === 'expense' ? 'bg-primary text-primary-foreground border-primary' : 'bg-background'}`}
+              >
+                من عهدة موظف (مصروف معتمد)
+              </button>
+            )}
             {creditEntries.length > 0 && !requestOnly && (
               <button
                 type="button"
@@ -866,23 +868,7 @@ export function VendorPaymentCalculator({
               <label className="block text-sm font-medium mb-1">الخزينة / الحساب البنكي المسدد منه</label>
               <select required value={bankId} onChange={e => setBankId(e.target.value)} className="w-full p-2 rounded border bg-background">
                 <option value="">اختر الحساب...</option>
-                {canRequestFunded ? (
-                  // Employees with has_expense_funding_access never see bank
-                  // balances (same rule as the custody / expense funding
-                  // picker) — balance-free list, account names only.
-                  Object.entries(
-                    fundingBankAccounts.reduce((groups: Record<string, FundingBankAccount[]>, acc) => {
-                      (groups[acc.bank_name] ||= []).push(acc);
-                      return groups;
-                    }, {})
-                  ).map(([bankName, accounts]) => (
-                    <optgroup key={bankName} label={bankName}>
-                      {accounts.map(acc => (
-                        <option key={acc.bank_account_id} value={acc.bank_account_id}>{acc.account_name}</option>
-                      ))}
-                    </optgroup>
-                  ))
-                ) : banks.map(bank => (
+                {banks.map(bank => (
                   <optgroup key={bank.id} label={bank.name}>
                     {bank.accounts?.map((acc: any) => (
                       <option key={acc.bank_account_id} value={acc.bank_account_id}>
